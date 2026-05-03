@@ -28,6 +28,16 @@ Full workflow details are in the `pr-workflow` OpenCode skill.
 
 <!-- END:pr-workflow-rules -->
 
+<!-- BEGIN:specs-sync-rules -->
+
+## Spec documentation sync — MANDATORY
+
+The `specs/` folder contains plain-language descriptions of every feature from the user's perspective. **If a PR adds, removes, or changes any user-facing feature, the corresponding spec file in `specs/` must be updated.** Treat outdated specs the same as a missing changelog entry — the PR is not ready until specs are in sync.
+
+See `specs/README.md` for the full index.
+
+<!-- END:specs-sync-rules -->
+
 ## Text casing
 
 Use **sentence case** for all user-visible strings: labels, buttons, headings, descriptions, dropdown options, tooltips, and section titles.

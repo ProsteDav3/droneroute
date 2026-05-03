@@ -20,6 +20,7 @@ Enforce the PR-based development workflow. All code changes go through pull requ
 1. **NEVER commit to main.** NEVER push to main. All changes go through feature branches and PRs.
 2. **ALWAYS check the current branch** before making any changes. If on `main`, create a feature branch first.
 3. **Every PR must include a changelog entry** unless it's purely infrastructure (CI config, skill files, etc.) — in that case, add the `skip-changelog` label to the PR.
+4. **If a PR adds, removes, or changes any user-facing feature, the corresponding spec file in `specs/` must be updated.** Treat outdated specs the same as a missing changelog entry — the PR is not ready until specs are in sync. See `specs/README.md` for the full list of spec files.
 
 ## Workflow
 

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { X, BookOpen, Terminal, Lightbulb } from "lucide-react";
+import { X, BookOpen, Terminal, Lightbulb, TriangleAlert } from "lucide-react";
 import { GithubIcon } from "@/components/icons/GithubIcon";
 
 interface AboutDialogProps {
@@ -132,6 +132,19 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
                 />
               </a>
             </div>
+          </div>
+
+          {/* Disclaimer */}
+          <div className="flex gap-2 pt-2 border-t border-border">
+            <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-500 mt-0.5" />
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              <span className="text-amber-500 font-medium">
+                Active development.
+              </span>{" "}
+              Provided "as is" without warranty. The authors are not responsible
+              for any damage to your drones, equipment, or property. Always
+              verify mission parameters before flying.
+            </p>
           </div>
         </div>
 

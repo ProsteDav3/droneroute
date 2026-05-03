@@ -112,6 +112,8 @@ DroneRoute is built and maintained in my spare time. If it saves you time planni
 
 ## Disclaimer
 
+**This software is under active development.** DroneRoute is provided "as is" without warranty of any kind. The authors are not responsible for any damage to your drones, equipment, or property resulting from the use of this software. Always verify your mission parameters before flying.
+
 DroneRoute is an independent, community-driven project. It is not affiliated with, endorsed by, or sponsored by DJI. "DJI" and related product names are trademarks of SZ DJI Technology Co., Ltd.
 
 ## License

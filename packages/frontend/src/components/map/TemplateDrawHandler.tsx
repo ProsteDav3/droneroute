@@ -1,16 +1,9 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-import {
-  useMapEvents,
-  CircleMarker,
-  Polyline,
-  Circle,
-  Rectangle,
-} from "react-leaflet";
+import { Source, Layer, Marker, useMap } from "react-map-gl/mapbox";
 import { useMissionStore } from "@/store/missionStore";
 import { TemplateConfigPanel } from "./TemplateConfigPanel";
 import { TemplatePreview } from "./TemplatePreview";
 import type {
-  TemplateType,
   OrbitParams,
   GridParams,
   FacadeParams,
@@ -25,7 +18,7 @@ import {
   DEFAULT_FACADE_PARAMS,
 } from "@/lib/templates";
 
-/** Haversine distance in meters (local copy to avoid circular imports) */
+/** Haversine distance in meters */
 function haversine(
   lat1: number,
   lng1: number,
@@ -47,16 +40,36 @@ interface DragState {
   end: [number, number];
 }
 
+/** Generate a GeoJSON circle for orbit preview */
+function circleGeoJson(center: [number, number], radiusM: number) {
+  const [lat, lng] = center;
+  const coords: [number, number][] = [];
+  const steps = 64;
+  for (let i = 0; i <= steps; i++) {
+    const angle = (i / steps) * 2 * Math.PI;
+    const dLat = (radiusM / 6371000) * Math.cos(angle) * (180 / Math.PI);
+    const dLng =
+      ((radiusM / 6371000) * Math.sin(angle) * (180 / Math.PI)) /
+      Math.cos((lat * Math.PI) / 180);
+    coords.push([lng + dLng, lat + dLat]);
+  }
+  return {
+    type: "Feature" as const,
+    properties: {},
+    geometry: { type: "LineString" as const, coordinates: coords },
+  };
+}
+
 export function TemplateDrawHandler() {
   const templateMode = useMissionStore((s) => s.templateMode);
   const setTemplateMode = useMissionStore((s) => s.setTemplateMode);
   const appendWaypoints = useMissionStore((s) => s.appendWaypoints);
+  const { current: map } = useMap();
 
   const [dragging, setDragging] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [confirmed, setConfirmed] = useState(false);
 
-  // Editable params (populated after drag completes)
   const [orbitParams, setOrbitParams] = useState<OrbitParams | null>(null);
   const [gridParams, setGridParams] = useState<GridParams | null>(null);
   const [facadeParams, setFacadeParams] = useState<FacadeParams | null>(null);
@@ -70,35 +83,43 @@ export function TemplateDrawHandler() {
     setFacadeParams(null);
   }, []);
 
-  // Reset all internal state when templateMode changes (e.g. Escape, switching type)
   useEffect(() => {
     resetState();
   }, [templateMode, resetState]);
 
-  useMapEvents({
-    mousedown(e) {
-      if (!templateMode || templateMode === "pencil" || confirmed) return;
-      // Prevent map drag
-      e.originalEvent.preventDefault();
-      e.target.dragging?.disable();
-      const pos: [number, number] = [e.latlng.lat, e.latlng.lng];
-      setDragging(true);
-      setDragState({ start: pos, end: pos });
-    },
-    mousemove(e) {
-      if (!dragging || !dragState) return;
-      setDragState((prev) =>
-        prev ? { ...prev, end: [e.latlng.lat, e.latlng.lng] } : null,
-      );
-    },
-    mouseup(e) {
-      if (!dragging || !dragState || !templateMode) return;
-      e.target.dragging?.enable();
-      setDragging(false);
+  // Map mouse events for drag-to-draw
+  useEffect(() => {
+    if (!map || !templateMode || templateMode === "pencil") return;
 
-      const endPos: [number, number] = [e.latlng.lat, e.latlng.lng];
-      const finalDrag = { ...dragState, end: endPos };
+    let isDragging = false;
+    let currentDrag: DragState | null = null;
+
+    const onMouseDown = (e: any) => {
+      if (confirmed) return;
+      e.preventDefault();
+      map.getMap().dragPan.disable();
+      const pos: [number, number] = [e.lngLat.lat, e.lngLat.lng];
+      isDragging = true;
+      currentDrag = { start: pos, end: pos };
+      setDragging(true);
+      setDragState(currentDrag);
+    };
+
+    const onMouseMove = (e: any) => {
+      if (!isDragging || !currentDrag) return;
+      currentDrag = { ...currentDrag, end: [e.lngLat.lat, e.lngLat.lng] };
+      setDragState({ ...currentDrag });
+    };
+
+    const onMouseUp = (e: any) => {
+      if (!isDragging || !currentDrag) return;
+      map.getMap().dragPan.enable();
+      isDragging = false;
+
+      const endPos: [number, number] = [e.lngLat.lat, e.lngLat.lng];
+      const finalDrag = { ...currentDrag, end: endPos };
       setDragState(finalDrag);
+      setDragging(false);
 
       const dist = haversine(
         finalDrag.start[0],
@@ -107,26 +128,25 @@ export function TemplateDrawHandler() {
         finalDrag.end[1],
       );
 
-      // Minimum drag distance of 5 meters
       if (dist < 5) {
         resetState();
         return;
       }
 
-      // Create initial params based on template type
-      if (templateMode === "orbit") {
+      const tm = useMissionStore.getState().templateMode;
+      if (tm === "orbit") {
         setOrbitParams({
           ...DEFAULT_ORBIT_PARAMS,
           center: finalDrag.start,
           radiusM: Math.round(dist),
         });
-      } else if (templateMode === "grid") {
+      } else if (tm === "grid") {
         setGridParams({
           ...DEFAULT_GRID_PARAMS,
           corner1: finalDrag.start,
           corner2: finalDrag.end,
         });
-      } else if (templateMode === "facade") {
+      } else if (tm === "facade") {
         setFacadeParams({
           ...DEFAULT_FACADE_PARAMS,
           point1: finalDrag.start,
@@ -135,10 +155,21 @@ export function TemplateDrawHandler() {
       }
 
       setConfirmed(true);
-    },
-  });
+      currentDrag = null;
+    };
 
-  // Generate preview from current params
+    map.on("mousedown", onMouseDown);
+    map.on("mousemove", onMouseMove);
+    map.on("mouseup", onMouseUp);
+
+    return () => {
+      map.off("mousedown", onMouseDown);
+      map.off("mousemove", onMouseMove);
+      map.off("mouseup", onMouseUp);
+      map.getMap().dragPan.enable();
+    };
+  }, [map, templateMode, confirmed, resetState]);
+
   const preview: TemplateResult | null = useMemo(() => {
     if (orbitParams) return generateOrbit(orbitParams);
     if (gridParams) return generateGrid(gridParams);
@@ -146,7 +177,6 @@ export function TemplateDrawHandler() {
     return null;
   }, [orbitParams, gridParams, facadeParams]);
 
-  // Live preview during drag (before config panel)
   const dragPreview = useMemo(() => {
     if (!dragging || !dragState || !templateMode) return null;
     const dist = haversine(
@@ -181,6 +211,52 @@ export function TemplateDrawHandler() {
     return null;
   }, [dragging, dragState, templateMode]);
 
+  // Build drag guide GeoJSON
+  const dragGuideGeojson = useMemo(() => {
+    if (!dragging || !dragState) return null;
+    if (templateMode === "orbit") {
+      const dist = haversine(
+        dragState.start[0],
+        dragState.start[1],
+        dragState.end[0],
+        dragState.end[1],
+      );
+      return circleGeoJson(dragState.start, dist);
+    }
+    if (templateMode === "grid") {
+      const [lat1, lng1] = dragState.start;
+      const [lat2, lng2] = dragState.end;
+      return {
+        type: "Feature" as const,
+        properties: {},
+        geometry: {
+          type: "LineString" as const,
+          coordinates: [
+            [lng1, lat1],
+            [lng2, lat1],
+            [lng2, lat2],
+            [lng1, lat2],
+            [lng1, lat1],
+          ],
+        },
+      };
+    }
+    if (templateMode === "facade") {
+      return {
+        type: "Feature" as const,
+        properties: {},
+        geometry: {
+          type: "LineString" as const,
+          coordinates: [
+            [dragState.start[1], dragState.start[0]],
+            [dragState.end[1], dragState.end[0]],
+          ],
+        },
+      };
+    }
+    return null;
+  }, [dragging, dragState, templateMode]);
+
   if (!templateMode || templateMode === "pencil") return null;
 
   const handleApply = () => {
@@ -200,78 +276,77 @@ export function TemplateDrawHandler() {
   return (
     <>
       {/* Draw guide during drag */}
+      {dragGuideGeojson && (
+        <Source id="template-drag-guide" type="geojson" data={dragGuideGeojson}>
+          <Layer
+            id="template-drag-guide-layer"
+            type="line"
+            paint={{
+              "line-color": "#a78bfa",
+              "line-width": 2,
+              "line-opacity": 0.5,
+              "line-dasharray": [3, 2],
+            }}
+          />
+        </Source>
+      )}
+
+      {/* Center marker for orbit drag */}
       {dragging && dragState && templateMode === "orbit" && (
-        <>
-          <Circle
-            center={dragState.start}
-            radius={haversine(
-              dragState.start[0],
-              dragState.start[1],
-              dragState.end[0],
-              dragState.end[1],
-            )}
-            pathOptions={{
-              color: "#a78bfa",
-              weight: 2,
-              opacity: 0.5,
-              fillOpacity: 0.05,
-              dashArray: "6, 4",
+        <Marker
+          longitude={dragState.start[1]}
+          latitude={dragState.start[0]}
+          anchor="center"
+        >
+          <div
+            style={{
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: "#a78bfa",
             }}
           />
-          <CircleMarker
-            center={dragState.start}
-            radius={4}
-            pathOptions={{
-              color: "#a78bfa",
-              fillColor: "#a78bfa",
-              fillOpacity: 1,
-            }}
-          />
-        </>
+        </Marker>
       )}
-      {dragging && dragState && templateMode === "grid" && (
-        <Rectangle
-          bounds={[dragState.start, dragState.end]}
-          pathOptions={{
-            color: "#a78bfa",
-            weight: 2,
-            opacity: 0.5,
-            fillOpacity: 0.05,
-            dashArray: "6, 4",
-          }}
-        />
-      )}
+
+      {/* Facade endpoint markers during drag */}
       {dragging && dragState && templateMode === "facade" && (
         <>
-          <Polyline
-            positions={[dragState.start, dragState.end]}
-            pathOptions={{ color: "#a78bfa", weight: 3, opacity: 0.7 }}
-          />
-          <CircleMarker
-            center={dragState.start}
-            radius={4}
-            pathOptions={{
-              color: "#a78bfa",
-              fillColor: "#a78bfa",
-              fillOpacity: 1,
-            }}
-          />
-          <CircleMarker
-            center={dragState.end}
-            radius={4}
-            pathOptions={{
-              color: "#a78bfa",
-              fillColor: "#a78bfa",
-              fillOpacity: 1,
-            }}
-          />
+          <Marker
+            longitude={dragState.start[1]}
+            latitude={dragState.start[0]}
+            anchor="center"
+          >
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#a78bfa",
+              }}
+            />
+          </Marker>
+          <Marker
+            longitude={dragState.end[1]}
+            latitude={dragState.end[0]}
+            anchor="center"
+          >
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: "#a78bfa",
+              }}
+            />
+          </Marker>
         </>
       )}
 
       {/* Preview waypoints */}
       {activePreview && <TemplatePreview result={activePreview} />}
 
-      {/* Config panel (shown after drag completes) */}
+      {/* Config panel */}
       {confirmed && (
         <TemplateConfigPanel
           type={templateMode}

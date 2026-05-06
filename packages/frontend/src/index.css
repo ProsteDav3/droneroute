@@ -32,41 +32,34 @@ body {
     sans-serif;
 }
 
-/* Fix leaflet z-index conflicts */
-.leaflet-pane {
-  z-index: 1 !important;
+/* Fix mapbox z-index conflicts */
+.mapboxgl-map {
+  z-index: 0;
 }
-.leaflet-top,
-.leaflet-bottom {
-  z-index: 2 !important;
-}
-
-/* Animated flight path dashes flowing in waypoint order */
-@keyframes dash-flow {
-  to {
-    stroke-dashoffset: -16;
-  }
+.mapboxgl-ctrl-bottom-left,
+.mapboxgl-ctrl-bottom-right {
+  z-index: 2;
 }
 
-/* Crosshair cursor when placing waypoints or POIs */
-.map-tool-waypoint .leaflet-container,
-.map-tool-poi .leaflet-container {
-  cursor: crosshair !important;
+/* Dark theme for mapbox popups */
+.building-popup .mapboxgl-popup-content {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
-
-/* Crosshair cursor for template drawing */
-.map-tool-template .leaflet-container {
-  cursor: crosshair !important;
+.building-popup .mapboxgl-popup-tip {
+  border-top-color: #18181b;
 }
-
-/* Pencil cursor for freehand drawing */
-.map-tool-pencil .leaflet-container {
-  cursor: crosshair !important;
+.building-popup .mapboxgl-popup-close-button {
+  color: #a1a1aa;
+  font-size: 16px;
+  padding: 2px 6px;
 }
-
-/* Crosshair cursor for obstacle polygon drawing */
-.map-tool-obstacle .leaflet-container {
-  cursor: crosshair !important;
+.building-popup .mapboxgl-popup-close-button:hover {
+  color: #fafafa;
+  background: transparent;
 }
 
 /* Sidebar section expand animation */
@@ -82,4 +75,76 @@ body {
 }
 .section-expand {
   animation: section-expand 0.25s ease-out;
+}
+
+/* Geocoder search — match app dark theme */
+.mapboxgl-ctrl-geocoder {
+  background-color: rgba(9, 9, 11, 0.9) !important;
+  border: 1px solid #27272a !important;
+  border-radius: 0.375rem !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+  font-family: inherit !important;
+  font-size: 12px !important;
+  min-width: 36px !important;
+}
+.mapboxgl-ctrl-geocoder--collapsed {
+  min-width: 28px !important;
+  width: 28px !important;
+  height: 28px !important;
+}
+.mapboxgl-ctrl-geocoder:not(.mapboxgl-ctrl-geocoder--collapsed) {
+  width: 260px !important;
+}
+.mapboxgl-ctrl-geocoder--icon-search {
+  fill: #a1a1aa !important;
+  width: 16px !important;
+  height: 16px !important;
+  top: 6px !important;
+  left: 6px !important;
+}
+.mapboxgl-ctrl-geocoder--collapsed .mapboxgl-ctrl-geocoder--icon-search {
+  top: 6px !important;
+  left: 6px !important;
+}
+.mapboxgl-ctrl-geocoder--icon-close {
+  fill: #a1a1aa !important;
+  width: 14px !important;
+  height: 14px !important;
+}
+.mapboxgl-ctrl-geocoder--icon-close:hover {
+  fill: #fafafa !important;
+}
+.mapboxgl-ctrl-geocoder--icon-loading {
+  fill: #a1a1aa !important;
+}
+.mapboxgl-ctrl-geocoder--input {
+  color: #fafafa !important;
+  font-size: 12px !important;
+  height: 28px !important;
+  padding: 4px 28px 4px 28px !important;
+}
+.mapboxgl-ctrl-geocoder--input::placeholder {
+  color: #71717a !important;
+}
+.mapboxgl-ctrl-geocoder--input:focus {
+  outline: none !important;
+}
+.mapboxgl-ctrl-geocoder .suggestions {
+  background-color: rgba(9, 9, 11, 0.95) !important;
+  border: 1px solid #27272a !important;
+  border-radius: 0.375rem !important;
+  margin-top: 4px !important;
+  font-size: 12px !important;
+}
+.mapboxgl-ctrl-geocoder .suggestions > li > a {
+  color: #a1a1aa !important;
+  padding: 6px 10px !important;
+}
+.mapboxgl-ctrl-geocoder .suggestions > .active > a,
+.mapboxgl-ctrl-geocoder .suggestions > li > a:hover {
+  color: #fafafa !important;
+  background-color: #27272a !important;
+}
+.mapboxgl-ctrl-geocoder--button {
+  background: none !important;
 }

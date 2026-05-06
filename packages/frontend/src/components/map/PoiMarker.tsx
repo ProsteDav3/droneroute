@@ -1,47 +1,14 @@
-import { Marker, Tooltip } from "react-leaflet";
-import L from "leaflet";
 import { useMissionStore } from "@/store/missionStore";
 import type { PointOfInterest } from "@droneroute/shared";
-import { useMemo, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { Marker3D } from "./Marker3D";
 
 interface PoiMarkerProps {
   poi: PointOfInterest;
+  is3D: boolean;
 }
 
-function createPoiIcon(
-  name: string,
-  isSelected: boolean,
-  ctrlReady: boolean,
-): L.DivIcon {
-  const bg = isSelected ? "#ef4444" : "#dc2626";
-  const border = isSelected ? "#fca5a5" : "#991b1b";
-  const cursor = ctrlReady ? "crosshair" : "grab";
-
-  return L.divIcon({
-    html: `
-      <div style="
-        background: ${bg};
-        border: 2px solid ${border};
-        color: white;
-        width: 24px;
-        height: 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 11px;
-        font-weight: 700;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-        cursor: ${cursor};
-        clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
-      ">&#x25CE;</div>
-    `,
-    className: "",
-    iconSize: [24, 24],
-    iconAnchor: [12, 12],
-  });
-}
-
-export function PoiMarker({ poi }: PoiMarkerProps) {
+export function PoiMarker({ poi, is3D }: PoiMarkerProps) {
   const {
     selectedPoiId,
     selectPoi,
@@ -67,62 +34,70 @@ export function PoiMarker({ poi }: PoiMarkerProps) {
   }, []);
 
   const ctrlReady = ctrlHeld && hasSelectedWaypoints;
+  const bg = isSelected ? "#ef4444" : "#dc2626";
+  const border = isSelected ? "#fca5a5" : "#991b1b";
 
-  const icon = useMemo(
-    () => createPoiIcon(poi.name, isSelected, ctrlReady),
-    [poi.name, isSelected, ctrlReady],
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if ((e.ctrlKey || e.metaKey) && hasSelectedWaypoints) {
+        for (const idx of selectedWaypointIndices) {
+          updateWaypoint(idx, {
+            headingMode: "towardPOI",
+            poiId: poi.id,
+            useGlobalHeadingParam: false,
+          });
+        }
+      } else {
+        selectPoi(poi.id);
+      }
+    },
+    [
+      hasSelectedWaypoints,
+      selectedWaypointIndices,
+      updateWaypoint,
+      poi.id,
+      selectPoi,
+    ],
+  );
+
+  const handleDragEnd = useCallback(
+    (e: { lngLat: { lng: number; lat: number } }) => {
+      movePoi(poi.id, e.lngLat.lat, e.lngLat.lng);
+    },
+    [poi.id, movePoi],
   );
 
   return (
-    <Marker
-      position={[poi.latitude, poi.longitude]}
-      icon={icon}
+    <Marker3D
+      longitude={poi.longitude}
+      latitude={poi.latitude}
+      altitude={is3D ? poi.height : 0}
+      anchor="center"
       draggable
-      eventHandlers={{
-        click: (e) => {
-          const nativeEvent = e.originalEvent;
-          if (
-            (nativeEvent.ctrlKey || nativeEvent.metaKey) &&
-            hasSelectedWaypoints
-          ) {
-            // Ctrl+click: assign ALL selected waypoints heading toward this POI
-            for (const idx of selectedWaypointIndices) {
-              updateWaypoint(idx, {
-                headingMode: "towardPOI",
-                poiId: poi.id,
-                useGlobalHeadingParam: false,
-              });
-            }
-          } else {
-            selectPoi(poi.id);
-          }
-        },
-        dragend: (e) => {
-          const marker = e.target;
-          const pos = marker.getLatLng();
-          movePoi(poi.id, pos.lat, pos.lng);
-        },
-      }}
+      onDragEnd={handleDragEnd}
     >
-      <Tooltip direction="top" offset={[0, -12]} opacity={0.95}>
-        <div className="text-xs">
-          <strong>{poi.name}</strong>
-          <br />
-          Height: {poi.height}m
-          {ctrlReady && (
-            <>
-              <br />
-              <span className="text-blue-500 font-semibold">
-                Ctrl+click to aim{" "}
-                {selectedWaypointIndices.size === 1
-                  ? "waypoint"
-                  : `${selectedWaypointIndices.size} waypoints`}{" "}
-                here
-              </span>
-            </>
-          )}
-        </div>
-      </Tooltip>
-    </Marker>
+      <div
+        onClick={handleClick}
+        title={`${poi.name}\nHeight: ${poi.height}m${ctrlReady ? "\nCtrl+click to aim waypoints here" : ""}`}
+        style={{
+          background: bg,
+          border: `2px solid ${border}`,
+          color: "white",
+          width: 24,
+          height: 24,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 11,
+          fontWeight: 700,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+          cursor: ctrlReady ? "crosshair" : "grab",
+          clipPath: "polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)",
+        }}
+      >
+        &#x25CE;
+      </div>
+    </Marker3D>
   );
 }

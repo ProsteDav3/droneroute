@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import { useMapEvents, Polyline } from "react-leaflet";
+import { Source, Layer, useMap } from "react-map-gl/mapbox";
 import { useMissionStore } from "@/store/missionStore";
 import { TemplateConfigPanel } from "./TemplateConfigPanel";
 import { TemplatePreview } from "./TemplatePreview";
@@ -10,19 +10,19 @@ import {
   DEFAULT_PENCIL_PARAMS,
 } from "@/lib/templates";
 
-const MIN_PATH_LENGTH_M = 10; // minimum path length in meters to accept
+const MIN_PATH_LENGTH_M = 10;
 
 export function PencilDrawHandler() {
   const templateMode = useMissionStore((s) => s.templateMode);
   const setTemplateMode = useMissionStore((s) => s.setTemplateMode);
   const appendWaypoints = useMissionStore((s) => s.appendWaypoints);
   const pois = useMissionStore((s) => s.pois);
+  const { current: map } = useMap();
 
   const [rawPath, setRawPath] = useState<[number, number][]>([]);
   const [confirmed, setConfirmed] = useState(false);
   const [pencilParams, setPencilParams] = useState<PencilParams | null>(null);
 
-  // Use refs for values accessed inside Leaflet event handlers (avoids stale closures)
   const drawingRef = useRef(false);
   const pathRef = useRef<[number, number][]>([]);
   const lastPointTime = useRef(0);
@@ -36,64 +36,87 @@ export function PencilDrawHandler() {
     setPencilParams(null);
   }, []);
 
-  // Reset when templateMode changes (e.g. Escape, switching type)
   useEffect(() => {
     resetState();
   }, [templateMode, resetState]);
 
-  useMapEvents({
-    mousedown(e) {
-      if (templateMode !== "pencil" || confirmed) return;
-      e.originalEvent.preventDefault();
-      e.target.dragging?.disable();
-      const pos: [number, number] = [e.latlng.lat, e.latlng.lng];
+  // Map mouse events for pencil drawing
+  useEffect(() => {
+    if (!map || templateMode !== "pencil") return;
+
+    const onMouseDown = (e: any) => {
+      if (confirmed) return;
+      e.preventDefault();
+      map.getMap().dragPan.disable();
+      const pos: [number, number] = [e.lngLat.lat, e.lngLat.lng];
       drawingRef.current = true;
       pathRef.current = [pos];
       lastPointTime.current = Date.now();
       setRawPath([pos]);
-    },
-    mousemove(e) {
+    };
+
+    const onMouseMove = (e: any) => {
       if (!drawingRef.current) return;
-      // Throttle to ~60fps (16ms) to avoid excessive re-renders
       const now = Date.now();
       if (now - lastPointTime.current < 16) return;
       lastPointTime.current = now;
-      const pos: [number, number] = [e.latlng.lat, e.latlng.lng];
+      const pos: [number, number] = [e.lngLat.lat, e.lngLat.lng];
       pathRef.current = [...pathRef.current, pos];
       setRawPath([...pathRef.current]);
-    },
-    mouseup(e) {
-      if (!drawingRef.current || templateMode !== "pencil") return;
-      e.target.dragging?.enable();
+    };
+
+    const onMouseUp = (e: any) => {
+      if (!drawingRef.current) return;
+      map.getMap().dragPan.enable();
       drawingRef.current = false;
 
-      // Add the final point
-      const finalPos: [number, number] = [e.latlng.lat, e.latlng.lng];
+      const finalPos: [number, number] = [e.lngLat.lat, e.lngLat.lng];
       const finalPath = [...pathRef.current, finalPos];
       pathRef.current = finalPath;
       setRawPath(finalPath);
 
-      // Check minimum path length
       const totalLen = pathLength(finalPath);
       if (totalLen < MIN_PATH_LENGTH_M) {
         resetState();
         return;
       }
 
-      // Create initial params
       setPencilParams({
         ...DEFAULT_PENCIL_PARAMS,
         path: finalPath,
       });
       setConfirmed(true);
-    },
-  });
+    };
 
-  // Generate preview from current params
+    map.on("mousedown", onMouseDown);
+    map.on("mousemove", onMouseMove);
+    map.on("mouseup", onMouseUp);
+
+    return () => {
+      map.off("mousedown", onMouseDown);
+      map.off("mousemove", onMouseMove);
+      map.off("mouseup", onMouseUp);
+      map.getMap().dragPan.enable();
+    };
+  }, [map, templateMode, confirmed, resetState]);
+
   const preview = useMemo(() => {
     if (!pencilParams) return null;
     return generatePencil(pencilParams);
   }, [pencilParams]);
+
+  // GeoJSON for the raw drawn path
+  const rawPathGeojson = useMemo(() => {
+    if (rawPath.length < 2) return null;
+    return {
+      type: "Feature" as const,
+      properties: {},
+      geometry: {
+        type: "LineString" as const,
+        coordinates: rawPath.map(([lat, lng]) => [lng, lat]),
+      },
+    };
+  }, [rawPath]);
 
   if (templateMode !== "pencil") return null;
 
@@ -111,34 +134,25 @@ export function PencilDrawHandler() {
 
   return (
     <>
-      {/* Raw path while drawing (live feedback) */}
-      {drawingRef.current && rawPath.length >= 2 && (
-        <Polyline
-          positions={rawPath}
-          pathOptions={{
-            color: "#a78bfa",
-            weight: 3,
-            opacity: 0.8,
-          }}
-        />
-      )}
-
-      {/* Original drawn path (faded) after confirming, behind the preview */}
-      {confirmed && rawPath.length >= 2 && (
-        <Polyline
-          positions={rawPath}
-          pathOptions={{
-            color: "#a78bfa",
-            weight: 2,
-            opacity: 0.25,
-          }}
-        />
+      {/* Raw path while drawing */}
+      {rawPathGeojson && (
+        <Source id="pencil-raw-path" type="geojson" data={rawPathGeojson}>
+          <Layer
+            id="pencil-raw-path-layer"
+            type="line"
+            paint={{
+              "line-color": "#a78bfa",
+              "line-width": confirmed ? 2 : 3,
+              "line-opacity": confirmed ? 0.25 : 0.8,
+            }}
+          />
+        </Source>
       )}
 
       {/* Preview waypoints */}
       {confirmed && preview && <TemplatePreview result={preview} />}
 
-      {/* Config panel (shown after drawing completes) */}
+      {/* Config panel */}
       {confirmed && pencilParams && (
         <TemplateConfigPanel
           type="pencil"

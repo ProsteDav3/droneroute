@@ -12,18 +12,12 @@ import {
   User,
   ArrowLeft,
 } from "lucide-react";
-import {
-  MapContainer,
-  TileLayer,
-  Polyline,
-  Polygon,
-  CircleMarker,
-  useMap,
-} from "react-leaflet";
-import L from "leaflet";
+import Map, { Source, Layer, Marker } from "react-map-gl/mapbox";
+import "mapbox-gl/dist/mapbox-gl.css";
 import { Button } from "@/components/ui/button";
 import { useMissionStore } from "@/store/missionStore";
 import { useAuthStore } from "@/store/authStore";
+import { useConfigStore } from "@/store/configStore";
 import { api } from "@/lib/api";
 import { DRONE_MODELS } from "@droneroute/shared";
 import { getObstacleWarnings } from "@/lib/geo";
@@ -33,7 +27,6 @@ import type {
   PointOfInterest,
   Obstacle,
 } from "@droneroute/shared";
-import "leaflet/dist/leaflet.css";
 
 interface SharedMissionData {
   id: string;
@@ -115,32 +108,6 @@ interface SharedMissionPageProps {
   onRequestAuth: () => void;
 }
 
-/** Fit map to show all waypoints, POIs, and obstacle vertices. */
-function FitBounds({
-  waypoints,
-  pois,
-  obstacles,
-}: {
-  waypoints: Waypoint[];
-  pois: PointOfInterest[];
-  obstacles: Obstacle[];
-}) {
-  const map = useMap();
-  useEffect(() => {
-    const points: L.LatLngExpression[] = [
-      ...waypoints.map((wp) => [wp.latitude, wp.longitude] as [number, number]),
-      ...pois.map((p) => [p.latitude, p.longitude] as [number, number]),
-      ...obstacles.flatMap((o) =>
-        o.vertices.map((v) => [v[0], v[1]] as [number, number]),
-      ),
-    ];
-    if (points.length > 0) {
-      map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 16 });
-    }
-  }, [waypoints, pois, obstacles, map]);
-  return null;
-}
-
 /** Read-only map preview showing the flight path, waypoints, POIs, and obstacle polygons. */
 function SharedMissionMap({
   waypoints,
@@ -151,6 +118,7 @@ function SharedMissionMap({
   pois: PointOfInterest[];
   obstacles: Obstacle[];
 }) {
+  const mapboxToken = useConfigStore((s) => s.mapboxToken);
   const warnings = useMemo(
     () => getObstacleWarnings(waypoints, obstacles),
     [waypoints, obstacles],
@@ -163,110 +131,183 @@ function SharedMissionMap({
     return set;
   }, [warnings]);
 
-  // Build flight path segments
-  const segments =
-    waypoints.length >= 2
-      ? waypoints.slice(0, -1).map((wp, i) => {
-          const next = waypoints[i + 1];
-          const hasWarning = warningSegments.has(wp.index);
-          return {
-            key: `seg-${wp.index}-${next.index}`,
-            positions: [
-              [wp.latitude, wp.longitude] as [number, number],
-              [next.latitude, next.longitude] as [number, number],
-            ],
-            hasWarning,
-          };
-        })
-      : [];
+  // Flight path GeoJSON
+  const flightPathGeojson = useMemo(() => {
+    if (waypoints.length < 2) return null;
+    const features = waypoints.slice(0, -1).map((wp, i) => {
+      const next = waypoints[i + 1];
+      return {
+        type: "Feature" as const,
+        properties: {
+          color: warningSegments.has(wp.index) ? "#ef4444" : "#3b82f6",
+        },
+        geometry: {
+          type: "LineString" as const,
+          coordinates: [
+            [wp.longitude, wp.latitude],
+            [next.longitude, next.latitude],
+          ],
+        },
+      };
+    });
+    return { type: "FeatureCollection" as const, features };
+  }, [waypoints, warningSegments]);
 
-  // Default center: first waypoint, or Barcelona
+  // Obstacle polygons GeoJSON
+  const obstacleGeojson = useMemo(() => {
+    const features = obstacles.map((obs) => {
+      const ring = [
+        ...obs.vertices.map(([lat, lng]) => [lng, lat]),
+        [obs.vertices[0][1], obs.vertices[0][0]],
+      ];
+      return {
+        type: "Feature" as const,
+        properties: {},
+        geometry: { type: "Polygon" as const, coordinates: [ring] },
+      };
+    });
+    return { type: "FeatureCollection" as const, features };
+  }, [obstacles]);
+
+  // Compute bounds for initial view
+  const bounds = useMemo(() => {
+    const allPoints = [
+      ...waypoints.map((wp) => [wp.longitude, wp.latitude] as [number, number]),
+      ...pois.map((p) => [p.longitude, p.latitude] as [number, number]),
+      ...obstacles.flatMap((o) =>
+        o.vertices.map((v) => [v[1], v[0]] as [number, number]),
+      ),
+    ];
+    if (allPoints.length === 0) return null;
+    let minLng = Infinity,
+      maxLng = -Infinity,
+      minLat = Infinity,
+      maxLat = -Infinity;
+    for (const [lng, lat] of allPoints) {
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    }
+    return [
+      [minLng, minLat],
+      [maxLng, maxLat],
+    ] as [[number, number], [number, number]];
+  }, [waypoints, pois, obstacles]);
+
   const center: [number, number] =
     waypoints.length > 0
-      ? [waypoints[0].latitude, waypoints[0].longitude]
-      : [41.3874, 2.1686];
+      ? [waypoints[0].longitude, waypoints[0].latitude]
+      : [2.1686, 41.3874];
+
+  if (!mapboxToken) return null;
 
   return (
     <div className="h-[360px] w-full rounded-lg overflow-hidden border border-border">
-      <MapContainer
-        center={center}
-        zoom={14}
-        className="h-full w-full z-0"
-        zoomControl={true}
-        dragging={true}
-        scrollWheelZoom={true}
+      <Map
+        mapboxAccessToken={mapboxToken}
+        initialViewState={{
+          longitude: center[0],
+          latitude: center[1],
+          zoom: 14,
+          ...(bounds
+            ? {
+                bounds: bounds,
+                fitBoundsOptions: { padding: 40, maxZoom: 16 },
+              }
+            : {}),
+        }}
+        style={{ width: "100%", height: "100%" }}
+        mapStyle="mapbox://styles/mapbox/dark-v11"
         doubleClickZoom={false}
         attributionControl={false}
       >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <FitBounds waypoints={waypoints} pois={pois} obstacles={obstacles} />
-
         {/* Flight path */}
-        {segments.map((seg) => (
-          <Polyline
-            key={seg.key}
-            positions={seg.positions}
-            pathOptions={{
-              color: seg.hasWarning ? "#ef4444" : "#3b82f6",
-              weight: 3,
-              opacity: 0.8,
-              dashArray: "10, 6",
-            }}
-          />
-        ))}
+        {flightPathGeojson && (
+          <Source
+            id="shared-flight-path"
+            type="geojson"
+            data={flightPathGeojson}
+          >
+            <Layer
+              id="shared-flight-path-line"
+              type="line"
+              paint={{
+                "line-color": ["get", "color"],
+                "line-width": 3,
+                "line-opacity": 0.8,
+                "line-dasharray": [2, 1.2],
+              }}
+            />
+          </Source>
+        )}
 
         {/* Obstacle polygons */}
-        {obstacles.map((obs) => (
-          <Polygon
-            key={`obs-${obs.id}`}
-            positions={obs.vertices.map(
-              ([lat, lng]) => [lat, lng] as [number, number],
-            )}
-            pathOptions={{
-              color: "#ef4444",
-              fillColor: "#ef4444",
-              fillOpacity: 0.12,
-              weight: 2,
-              opacity: 0.7,
-            }}
-          />
-        ))}
+        {obstacles.length > 0 && (
+          <Source id="shared-obstacles" type="geojson" data={obstacleGeojson}>
+            <Layer
+              id="shared-obstacles-fill"
+              type="fill"
+              paint={{ "fill-color": "#ef4444", "fill-opacity": 0.12 }}
+            />
+            <Layer
+              id="shared-obstacles-outline"
+              type="line"
+              paint={{
+                "line-color": "#ef4444",
+                "line-width": 2,
+                "line-opacity": 0.7,
+              }}
+            />
+          </Source>
+        )}
 
         {/* Waypoint markers */}
         {waypoints.map((wp, i) => (
-          <CircleMarker
+          <Marker
             key={`wp-${wp.index}`}
-            center={[wp.latitude, wp.longitude]}
-            radius={6}
-            pathOptions={{
-              color: "#3b82f6",
-              fillColor:
-                i === 0
-                  ? "#22c55e"
-                  : i === waypoints.length - 1
-                    ? "#ef4444"
-                    : "#3b82f6",
-              fillOpacity: 1,
-              weight: 2,
-            }}
-          />
+            longitude={wp.longitude}
+            latitude={wp.latitude}
+            anchor="center"
+          >
+            <div
+              style={{
+                width: 12,
+                height: 12,
+                borderRadius: "50%",
+                background:
+                  i === 0
+                    ? "#22c55e"
+                    : i === waypoints.length - 1
+                      ? "#ef4444"
+                      : "#3b82f6",
+                border: "2px solid #3b82f6",
+              }}
+            />
+          </Marker>
         ))}
 
         {/* POI markers */}
         {pois.map((poi) => (
-          <CircleMarker
+          <Marker
             key={`poi-${poi.id}`}
-            center={[poi.latitude, poi.longitude]}
-            radius={5}
-            pathOptions={{
-              color: "#f59e0b",
-              fillColor: "#f59e0b",
-              fillOpacity: 0.8,
-              weight: 2,
-            }}
-          />
+            longitude={poi.longitude}
+            latitude={poi.latitude}
+            anchor="center"
+          >
+            <div
+              style={{
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                background: "#f59e0b",
+                border: "2px solid #f59e0b",
+                opacity: 0.8,
+              }}
+            />
+          </Marker>
         ))}
-      </MapContainer>
+      </Map>
     </div>
   );
 }
@@ -307,7 +348,6 @@ export function SharedMissionPage({
       pois: mission.pois,
       obstacles: mission.obstacles,
     });
-    // Clear URL so we go back to normal editor
     window.history.pushState({}, "", "/");
     setCurrentPage("editor");
   };

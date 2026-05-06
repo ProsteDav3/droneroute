@@ -1,6 +1,6 @@
-import { useMapEvents, Polyline, CircleMarker } from "react-leaflet";
+import { Source, Layer, Marker, useMap } from "react-map-gl/mapbox";
 import { useMissionStore } from "@/store/missionStore";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
 /**
  * Handles obstacle polygon drawing on the map.
@@ -13,6 +13,7 @@ export function ObstacleDrawHandler() {
   const setDrawingVertices = useMissionStore((s) => s.setDrawingVertices);
   const addObstacle = useMissionStore((s) => s.addObstacle);
   const setIsDrawingObstacle = useMissionStore((s) => s.setIsDrawingObstacle);
+  const { current: map } = useMap();
 
   // Escape key cancels drawing
   useEffect(() => {
@@ -27,88 +28,134 @@ export function ObstacleDrawHandler() {
     return () => window.removeEventListener("keydown", handler);
   }, [isDrawingObstacle, setDrawingVertices, setIsDrawingObstacle]);
 
-  useMapEvents({
-    click(e) {
-      if (!isDrawingObstacle) return;
+  // Map click handler for placing vertices
+  useEffect(() => {
+    if (!isDrawingObstacle || !map) return;
 
-      const newVertex: [number, number] = [e.latlng.lat, e.latlng.lng];
+    const handleClick = (e: any) => {
+      const newVertex: [number, number] = [e.lngLat.lat, e.lngLat.lng];
 
-      // If we have >= 3 vertices and click is near the first vertex, close the polygon
-      if (drawingVertices.length >= 3) {
-        const [firstLat, firstLng] = drawingVertices[0];
-        const map = e.target;
-        const firstPoint = map.latLngToContainerPoint([firstLat, firstLng]);
-        const clickPoint = map.latLngToContainerPoint(e.latlng);
-        const dist = firstPoint.distanceTo(clickPoint);
+      // Check if near first vertex to close
+      const currentVertices = useMissionStore.getState().drawingVertices;
+      if (currentVertices.length >= 3) {
+        const [firstLat, firstLng] = currentVertices[0];
+        const firstPoint = map.project([firstLng, firstLat]);
+        const clickPoint = map.project([e.lngLat.lng, e.lngLat.lat]);
+        const dist = Math.sqrt(
+          (firstPoint.x - clickPoint.x) ** 2 +
+            (firstPoint.y - clickPoint.y) ** 2,
+        );
         if (dist < 15) {
-          addObstacle(drawingVertices);
+          addObstacle(currentVertices);
           return;
         }
       }
 
-      setDrawingVertices([...drawingVertices, newVertex]);
-    },
-    dblclick(e) {
-      if (!isDrawingObstacle) return;
-      e.originalEvent.preventDefault();
-      e.originalEvent.stopPropagation();
+      setDrawingVertices([...currentVertices, newVertex]);
+    };
 
-      // Need at least 3 vertices (the dblclick also fires a click, so we
-      // may have just added a vertex. Check for 3+ after deduplication.)
-      const verts = drawingVertices;
+    const handleDblClick = (e: any) => {
+      e.preventDefault();
+      const verts = useMissionStore.getState().drawingVertices;
       if (verts.length >= 3) {
         addObstacle(verts);
       }
-    },
-  });
+    };
+
+    map.on("click", handleClick);
+    map.on("dblclick", handleDblClick);
+    return () => {
+      map.off("click", handleClick);
+      map.off("dblclick", handleDblClick);
+    };
+  }, [isDrawingObstacle, map, setDrawingVertices, addObstacle]);
+
+  // GeoJSON for drawing lines
+  const lineGeojson = useMemo(() => {
+    if (drawingVertices.length < 2) return null;
+    const coords = drawingVertices.map(([lat, lng]) => [lng, lat]);
+    return {
+      type: "Feature" as const,
+      properties: {},
+      geometry: {
+        type: "LineString" as const,
+        coordinates: coords,
+      },
+    };
+  }, [drawingVertices]);
+
+  // Closing line preview
+  const closingGeojson = useMemo(() => {
+    if (drawingVertices.length < 3) return null;
+    const first = drawingVertices[0];
+    const last = drawingVertices[drawingVertices.length - 1];
+    return {
+      type: "Feature" as const,
+      properties: {},
+      geometry: {
+        type: "LineString" as const,
+        coordinates: [
+          [last[1], last[0]],
+          [first[1], first[0]],
+        ],
+      },
+    };
+  }, [drawingVertices]);
 
   if (!isDrawingObstacle || drawingVertices.length === 0) return null;
-
-  const positions = drawingVertices.map(
-    ([lat, lng]) => [lat, lng] as [number, number],
-  );
 
   return (
     <>
       {/* Placed vertices */}
-      {positions.map((pos, i) => (
-        <CircleMarker
+      {drawingVertices.map((pos, i) => (
+        <Marker
           key={`draw-v-${i}`}
-          center={pos}
-          radius={i === 0 ? 7 : 5}
-          pathOptions={{
-            color: "#ef4444",
-            fillColor: i === 0 ? "#fca5a5" : "#ffffff",
-            fillOpacity: 1,
-            weight: 2,
-          }}
-        />
+          longitude={pos[1]}
+          latitude={pos[0]}
+          anchor="center"
+        >
+          <div
+            style={{
+              width: i === 0 ? 14 : 10,
+              height: i === 0 ? 14 : 10,
+              borderRadius: "50%",
+              background: i === 0 ? "#fca5a5" : "#ffffff",
+              border: "2px solid #ef4444",
+            }}
+          />
+        </Marker>
       ))}
 
       {/* Lines between placed vertices */}
-      {positions.length >= 2 && (
-        <Polyline
-          positions={positions}
-          pathOptions={{
-            color: "#ef4444",
-            weight: 2,
-            dashArray: "6, 4",
-            opacity: 0.8,
-          }}
-        />
+      {lineGeojson && (
+        <Source id="obstacle-drawing-line" type="geojson" data={lineGeojson}>
+          <Layer
+            id="obstacle-drawing-line-layer"
+            type="line"
+            paint={{
+              "line-color": "#ef4444",
+              "line-width": 2,
+              "line-opacity": 0.8,
+              "line-dasharray": [3, 2],
+            }}
+          />
+        </Source>
       )}
 
-      {/* Closing line preview (last → first) */}
-      {positions.length >= 3 && (
-        <Polyline
-          positions={[positions[positions.length - 1], positions[0]]}
-          pathOptions={{
-            color: "#ef4444",
-            weight: 1.5,
-            dashArray: "4, 6",
-            opacity: 0.4,
-          }}
-        />
+      {/* Closing line preview */}
+      {closingGeojson && (
+        <Source id="obstacle-closing-line" type="geojson" data={closingGeojson}>
+          <Layer
+            id="obstacle-closing-line-layer"
+            type="line"
+            paint={{
+              "line-color": "#ef4444",
+              "line-width": 1.5,
+              "line-opacity": 0.4,
+              "line-dasharray": [2, 3],
+            }}
+          />
+        </Source>
       )}
     </>
   );

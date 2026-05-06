@@ -1,12 +1,13 @@
-import { Marker, Tooltip } from "react-leaflet";
-import L from "leaflet";
 import { useMissionStore } from "@/store/missionStore";
 import type { SelectionMode } from "@/store/missionStore";
 import type { Waypoint } from "@droneroute/shared";
-import { useMemo } from "react";
+import { useMemo, useCallback, useState, useEffect } from "react";
+import { useMap } from "react-map-gl/mapbox";
+import { Marker3D } from "./Marker3D";
 
 interface WaypointMarkerProps {
   waypoint: Waypoint;
+  is3D: boolean;
 }
 
 // Tiny inline SVG icons for waypoint actions
@@ -22,10 +23,9 @@ const ACTION_ICONS: Record<string, string> = {
   focus: `<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="white" stroke-width="1.5"><circle cx="8" cy="8" r="2"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3" stroke-linecap="round"/></svg>`,
 };
 
-function getActionIcons(waypoint: Waypoint): string {
+function getActionIconsHtml(waypoint: Waypoint): string {
   if (waypoint.actions.length === 0) return "";
 
-  // Deduplicate action types and get up to 3 icons
   const uniqueTypes = [...new Set(waypoint.actions.map((a) => a.actionType))];
   const icons = uniqueTypes
     .slice(0, 3)
@@ -57,18 +57,68 @@ function getActionIcons(waypoint: Waypoint): string {
   `;
 }
 
-function createWaypointIcon(
-  index: number,
-  isSelected: boolean,
-  waypoint: Waypoint,
-): L.DivIcon {
+/**
+ * Renders a subtle vertical drop line from the waypoint marker down to the ground.
+ * Computes pixel distance between altitude and ground using map.project(),
+ * updating on every camera move.
+ */
+function DropLine({ waypoint }: { waypoint: Waypoint }) {
+  const { current: mapRef } = useMap();
+  const [length, setLength] = useState(0);
+
+  useEffect(() => {
+    if (!mapRef) return;
+    const map = mapRef.getMap();
+
+    const update = () => {
+      const lngLat = { lng: waypoint.longitude, lat: waypoint.latitude };
+      const atAlt = map.project(lngLat, waypoint.height);
+      const atGround = map.project(lngLat, 0);
+      // Vertical distance in pixels (ground is below, so larger y)
+      setLength(Math.max(0, atGround.y - atAlt.y));
+    };
+
+    update();
+    map.on("move", update);
+    return () => {
+      map.off("move", update);
+    };
+  }, [mapRef, waypoint.longitude, waypoint.latitude, waypoint.height]);
+
+  if (length < 2) return null;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        width: 1,
+        height: length,
+        marginLeft: -0.5,
+        background: "rgba(148, 163, 184, 0.35)",
+        pointerEvents: "none",
+        transformOrigin: "top center",
+      }}
+    />
+  );
+}
+
+export function WaypointMarker({ waypoint, is3D }: WaypointMarkerProps) {
+  const { selectedWaypointIndices, selectWaypoint, moveWaypoint } =
+    useMissionStore();
+  const isSelected = selectedWaypointIndices.has(waypoint.index);
+
   const bg = isSelected ? "#3b82f6" : "#1e293b";
   const border = isSelected ? "#93c5fd" : "#64748b";
-  const actionIcons = getActionIcons(waypoint);
-  const hasActions = waypoint.actions.length > 0;
+  const actionIcons = useMemo(
+    () => getActionIconsHtml(waypoint),
+    [
+      waypoint.actions.length,
+      waypoint.actions.map((a) => a.actionType).join(","),
+    ],
+  );
 
-  // Heading arrow: show for fixed/manual modes, and for smoothTransition only
-  // when the waypoint has an explicitly enabled heading angle
   const showHeading =
     !waypoint.useGlobalHeadingParam &&
     (waypoint.headingMode === "fixed" ||
@@ -77,118 +127,91 @@ function createWaypointIcon(
         waypoint.headingAngle != null));
   const headingAngle = waypoint.headingAngle ?? 0;
 
-  // Small chevron arrow sitting just outside the marker circle, pointing in the heading direction.
-  // The arrow is placed 18px from center (just past the 14px circle radius + border).
-  // CSS rotate: 0° = up (North), 90° = right (East), matching DJI heading convention.
-  const arrowHtml = showHeading
-    ? `<div style="
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 0;
-        height: 0;
-        transform: rotate(${headingAngle}deg) translateY(-19px);
-        transform-origin: 0 0;
-        pointer-events: none;
-        z-index: 2;
-      ">
-        <div style="
-          width: 0;
-          height: 0;
-          margin-left: -5px;
-          margin-top: -8px;
-          border-left: 5px solid transparent;
-          border-right: 5px solid transparent;
-          border-bottom: 8px solid #ef4444;
-          filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
-        "></div>
-      </div>`
-    : "";
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      let mode: SelectionMode = "replace";
+      if (e.ctrlKey || e.metaKey) {
+        mode = "toggle";
+      } else if (e.shiftKey) {
+        mode = "range";
+      }
+      selectWaypoint(waypoint.index, mode);
+    },
+    [waypoint.index, selectWaypoint],
+  );
 
-  return L.divIcon({
-    html: `
-      <div style="
-        position: relative;
-        background: ${bg};
-        border: 2px solid ${border};
-        color: white;
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 12px;
-        font-weight: 700;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-        cursor: grab;
-        overflow: visible;
-      ">${index + 1}${actionIcons}${arrowHtml}</div>
-    `,
-    className: "",
-    iconSize: [28, hasActions ? 40 : 28],
-    iconAnchor: [14, 14],
-  });
-}
-
-export function WaypointMarker({ waypoint }: WaypointMarkerProps) {
-  const { selectedWaypointIndices, selectWaypoint, moveWaypoint } =
-    useMissionStore();
-  const isSelected = selectedWaypointIndices.has(waypoint.index);
-
-  const icon = useMemo(
-    () => createWaypointIcon(waypoint.index, isSelected, waypoint),
-    [
-      waypoint.index,
-      isSelected,
-      waypoint.actions.length,
-      waypoint.actions.map((a) => a.actionType).join(","),
-      waypoint.headingMode,
-      waypoint.headingAngle,
-      waypoint.useGlobalHeadingParam,
-    ],
+  const handleDragEnd = useCallback(
+    (e: { lngLat: { lng: number; lat: number } }) => {
+      moveWaypoint(waypoint.index, e.lngLat.lat, e.lngLat.lng);
+    },
+    [waypoint.index, moveWaypoint],
   );
 
   return (
-    <Marker
-      position={[waypoint.latitude, waypoint.longitude]}
-      icon={icon}
+    <Marker3D
+      longitude={waypoint.longitude}
+      latitude={waypoint.latitude}
+      altitude={is3D ? waypoint.height : 0}
+      anchor="center"
       draggable
-      eventHandlers={{
-        click: (e) => {
-          const nativeEvent = (e as any).originalEvent as MouseEvent;
-          let mode: SelectionMode = "replace";
-          if (nativeEvent?.ctrlKey || nativeEvent?.metaKey) {
-            mode = "toggle";
-          } else if (nativeEvent?.shiftKey) {
-            mode = "range";
-          }
-          selectWaypoint(waypoint.index, mode);
-        },
-        dragend: (e) => {
-          const marker = e.target;
-          const pos = marker.getLatLng();
-          moveWaypoint(waypoint.index, pos.lat, pos.lng);
-        },
-      }}
+      onDragEnd={handleDragEnd}
     >
-      <Tooltip direction="top" offset={[0, -14]} opacity={0.95}>
-        <div className="text-xs">
-          <strong>{waypoint.name}</strong>
-          <br />
-          Alt: {waypoint.height}m | Speed: {waypoint.speed}m/s
-          <br />
-          Gimbal: {waypoint.gimbalPitchAngle}&deg;
-          {waypoint.actions.length > 0 && (
-            <>
-              <br />
-              Actions: {waypoint.actions.length}
-            </>
-          )}
-          <br />
-          {waypoint.latitude.toFixed(6)}, {waypoint.longitude.toFixed(6)}
-        </div>
-      </Tooltip>
-    </Marker>
+      <div
+        onClick={handleClick}
+        title={`${waypoint.name}\nAlt: ${waypoint.height}m | Speed: ${waypoint.speed}m/s\nGimbal: ${waypoint.gimbalPitchAngle}°\n${waypoint.latitude.toFixed(6)}, ${waypoint.longitude.toFixed(6)}`}
+        style={{
+          position: "relative",
+          background: bg,
+          border: `2px solid ${border}`,
+          color: "white",
+          width: 28,
+          height: 28,
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 12,
+          fontWeight: 700,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
+          cursor: "grab",
+          overflow: "visible",
+        }}
+      >
+        {waypoint.index + 1}
+        {actionIcons && (
+          <div dangerouslySetInnerHTML={{ __html: actionIcons }} />
+        )}
+        {showHeading && (
+          <div
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: "50%",
+              width: 0,
+              height: 0,
+              transform: `rotate(${headingAngle}deg) translateY(-19px)`,
+              transformOrigin: "0 0",
+              pointerEvents: "none",
+              zIndex: 2,
+            }}
+          >
+            <div
+              style={{
+                width: 0,
+                height: 0,
+                marginLeft: -5,
+                marginTop: -8,
+                borderLeft: "5px solid transparent",
+                borderRight: "5px solid transparent",
+                borderBottom: "8px solid #ef4444",
+                filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.5))",
+              }}
+            />
+          </div>
+        )}
+        {is3D && <DropLine waypoint={waypoint} />}
+      </div>
+    </Marker3D>
   );
 }

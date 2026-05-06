@@ -1,4 +1,4 @@
-import { CircleMarker, Polyline } from "react-leaflet";
+import { Marker } from "react-map-gl/mapbox";
 import type { TemplateResult } from "@/lib/templates";
 
 interface TemplatePreviewProps {
@@ -8,55 +8,48 @@ interface TemplatePreviewProps {
 export function TemplatePreview({ result }: TemplatePreviewProps) {
   const { waypoints, pois } = result;
 
-  // Build polyline from waypoint positions
-  const positions: [number, number][] = waypoints.map((wp) => [
-    wp.latitude,
-    wp.longitude,
-  ]);
-
   return (
     <>
-      {/* Flight path preview */}
-      {positions.length >= 2 && (
-        <Polyline
-          positions={positions}
-          pathOptions={{
-            color: "#a78bfa",
-            weight: 2,
-            opacity: 0.7,
-            dashArray: "6, 4",
-          }}
-        />
-      )}
-
       {/* Waypoint markers */}
       {waypoints.map((wp, i) => (
-        <CircleMarker
+        <Marker
           key={`preview-wp-${i}`}
-          center={[wp.latitude, wp.longitude]}
-          radius={5}
-          pathOptions={{
-            color: "#a78bfa",
-            fillColor: "#c4b5fd",
-            fillOpacity: 0.8,
-            weight: 2,
-          }}
-        />
+          longitude={wp.longitude}
+          latitude={wp.latitude}
+          anchor="center"
+        >
+          <div
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background: "#c4b5fd",
+              border: "2px solid #a78bfa",
+              opacity: 0.8,
+            }}
+          />
+        </Marker>
       ))}
 
       {/* POI markers */}
       {pois.map((poi, i) => (
-        <CircleMarker
+        <Marker
           key={`preview-poi-${i}`}
-          center={[poi.latitude, poi.longitude]}
-          radius={7}
-          pathOptions={{
-            color: "#f59e0b",
-            fillColor: "#fbbf24",
-            fillOpacity: 0.8,
-            weight: 2,
-          }}
-        />
+          longitude={poi.longitude}
+          latitude={poi.latitude}
+          anchor="center"
+        >
+          <div
+            style={{
+              width: 14,
+              height: 14,
+              borderRadius: "50%",
+              background: "#fbbf24",
+              border: "2px solid #f59e0b",
+              opacity: 0.8,
+            }}
+          />
+        </Marker>
       ))}
     </>
   );

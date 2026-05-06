@@ -33,10 +33,10 @@ interface BuildingPopupData {
 }
 
 /** Sets up 3D buildings layer and syncs 2D/3D pitch/rotation. */
-function SceneSetup({ is3D }: { is3D: boolean }) {
+function SceneSetup({ is3D, mapStyle }: { is3D: boolean; mapStyle: string }) {
   const { current: map } = useMap();
 
-  // Buildings layer (re-added on style.load)
+  // Buildings layer (re-added on style changes)
   useEffect(() => {
     if (!map) return;
 
@@ -45,7 +45,26 @@ function SceneSetup({ is3D }: { is3D: boolean }) {
       if (!m.isStyleLoaded()) return;
       if (m.getLayer("3d-buildings")) return;
 
-      const layers = m.getStyle()?.layers;
+      // Ensure we have a source with building data.
+      // The "composite" source in satellite styles may not include the
+      // building source-layer, so add a dedicated vector tile source.
+      let buildingSource = "composite";
+      const style = m.getStyle();
+      const compositeSource = style?.sources?.["composite"] as any;
+      const hasBuildingInComposite = compositeSource?.url?.includes(
+        "mapbox.mapbox-streets",
+      );
+      if (!hasBuildingInComposite) {
+        if (!m.getSource("mapbox-streets")) {
+          m.addSource("mapbox-streets", {
+            type: "vector",
+            url: "mapbox://mapbox.mapbox-streets-v8",
+          });
+        }
+        buildingSource = "mapbox-streets";
+      }
+
+      const layers = style?.layers;
       let labelLayerId: string | undefined;
       if (layers) {
         for (const layer of layers) {
@@ -62,15 +81,25 @@ function SceneSetup({ is3D }: { is3D: boolean }) {
       m.addLayer(
         {
           id: "3d-buildings",
-          source: "composite",
+          source: buildingSource,
           "source-layer": "building",
-          filter: ["==", "extrude", "true"],
+          filter: ["has", "height"],
           type: "fill-extrusion",
           minzoom: 14,
           paint: {
             "fill-extrusion-color": "#aaa",
-            "fill-extrusion-height": ["get", "height"],
-            "fill-extrusion-base": ["get", "min_height"],
+            "fill-extrusion-height": [
+              "coalesce",
+              ["get", "height"],
+              ["get", "render_height"],
+              5,
+            ],
+            "fill-extrusion-base": [
+              "coalesce",
+              ["get", "min_height"],
+              ["get", "render_min_height"],
+              0,
+            ],
             "fill-extrusion-opacity": 0.5,
           },
         },
@@ -79,12 +108,16 @@ function SceneSetup({ is3D }: { is3D: boolean }) {
     };
 
     const m = map.getMap();
+    // Retry setup: style may already be loaded or may load shortly
     if (m.isStyleLoaded()) setup();
     m.on("style.load", setup);
+    // Also listen for styledata which fires more reliably with react-map-gl
+    m.on("styledata", setup);
     return () => {
       m.off("style.load", setup);
+      m.off("styledata", setup);
     };
-  }, [map]);
+  }, [map, mapStyle]);
 
   // Toggle pitch/rotation when is3D changes
   useEffect(() => {
@@ -553,7 +586,7 @@ export function MapView() {
         />
         <FitBoundsOnLoad />
         <GeocoderControl />
-        <SceneSetup is3D={is3D} />
+        <SceneSetup is3D={is3D} mapStyle={mapStyle} />
         <FlightPath is3D={is3D} />
         <PoiPointingLines is3D={is3D} />
         <TemplateDrawHandler />

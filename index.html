@@ -73,6 +73,10 @@
         },
         "codeRepository": "https://github.com/fcsonline/droneroute",
         "featureList": [
+          "3D terrain visualization with real-world elevation data",
+          "Extruded 3D buildings with click-to-obstacle conversion",
+          "Camera frustum visualization showing field of view",
+          "Geocoding search for worldwide location lookup",
           "Interactive waypoint placement on map",
           "DJI KMZ file export and import",
           "Mission templates (orbit, grid survey, facade scan, pencil path)",
@@ -816,8 +820,8 @@
 
         <div class="hero-screenshot">
           <img
-            src="https://raw.githubusercontent.com/fcsonline/droneroute/main/docs/screenshots/main-map.jpg"
-            alt="DroneRoute main interface showing mission planner with waypoints, configuration panel, and elevation chart"
+            src="https://raw.githubusercontent.com/fcsonline/droneroute/gh-pages/docs/screenshots/after-mapbox-3d-satellite.png"
+            alt="DroneRoute 3D mission planner with satellite imagery, waypoints, flight path, and terrain visualization"
           />
         </div>
       </div>
@@ -866,11 +870,12 @@
                 <circle cx="12" cy="10" r="3" />
               </svg>
             </div>
-            <h3>Interactive map</h3>
+            <h3>Interactive 3D map</h3>
             <p>
-              Click to place waypoints and Points of Interest directly on
-              OpenStreetMap. Drag markers to reposition. See animated flight
-              paths in real time.
+              Plan missions on a Mapbox GL JS map with real 3D terrain, extruded
+              buildings, and satellite imagery. Click to place waypoints, drag
+              to reposition, and rotate the view to see your flight path from
+              any angle.
             </p>
           </div>
           <div class="feature-card">
@@ -1001,11 +1006,11 @@
                 <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
             </div>
-            <h3>Obstacle zones</h3>
+            <h3>Obstacle detection</h3>
             <p>
-              Draw polygon obstacles on the map to mark no-fly zones, buildings,
-              or hazards. Flight segments that cross an obstacle are highlighted
-              in red with a warning count in the footer.
+              Draw polygon obstacles or click any 3D building to instantly
+              convert it into an obstacle zone. Flight segments crossing
+              obstacles are highlighted in red with a warning count.
             </p>
           </div>
         </div>
@@ -1100,21 +1105,21 @@
         <div class="showcase" style="margin-bottom: 80px">
           <img
             class="showcase-img"
-            src="https://raw.githubusercontent.com/fcsonline/droneroute/main/docs/screenshots/gimbal-pitch.jpg"
-            alt="Smart gimbal pitch calculation"
+            src="https://raw.githubusercontent.com/fcsonline/droneroute/gh-pages/docs/screenshots/after-mapbox-3d-street.png"
+            alt="3D terrain with extruded buildings and camera frustum"
             loading="lazy"
           />
           <div class="showcase-text">
-            <h3>Smart gimbal pitch</h3>
+            <h3>3D terrain &amp; buildings</h3>
             <p>
-              When a waypoint faces a POI, DroneRoute calculates the exact
-              gimbal angle to point the camera directly at the target using
-              trigonometry.
+              Real-world elevation data renders mountains and valleys beneath
+              your flight path. Extruded 3D buildings appear at zoom level 14+
+              with accurate heights from OpenStreetMap.
             </p>
             <p>
-              Green lines on the map mean your camera is aimed correctly. Red
-              dashed lines tell you to adjust. One click applies the perfect
-              pitch.
+              Click any building to instantly convert it into an obstacle zone.
+              The camera frustum cone shows exactly where your drone's camera
+              will point at each waypoint.
             </p>
           </div>
         </div>
@@ -1122,19 +1127,64 @@
         <div class="showcase reverse" style="margin-bottom: 80px">
           <img
             class="showcase-img"
-            src="https://raw.githubusercontent.com/fcsonline/droneroute/main/docs/screenshots/multiselect.jpg"
-            alt="Multiple waypoint selection with bulk actions"
+            src="https://raw.githubusercontent.com/fcsonline/droneroute/gh-pages/docs/screenshots/geocoding-search.png"
+            alt="Geocoding search with location results dropdown"
             loading="lazy"
           />
           <div class="showcase-text">
-            <h3>Bulk editing</h3>
+            <h3>Geocoding search</h3>
             <p>
-              Select multiple waypoints with Ctrl+Click or Shift+Click, then
-              apply altitude, speed, or heading changes to all of them at once.
+              Search for any location worldwide using the integrated geocoding
+              search box powered by Mapbox. Type an address, landmark, or
+              coordinates and the map flies there instantly.
             </p>
             <p>
-              Drag-and-drop reordering in the sidebar lets you restructure your
-              flight path without re-placing waypoints.
+              Switch between high-resolution satellite imagery and a dark street
+              map with one click. Both styles support full 3D mode with terrain
+              and buildings.
+            </p>
+          </div>
+        </div>
+
+        <div class="showcase" style="margin-bottom: 80px">
+          <img
+            class="showcase-img"
+            src="https://raw.githubusercontent.com/fcsonline/droneroute/gh-pages/docs/screenshots/camera-frustum-3d.png"
+            alt="Camera frustum visualization on selected waypoint"
+            loading="lazy"
+          />
+          <div class="showcase-text">
+            <h3>Camera frustum &amp; gimbal pitch</h3>
+            <p>
+              Select a waypoint to see a 3D camera frustum cone showing exactly
+              where the drone's camera will point. The frustum updates in
+              real-time as you adjust gimbal pitch and heading.
+            </p>
+            <p>
+              When a waypoint faces a POI, DroneRoute calculates the exact
+              gimbal angle to point the camera directly at the target using
+              trigonometry.
+            </p>
+          </div>
+        </div>
+
+        <div class="showcase reverse" style="margin-bottom: 80px">
+          <img
+            class="showcase-img"
+            src="https://raw.githubusercontent.com/fcsonline/droneroute/gh-pages/docs/screenshots/obstacle-detection-popup.png"
+            alt="Building obstacle detection popup"
+            loading="lazy"
+          />
+          <div class="showcase-text">
+            <h3>Building obstacle detection</h3>
+            <p>
+              Click any 3D building on the map to inspect its height and
+              footprint. Convert it to an obstacle with one click so the mission
+              planner accounts for it during flight planning.
+            </p>
+            <p>
+              Building data is extracted from OpenStreetMap and rendered in full
+              3D with accurate heights across both street and satellite views.
             </p>
           </div>
         </div>

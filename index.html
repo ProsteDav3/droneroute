@@ -1127,21 +1127,21 @@
         <div class="showcase reverse" style="margin-bottom: 80px">
           <img
             class="showcase-img"
-            src="https://raw.githubusercontent.com/fcsonline/droneroute/gh-pages/docs/screenshots/after-mapbox-3d-satellite.png"
-            alt="Satellite view with 3D flight path and waypoints"
+            src="https://raw.githubusercontent.com/fcsonline/droneroute/gh-pages/docs/screenshots/geocoding-search.png"
+            alt="Geocoding search with location results dropdown"
             loading="lazy"
           />
           <div class="showcase-text">
-            <h3>Satellite &amp; street views</h3>
+            <h3>Geocoding search</h3>
+            <p>
+              Search for any location worldwide using the integrated geocoding
+              search box powered by Mapbox. Type an address, landmark, or
+              coordinates and the map flies there instantly.
+            </p>
             <p>
               Switch between high-resolution satellite imagery and a dark street
               map with one click. Both styles support full 3D mode with terrain
               and buildings.
-            </p>
-            <p>
-              Search for any location worldwide using the geocoding search box.
-              Type an address, landmark, or coordinates and the map flies there
-              instantly.
             </p>
           </div>
         </div>
@@ -1149,21 +1149,42 @@
         <div class="showcase" style="margin-bottom: 80px">
           <img
             class="showcase-img"
-            src="https://raw.githubusercontent.com/fcsonline/droneroute/main/docs/screenshots/gimbal-pitch.jpg"
-            alt="Smart gimbal pitch calculation"
+            src="https://raw.githubusercontent.com/fcsonline/droneroute/gh-pages/docs/screenshots/camera-frustum-3d.png"
+            alt="Camera frustum visualization on selected waypoint"
             loading="lazy"
           />
           <div class="showcase-text">
-            <h3>Smart gimbal pitch</h3>
+            <h3>Camera frustum &amp; gimbal pitch</h3>
+            <p>
+              Select a waypoint to see a 3D camera frustum cone showing exactly
+              where the drone's camera will point. The frustum updates in
+              real-time as you adjust gimbal pitch and heading.
+            </p>
             <p>
               When a waypoint faces a POI, DroneRoute calculates the exact
               gimbal angle to point the camera directly at the target using
               trigonometry.
             </p>
+          </div>
+        </div>
+
+        <div class="showcase reverse" style="margin-bottom: 80px">
+          <img
+            class="showcase-img"
+            src="https://raw.githubusercontent.com/fcsonline/droneroute/gh-pages/docs/screenshots/obstacle-detection-popup.png"
+            alt="Building obstacle detection popup"
+            loading="lazy"
+          />
+          <div class="showcase-text">
+            <h3>Building obstacle detection</h3>
             <p>
-              Green lines on the map mean your camera is aimed correctly. Red
-              dashed lines tell you to adjust. One click applies the perfect
-              pitch.
+              Click any 3D building on the map to inspect its height and
+              footprint. Convert it to an obstacle with one click so the mission
+              planner accounts for it during flight planning.
+            </p>
+            <p>
+              Building data is extracted from OpenStreetMap and rendered in full
+              3D with accurate heights across both street and satellite views.
             </p>
           </div>
         </div>

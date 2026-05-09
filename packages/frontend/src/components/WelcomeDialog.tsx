@@ -36,7 +36,7 @@ export function WelcomeDialog() {
       onClick={dismiss}
     >
       <div
-        className="bg-card border border-border rounded-lg shadow-2xl w-full max-w-md mx-4"
+        className="bg-card border border-border rounded-lg shadow-[0_0_60px_rgba(59,130,246,0.3)] w-full max-w-md mx-4"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

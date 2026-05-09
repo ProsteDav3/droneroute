@@ -22,7 +22,7 @@ export function VerificationGate() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80">
-      <div className="bg-card border border-border rounded-lg shadow-2xl w-full max-w-md mx-4 p-8 text-center space-y-6">
+      <div className="bg-card border border-border rounded-lg shadow-[0_0_60px_rgba(59,130,246,0.3)] w-full max-w-md mx-4 p-8 text-center space-y-6">
         <div className="flex justify-center">
           <Shield className="h-12 w-12 text-primary" />
         </div>

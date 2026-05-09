@@ -130,7 +130,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
       onClick={onClose}
     >
       <div
-        className="bg-card border border-border rounded-lg shadow-2xl w-full max-w-lg mx-4 h-[600px] max-h-[85vh] flex flex-col"
+        className="bg-card border border-border rounded-lg shadow-[0_0_60px_rgba(59,130,246,0.3)] w-full max-w-lg mx-4 h-[600px] max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

@@ -304,6 +304,34 @@ Below the waypoint list, an elevation graph shows the altitude profile of your m
 
 ---
 
+## Airspace Restrictions
+
+DroneRoute can display airspace restriction zones directly on the map, helping you plan missions that avoid prohibited and restricted areas.
+
+### Enabling the Layer
+
+Open **Settings → Visualization** and check **Airspace restrictions** under "Extra layers", then click **Save preferences**.
+
+![Settings showing the airspace restrictions toggle enabled](docs/screenshots/airspace-settings-toggle.png)
+
+### Viewing Zones on the Map
+
+Once enabled, restriction zones are drawn as colored overlays on the map — red for prohibited areas and orange for restricted areas.
+
+![Map view showing airspace restriction zones](docs/screenshots/airspace-zones-map.png)
+
+Hover over any zone to see its name, type, and altitude limits.
+
+![Tooltip showing zone details on hover](docs/screenshots/airspace-zone-tooltip.png)
+
+### Flight Path Warnings
+
+When a waypoint falls inside a restriction zone, a warning banner appears at the bottom of the map. Prohibited zones block flight entirely, while restricted zones warn that authorization may be required.
+
+![Warning banner when the flight path enters a restricted airspace zone](docs/screenshots/airspace-warnings.png)
+
+---
+
 ## KMZ Export & Import
 
 ### Exporting

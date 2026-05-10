@@ -46,8 +46,8 @@ function cleanLimite(raw: string): string {
 /**
  * Build the WFS GetFeature URL for the given bounding box.
  *
- * WFS 2.0 with EPSG:4326 expects the BBOX in lat/lon order:
- *   BBOX=minLat,minLon,maxLat,maxLon,EPSG:4326
+ * Despite SRSNAME=EPSG:4326, this WFS server expects the BBOX in
+ * longitude/latitude order: minX,minY,maxX,maxY,EPSG:4326.
  */
 function buildUrl(bounds: BBox): string {
   const params = new URLSearchParams({
@@ -58,7 +58,7 @@ function buildUrl(bounds: BBox): string {
     OUTPUTFORMAT: "application/json",
     SRSNAME: "EPSG:4326",
     COUNT: String(MAX_FEATURES),
-    BBOX: `${bounds.south},${bounds.west},${bounds.north},${bounds.east},EPSG:4326`,
+    BBOX: `${bounds.west},${bounds.south},${bounds.east},${bounds.north},EPSG:4326`,
   });
   return `${WFS_BASE}?${params}`;
 }

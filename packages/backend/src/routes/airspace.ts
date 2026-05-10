@@ -1,16 +1,19 @@
 import { Router } from "express";
-import { fetchZones } from "../services/airspace/index.js";
+import { fetchZones, listProviders } from "../services/airspace/index.js";
 
 export const airspaceRoutes = Router();
 
 /**
- * GET /api/airspace/zones?south=...&west=...&north=...&east=...
+ * GET /api/airspace/zones?south=...&west=...&north=...&east=...&providers=enaire,dgac
  *
  * Returns all airspace restriction zones that intersect the given bounding box.
  * Zones are classified as "prohibited" (red) or "restricted" (orange).
+ *
+ * The optional `providers` param limits which country providers are queried.
+ * When omitted, all providers are queried.
  */
 airspaceRoutes.get("/zones", async (req, res) => {
-  const { south, west, north, east } = req.query;
+  const { south, west, north, east, providers } = req.query;
 
   if (!south || !west || !north || !east) {
     res
@@ -33,8 +36,13 @@ airspaceRoutes.get("/zones", async (req, res) => {
     return;
   }
 
+  const providerIds =
+    typeof providers === "string" && providers.length > 0
+      ? providers.split(",").map((s) => s.trim())
+      : undefined;
+
   try {
-    const zones = await fetchZones(bounds);
+    const zones = await fetchZones(bounds, providerIds);
     res.json({ zones });
   } catch (err) {
     console.error("Airspace fetch error:", err);
@@ -42,4 +50,13 @@ airspaceRoutes.get("/zones", async (req, res) => {
       .status(502)
       .json({ error: "Failed to fetch airspace data from upstream providers" });
   }
+});
+
+/**
+ * GET /api/airspace/providers
+ *
+ * Returns the list of available airspace providers.
+ */
+airspaceRoutes.get("/providers", (_req, res) => {
+  res.json({ providers: listProviders() });
 });

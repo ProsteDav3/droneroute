@@ -7,16 +7,32 @@
 
 import type { AirspaceProvider, AirspaceZone, BBox } from "./types.js";
 import { enaireProvider } from "./provider-enaire.js";
+import { dgacProvider } from "./provider-dgac.js";
+import { natsProvider } from "./provider-nats.js";
 
-const providers: AirspaceProvider[] = [enaireProvider];
+const providers: AirspaceProvider[] = [
+  enaireProvider,
+  dgacProvider,
+  natsProvider,
+];
 
 /**
- * Query all registered providers and return a merged list of zones that
+ * Query registered providers and return a merged list of zones that
  * intersect the given bounding box.
+ *
+ * @param providerIds – when supplied, only query these providers.
  */
-export async function fetchZones(bounds: BBox): Promise<AirspaceZone[]> {
+export async function fetchZones(
+  bounds: BBox,
+  providerIds?: string[],
+): Promise<AirspaceZone[]> {
+  const active =
+    providerIds && providerIds.length > 0
+      ? providers.filter((p) => providerIds.includes(p.id))
+      : providers;
+
   const results = await Promise.allSettled(
-    providers.map((p) => p.fetchZones(bounds)),
+    active.map((p) => p.fetchZones(bounds)),
   );
 
   const zones: AirspaceZone[] = [];
@@ -26,6 +42,11 @@ export async function fetchZones(bounds: BBox): Promise<AirspaceZone[]> {
     }
   }
   return zones;
+}
+
+/** Return metadata for all registered providers. */
+export function listProviders() {
+  return providers.map((p) => ({ id: p.id, name: p.name }));
 }
 
 export { providers };

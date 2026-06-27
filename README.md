@@ -73,7 +73,7 @@ The self-hosted version is designed as a single-account, personal instance. Miss
 
 ### Default map location
 
-By default the map opens centered on Barcelona. Set `DEFAULT_MAP_LAT`, `DEFAULT_MAP_LNG`, and `DEFAULT_MAP_ZOOM` (in your `.env` or `docker-compose.yml`) to make the map open on your local area instead. See [.env.example](.env.example) for the accepted ranges.
+By default the map opens centered on Barcelona. Set `DEFAULT_MAP_VIEW` (in your `.env` or `docker-compose.yml`) to make the map open on your local area instead. The format is `lat,lng` or `lat,lng,zoom` — for example `DEFAULT_MAP_VIEW=51.5072,-0.1276,12`. See [.env.example](.env.example) for the accepted ranges.
 
 ## Upload to Your DJI Controller
 

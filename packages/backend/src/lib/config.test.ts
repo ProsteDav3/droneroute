@@ -3,53 +3,67 @@ import { DEFAULT_MAP_VIEW } from "@droneroute/shared";
 import { resolveDefaultMapView } from "./config.js";
 
 describe("resolveDefaultMapView", () => {
-  it("returns the built-in default when no env vars are set", () => {
+  it("returns the built-in default when DEFAULT_MAP_VIEW is unset", () => {
     expect(resolveDefaultMapView({})).toEqual(DEFAULT_MAP_VIEW);
   });
 
-  it("uses valid DEFAULT_MAP_* overrides", () => {
-    expect(
-      resolveDefaultMapView({
-        DEFAULT_MAP_LAT: "51.5072",
-        DEFAULT_MAP_LNG: "-0.1276",
-        DEFAULT_MAP_ZOOM: "10",
-      }),
-    ).toEqual({ latitude: 51.5072, longitude: -0.1276, zoom: 10 });
-  });
-
-  it("falls back per-field when a value is missing or empty", () => {
-    expect(
-      resolveDefaultMapView({ DEFAULT_MAP_LAT: "40", DEFAULT_MAP_LNG: "" }),
-    ).toEqual({
-      latitude: 40,
-      longitude: DEFAULT_MAP_VIEW.longitude,
-      zoom: DEFAULT_MAP_VIEW.zoom,
-    });
-  });
-
-  it("rejects non-numeric values", () => {
-    expect(resolveDefaultMapView({ DEFAULT_MAP_LAT: "north" })).toEqual(
+  it("returns the built-in default when DEFAULT_MAP_VIEW is empty", () => {
+    expect(resolveDefaultMapView({ DEFAULT_MAP_VIEW: "  " })).toEqual(
       DEFAULT_MAP_VIEW,
     );
   });
 
-  it("rejects out-of-range coordinates and zoom", () => {
+  it("parses lat,lng,zoom", () => {
     expect(
-      resolveDefaultMapView({
-        DEFAULT_MAP_LAT: "91", // latitude > 90
-        DEFAULT_MAP_LNG: "-200", // longitude < -180
-        DEFAULT_MAP_ZOOM: "30", // zoom > 22
-      }),
+      resolveDefaultMapView({ DEFAULT_MAP_VIEW: "51.5072,-0.1276,10" }),
+    ).toEqual({ latitude: 51.5072, longitude: -0.1276, zoom: 10 });
+  });
+
+  it("defaults the zoom when only lat,lng is given", () => {
+    expect(
+      resolveDefaultMapView({ DEFAULT_MAP_VIEW: "51.5072, -0.1276" }),
+    ).toEqual({
+      latitude: 51.5072,
+      longitude: -0.1276,
+      zoom: DEFAULT_MAP_VIEW.zoom,
+    });
+  });
+
+  it("falls back when the value has too many or too few parts", () => {
+    expect(resolveDefaultMapView({ DEFAULT_MAP_VIEW: "41" })).toEqual(
+      DEFAULT_MAP_VIEW,
+    );
+    expect(
+      resolveDefaultMapView({ DEFAULT_MAP_VIEW: "41,2,13,extra" }),
     ).toEqual(DEFAULT_MAP_VIEW);
   });
 
+  it("falls back when a part is empty or non-numeric", () => {
+    expect(resolveDefaultMapView({ DEFAULT_MAP_VIEW: "41,,13" })).toEqual(
+      DEFAULT_MAP_VIEW,
+    );
+    expect(resolveDefaultMapView({ DEFAULT_MAP_VIEW: "north,2,13" })).toEqual(
+      DEFAULT_MAP_VIEW,
+    );
+  });
+
+  it("falls back when any value is out of range", () => {
+    expect(resolveDefaultMapView({ DEFAULT_MAP_VIEW: "91,2,13" })).toEqual(
+      DEFAULT_MAP_VIEW,
+    ); // latitude > 90
+    expect(resolveDefaultMapView({ DEFAULT_MAP_VIEW: "41,-200,13" })).toEqual(
+      DEFAULT_MAP_VIEW,
+    ); // longitude < -180
+    expect(resolveDefaultMapView({ DEFAULT_MAP_VIEW: "41,2,30" })).toEqual(
+      DEFAULT_MAP_VIEW,
+    ); // zoom > 22
+  });
+
   it("accepts boundary values", () => {
-    expect(
-      resolveDefaultMapView({
-        DEFAULT_MAP_LAT: "-90",
-        DEFAULT_MAP_LNG: "180",
-        DEFAULT_MAP_ZOOM: "0",
-      }),
-    ).toEqual({ latitude: -90, longitude: 180, zoom: 0 });
+    expect(resolveDefaultMapView({ DEFAULT_MAP_VIEW: "-90,180,0" })).toEqual({
+      latitude: -90,
+      longitude: 180,
+      zoom: 0,
+    });
   });
 });

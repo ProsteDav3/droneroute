@@ -63,6 +63,52 @@ function circleGeoJson(center: [number, number], radiusM: number) {
 }
 
 /**
+ * A draggable handle sitting on the orbit's center. Lets you nudge the
+ * center after the fact — e.g. a searched address puts you close but not
+ * exactly on the spot — without having to cancel and re-drag from scratch.
+ * Only active while the config panel is open, before Apply.
+ */
+function OrbitCenterHandle({
+  center,
+  onMove,
+}: {
+  center: [number, number];
+  onMove: (center: [number, number]) => void;
+}) {
+  const [lat, lng] = center;
+
+  const handleDrag = useCallback(
+    (e: { lngLat: { lng: number; lat: number } }) => {
+      onMove([e.lngLat.lat, e.lngLat.lng]);
+    },
+    [onMove],
+  );
+
+  return (
+    <Marker
+      longitude={lng}
+      latitude={lat}
+      anchor="center"
+      draggable
+      onDrag={handleDrag}
+    >
+      <div
+        title="Drag to move the orbit center"
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: "50%",
+          background: "#fbbf24",
+          border: "3px solid #f59e0b",
+          boxShadow: "0 0 0 4px rgba(251,191,36,0.35)",
+          cursor: "grab",
+        }}
+      />
+    </Marker>
+  );
+}
+
+/**
  * A draggable handle sitting on the orbit's start bearing. Dragging it
  * rotates the whole arc (keeping its angular width constant) around the
  * center — lets you pick exactly where the first waypoint goes by eye,
@@ -396,19 +442,29 @@ export function TemplateDrawHandler() {
       {/* Preview waypoints */}
       {activePreview && <TemplatePreview result={activePreview} />}
 
-      {/* Rotation handle for a confirmed orbit */}
+      {/* Center + rotation handles for a confirmed orbit.
+          Center handle renders last (on top) so it stays grabbable even
+          when a small radius puts it close to the rotation handle. */}
       {confirmed && orbitParams && (
-        <OrbitRotationHandle
-          orbitParams={orbitParams}
-          onRotate={(newStartAngleDeg) => {
-            const width = orbitParams.endAngleDeg - orbitParams.startAngleDeg;
-            setOrbitParams({
-              ...orbitParams,
-              startAngleDeg: newStartAngleDeg,
-              endAngleDeg: newStartAngleDeg + width,
-            });
-          }}
-        />
+        <>
+          <OrbitRotationHandle
+            orbitParams={orbitParams}
+            onRotate={(newStartAngleDeg) => {
+              const width = orbitParams.endAngleDeg - orbitParams.startAngleDeg;
+              setOrbitParams({
+                ...orbitParams,
+                startAngleDeg: newStartAngleDeg,
+                endAngleDeg: newStartAngleDeg + width,
+              });
+            }}
+          />
+          <OrbitCenterHandle
+            center={orbitParams.center}
+            onMove={(newCenter) =>
+              setOrbitParams({ ...orbitParams, center: newCenter })
+            }
+          />
+        </>
       )}
 
       {/* Config panel */}

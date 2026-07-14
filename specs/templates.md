@@ -7,6 +7,7 @@ Create common flight patterns automatically instead of placing waypoints one by 
 - **Orbit**: fly a circular path around a center point. Choose radius, number of waypoints, and direction (clockwise or counter-clockwise). By default it flies a full 360° loop, but you can set a start angle and an end angle below 360° to fly an open arc instead (for example 270°) — the first and last waypoints land exactly on the bearings you asked for.
 - **Rotate an orbit by dragging**: once an orbit is placed, drag the handle marker sitting on its first waypoint around the circle to rotate the whole arc — its width stays the same, only where it starts changes. Faster than typing an exact start angle when you just want to visually pick which side of the circle to skip.
 - **Center an orbit on an address or coordinates**: type an address or a `lat, lng` pair into the search field at the top of the orbit panel to move the orbit's center there directly, instead of only being able to place it by clicking the map.
+- **Nudge the orbit center by dragging**: while the orbit panel is open (before clicking Apply), drag the handle marker on the center point to fine-tune its exact position — handy right after a location search puts you close but not exactly on the spot.
 - **Grid survey**: fly a back-and-forth zigzag pattern over an area. Useful for mapping or photogrammetry.
 - **Facade scan**: fly a vertical scanning pattern along a building face. Useful for inspections.
 - **Pencil path**: draw a freehand path on the map and the app places evenly spaced waypoints along it.

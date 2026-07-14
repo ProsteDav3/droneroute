@@ -12,12 +12,13 @@ Create common flight patterns automatically instead of placing waypoints one by 
 - **Grid survey**: fly a back-and-forth zigzag pattern over an area. Useful for mapping or photogrammetry.
 - **Facade scan**: fly a vertical scanning pattern along a building face. Useful for inspections.
 - **Pencil path**: draw a freehand path on the map and the app places evenly spaced waypoints along it.
+- **Solar panel survey**: trace the outline of a solar panel array (square, rectangle, or any other shape, including L-shaped or otherwise irregular fields) by clicking points on the map, then click near the first point (or double-click) to close the shape. The app generates a lawn-mower flight path clipped exactly to that outline — the drone never flies past the edges you traced. Flight lines automatically run parallel to the shape's longest edge, matching typical panel rows. Each waypoint gets a straight-down (nadir) gimbal and a thermal (IR) photo action by default, since this template is built for FVE/PV thermography flights.
 
 ## How it works
 
-1. Select a template from the toolbar or press its shortcut key (O for orbit, G for grid, F for facade, Z for pencil).
+1. Select a template from the toolbar or press its shortcut key (O for orbit, G for grid, F for facade, Z for pencil, S for solar panel survey).
 2. Configure the template options in the panel that appears.
-3. Click on the map to place the template.
+3. For Orbit, Grid, and Facade: click-and-drag on the map to place the template. For Solar: click to place each boundary point, then click near the first point or double-click to close the shape. For Pencil: click-and-drag to draw a freehand path.
 4. The generated waypoints appear in the sidebar and can be edited individually.
 
 ## Good to know

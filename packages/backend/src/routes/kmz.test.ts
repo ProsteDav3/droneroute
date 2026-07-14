@@ -8,7 +8,12 @@ const app = express();
 app.use(express.json());
 app.use("/api/kmz", kmzRoutes);
 
-function waypoint(index: number, lat: number, lng: number) {
+function waypoint(
+  index: number,
+  lat: number,
+  lng: number,
+  actions: unknown[] = [],
+) {
   return {
     index,
     name: `WP${index + 1}`,
@@ -20,7 +25,7 @@ function waypoint(index: number, lat: number, lng: number) {
     useGlobalHeadingParam: false,
     headingMode: "towardPOI" as const,
     poiId: "poi-1",
-    actions: [],
+    actions,
   };
 }
 
@@ -88,5 +93,69 @@ describe("POST /api/kmz/generate-segments", () => {
       // The shared POI heading target must survive into every leg
       expect(wpml).toContain("towardPOI");
     }
+  });
+});
+
+describe("POST /api/kmz/generate — takePhoto lens selection", () => {
+  it("omits payloadLensIndex/useGlobalPayloadLensIndex when the action doesn't specify a lens (existing behavior)", async () => {
+    const waypoints = [
+      waypoint(0, 41.258, 0.9315, [
+        {
+          actionId: 0,
+          actionType: "takePhoto",
+          params: { payloadPositionIndex: 0 },
+        },
+      ]),
+      waypoint(1, 41.259, 0.9315),
+    ];
+
+    const res = await request(app)
+      .post("/api/kmz/generate")
+      .send({ ...baseBody, waypoints })
+      .buffer()
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("end", () => callback(null, Buffer.concat(chunks)));
+      });
+
+    expect(res.status).toBe(200);
+    const zip = await JSZip.loadAsync(res.body as Buffer);
+    const wpml = await zip.file("waylines.wpml")?.async("string");
+    expect(wpml).toContain(
+      "<wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>",
+    );
+    expect(wpml).not.toContain("payloadLensIndex");
+  });
+
+  it("emits payloadLensIndex=ir when the action targets the thermal lens", async () => {
+    const waypoints = [
+      waypoint(0, 41.258, 0.9315, [
+        {
+          actionId: 0,
+          actionType: "takePhoto",
+          params: { payloadPositionIndex: 0, payloadLensIndex: "ir" },
+        },
+      ]),
+      waypoint(1, 41.259, 0.9315),
+    ];
+
+    const res = await request(app)
+      .post("/api/kmz/generate")
+      .send({ ...baseBody, waypoints })
+      .buffer()
+      .parse((response, callback) => {
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("end", () => callback(null, Buffer.concat(chunks)));
+      });
+
+    expect(res.status).toBe(200);
+    const zip = await JSZip.loadAsync(res.body as Buffer);
+    const wpml = await zip.file("waylines.wpml")?.async("string");
+    expect(wpml).toContain("<wpml:payloadLensIndex>ir</wpml:payloadLensIndex>");
+    expect(wpml).toContain(
+      "<wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex>",
+    );
   });
 });

@@ -72,7 +72,7 @@ function haversine(
 
 // ── Template Types ───────────────────────────────────────
 
-export type TemplateType = "orbit" | "grid" | "facade" | "pencil";
+export type TemplateType = "orbit" | "grid" | "facade" | "pencil" | "solar";
 
 export interface OrbitParams {
   center: [number, number]; // [lat, lng]
@@ -138,11 +138,20 @@ export interface PencilParams {
   poiId?: string; // optional POI to face during flight
 }
 
+export interface SolarParams {
+  /** Polygon boundary traced around the panel array, [lat, lng][], 3+ points. */
+  vertices: [number, number][];
+  altitude: number;
+  spacingM: number; // distance between flight lines
+  addPhotos: boolean;
+}
+
 export type TemplateParams =
   | OrbitParams
   | GridParams
   | FacadeParams
-  | PencilParams;
+  | PencilParams
+  | SolarParams;
 
 export interface TemplateResult {
   waypoints: Omit<Waypoint, "index" | "name">[];
@@ -186,6 +195,12 @@ export const DEFAULT_PENCIL_PARAMS: Omit<PencilParams, "path"> = {
   speed: 7,
   gimbalPitchAngle: -45,
   reverse: false,
+};
+
+export const DEFAULT_SOLAR_PARAMS: Omit<SolarParams, "vertices"> = {
+  altitude: 30,
+  spacingM: 10,
+  addPhotos: true,
 };
 
 // ── Altitude / gimbal pitch geometry ─────────────────────
@@ -610,6 +625,184 @@ export function generatePencil(params: PencilParams): TemplateResult {
 
   if (reverse) {
     waypoints.reverse();
+  }
+
+  return { waypoints, pois: [] };
+}
+
+// ── Solar panel survey (polygon-clipped lawn-mower grid) ─
+
+/**
+ * Local tangent-plane meters (east, north) relative to a reference lat/lng.
+ * A flat-earth approximation, adequate at the scale of a single PV array
+ * (tens to low hundreds of meters) — the same assumption already used
+ * throughout this file for haversine/destination-point math.
+ */
+function toLocalMeters(
+  lat: number,
+  lng: number,
+  refLat: number,
+  refLng: number,
+): [number, number] {
+  const mPerDegLat = 111320;
+  const mPerDegLng = 111320 * Math.cos((refLat * Math.PI) / 180);
+  const x = (lng - refLng) * mPerDegLng;
+  const y = (lat - refLat) * mPerDegLat;
+  return [x, y];
+}
+
+function fromLocalMeters(
+  x: number,
+  y: number,
+  refLat: number,
+  refLng: number,
+): [number, number] {
+  const mPerDegLat = 111320;
+  const mPerDegLng = 111320 * Math.cos((refLat * Math.PI) / 180);
+  const lat = refLat + y / mPerDegLat;
+  const lng = refLng + x / mPerDegLng;
+  return [lat, lng];
+}
+
+function rotatePoint2D(
+  [x, y]: [number, number],
+  rad: number,
+): [number, number] {
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return [x * cos - y * sin, x * sin + y * cos];
+}
+
+/** Angle (radians) of the polygon's longest edge — used as the flight-line direction so lines run parallel to the panel rows. */
+function longestEdgeAngleRad(localPoly: [number, number][]): number {
+  let maxLenSq = -1;
+  let angle = 0;
+  for (let i = 0; i < localPoly.length; i++) {
+    const [x1, y1] = localPoly[i];
+    const [x2, y2] = localPoly[(i + 1) % localPoly.length];
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq > maxLenSq) {
+      maxLenSq = lenSq;
+      angle = Math.atan2(dy, dx);
+    }
+  }
+  return angle;
+}
+
+/**
+ * X-coordinates where the horizontal line y=y0 crosses the polygon's edges,
+ * sorted ascending. Standard scanline-fill (even-odd rule): consecutive
+ * pairs are the "inside" segments for that line. Works for concave and
+ * multi-segment (e.g. L-shaped) polygons, not just convex ones. The
+ * half-open interval test (`y1 <= y0 && y2 > y0`, or the reverse) avoids
+ * double-counting a vertex that sits exactly on the scanline.
+ */
+function scanlineIntersectionsX(
+  localPoly: [number, number][],
+  y0: number,
+): number[] {
+  const xs: number[] = [];
+  const n = localPoly.length;
+  for (let i = 0; i < n; i++) {
+    const [x1, y1] = localPoly[i];
+    const [x2, y2] = localPoly[(i + 1) % n];
+    const crosses = (y1 <= y0 && y2 > y0) || (y2 <= y0 && y1 > y0);
+    if (!crosses) continue;
+    const t = (y0 - y1) / (y2 - y1);
+    xs.push(x1 + t * (x2 - x1));
+  }
+  xs.sort((a, b) => a - b);
+  return xs;
+}
+
+/**
+ * Generates a lawn-mower flight path clipped to an arbitrary drawn polygon
+ * (not just its bounding rectangle) — for surveying an irregular field of
+ * solar panels without flying beyond its edges. Flight lines automatically
+ * run parallel to the polygon's longest edge so they line up with panel
+ * rows in the common case of a rectangular array.
+ */
+export function generateSolarSurvey(params: SolarParams): TemplateResult {
+  const { vertices, altitude, spacingM, addPhotos } = params;
+
+  if (vertices.length < 3) return { waypoints: [], pois: [] };
+
+  const [refLat, refLng] = vertices[0];
+  const localPoly = vertices.map(([lat, lng]) =>
+    toLocalMeters(lat, lng, refLat, refLng),
+  );
+
+  const orientationRad = longestEdgeAngleRad(localPoly);
+  // De-rotate into a frame where flight lines are horizontal (constant y),
+  // so clipping reduces to a simple 1D scanline test.
+  const derotated = localPoly.map((p) => rotatePoint2D(p, -orientationRad));
+
+  const ys = derotated.map(([, y]) => y);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const extent = maxY - minY;
+  const numLines = Math.max(2, Math.ceil(extent / spacingM) + 1);
+
+  // scanlineIntersectionsX uses a half-open [y1, y2) interval per edge to
+  // avoid double-counting a vertex the scanline passes through exactly.
+  // That convention is asymmetric: a scanline sampled at exactly the
+  // polygon's minY always finds a match (some edge's lower endpoint sits
+  // at y0 with its upper endpoint above it), but one sampled at exactly
+  // maxY never can (no edge endpoint is *above* the polygon's own
+  // maximum) — every edge fails both halves of the test, so the topmost
+  // line silently returns zero crossings and gets dropped. Nudge the
+  // sampled range a hair inside the true extent so no line ever lands
+  // exactly on a vertex; at real-world scales this loses no meaningful
+  // coverage but keeps the top line correct.
+  const eps = Math.max(extent * 1e-9, 1e-6);
+  const sampleMinY = minY + eps;
+  const sampleMaxY = maxY - eps;
+
+  const waypoints: TemplateResult["waypoints"] = [];
+  let segmentIndex = 0;
+
+  for (let i = 0; i < numLines; i++) {
+    const y =
+      numLines <= 1
+        ? sampleMinY
+        : sampleMinY + (i / (numLines - 1)) * (sampleMaxY - sampleMinY);
+    const xs = scanlineIntersectionsX(derotated, y);
+
+    for (let j = 0; j + 1 < xs.length; j += 2) {
+      const reverseSegment = segmentIndex % 2 === 1;
+      const [xStart, xEnd] = reverseSegment
+        ? [xs[j + 1], xs[j]]
+        : [xs[j], xs[j + 1]];
+
+      for (const x of [xStart, xEnd]) {
+        const [rx, ry] = rotatePoint2D([x, y], orientationRad);
+        const [lat, lng] = fromLocalMeters(rx, ry, refLat, refLng);
+
+        waypoints.push({
+          ...DEFAULT_WAYPOINT,
+          latitude: lat,
+          longitude: lng,
+          height: altitude,
+          gimbalPitchAngle: -90,
+          useGlobalHeadingParam: false,
+          headingMode: "followWayline",
+          turnMode: "toPointAndStopWithContinuityCurvature",
+          useGlobalTurnParam: false,
+          actions: addPhotos
+            ? [
+                {
+                  actionId: 0,
+                  actionType: "takePhoto",
+                  params: { payloadPositionIndex: 0, payloadLensIndex: "ir" },
+                },
+              ]
+            : [],
+        });
+      }
+      segmentIndex++;
+    }
   }
 
   return { waypoints, pois: [] };

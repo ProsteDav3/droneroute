@@ -43,6 +43,8 @@ export type ActionType =
 export interface TakePhotoParams {
   payloadPositionIndex: number;
   fileSuffix?: string;
+  /** Lens(es) to store, e.g. "ir", "wide", or "wide,ir". Omit for the drone's default lens selection. */
+  payloadLensIndex?: string;
 }
 
 export interface StartRecordParams {

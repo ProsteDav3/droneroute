@@ -23,6 +23,8 @@ import { PencilDrawHandler } from "./PencilDrawHandler";
 import { SolarDrawHandler } from "./SolarDrawHandler";
 import { ObstacleDrawHandler } from "./ObstacleDrawHandler";
 import { ObstaclePolygon } from "./ObstaclePolygon";
+import { BuildingDrawHandler } from "./BuildingDrawHandler";
+import { BuildingPolygon } from "./BuildingPolygon";
 import { AirspaceOverlay } from "./AirspaceOverlay";
 import { CameraFrustum } from "./CameraFrustum";
 import { Triangle } from "lucide-react";
@@ -490,9 +492,11 @@ export function MapView() {
   const waypoints = useMissionStore((s) => s.waypoints);
   const pois = useMissionStore((s) => s.pois);
   const obstacles = useMissionStore((s) => s.obstacles);
+  const buildings = useMissionStore((s) => s.buildings);
   const isAddingWaypoint = useMissionStore((s) => s.isAddingWaypoint);
   const isAddingPoi = useMissionStore((s) => s.isAddingPoi);
   const isDrawingObstacle = useMissionStore((s) => s.isDrawingObstacle);
+  const isDrawingBuilding = useMissionStore((s) => s.isDrawingBuilding);
   const templateMode = useMissionStore((s) => s.templateMode);
   const selectedWaypointIndices = useMissionStore(
     (s) => s.selectedWaypointIndices,
@@ -516,7 +520,7 @@ export function MapView() {
       ? "map-tool-pencil"
       : templateMode
         ? "map-tool-template"
-        : isDrawingObstacle
+        : isDrawingObstacle || isDrawingBuilding
           ? "map-tool-obstacle"
           : isAddingWaypoint
             ? "map-tool-waypoint"
@@ -526,7 +530,7 @@ export function MapView() {
 
   const handleClick = useCallback(
     (e: MapMouseEvent) => {
-      if (templateMode || isDrawingObstacle) return;
+      if (templateMode || isDrawingObstacle || isDrawingBuilding) return;
       if (isAddingWaypoint) {
         addWaypoint(e.lngLat.lat, e.lngLat.lng);
         return;
@@ -575,13 +579,18 @@ export function MapView() {
       isAddingPoi,
       templateMode,
       isDrawingObstacle,
+      isDrawingBuilding,
       addWaypoint,
       addPoi,
     ],
   );
 
   const cursor =
-    templateMode || isDrawingObstacle || isAddingWaypoint || isAddingPoi
+    templateMode ||
+    isDrawingObstacle ||
+    isDrawingBuilding ||
+    isAddingWaypoint ||
+    isAddingPoi
       ? "crosshair"
       : "grab";
 
@@ -629,9 +638,13 @@ export function MapView() {
         <PencilDrawHandler />
         <SolarDrawHandler />
         <ObstacleDrawHandler />
+        <BuildingDrawHandler />
         <AirspaceOverlay />
         {obstacles.map((obstacle) => (
           <ObstaclePolygon key={obstacle.id} obstacle={obstacle} />
+        ))}
+        {buildings.map((building) => (
+          <BuildingPolygon key={building.id} building={building} />
         ))}
         {waypoints.map((wp) => (
           <WaypointMarker key={wp.index} waypoint={wp} is3D={is3D} />

@@ -142,7 +142,11 @@ export interface SolarParams {
   /** Polygon boundary traced around the panel array, [lat, lng][], 3+ points. */
   vertices: [number, number][];
   altitude: number;
-  spacingM: number; // distance between flight lines
+  spacingM: number; // distance between flight lines (cross-track)
+  /** Distance between photos along each flight line (along-track). */
+  photoSpacingM: number;
+  /** Flight-line direction, bearing in degrees (0 = north) — set by the user's drawn reference line so lines run parallel to the actual panel rows instead of a guessed edge. */
+  rowAngleDeg: number;
   addPhotos: boolean;
 }
 
@@ -197,9 +201,13 @@ export const DEFAULT_PENCIL_PARAMS: Omit<PencilParams, "path"> = {
   reverse: false,
 };
 
-export const DEFAULT_SOLAR_PARAMS: Omit<SolarParams, "vertices"> = {
+export const DEFAULT_SOLAR_PARAMS: Omit<
+  SolarParams,
+  "vertices" | "rowAngleDeg"
+> = {
   altitude: 30,
   spacingM: 10,
+  photoSpacingM: 8,
   addPhotos: true,
 };
 
@@ -244,6 +252,39 @@ export function computeAltitudeForPitch(
   const pitchRad = (-clampedPitch * Math.PI) / 180;
   const altitude = poiHeight + radiusM * Math.tan(pitchRad);
   return Math.max(1, Math.min(MAX_DERIVED_ALTITUDE_M, Math.round(altitude)));
+}
+
+// ── Building-derived orbit seed ──────────────────────────
+
+/** Extra clearance (meters) beyond a building's footprint so an orbit around it clears every corner. */
+const BUILDING_ORBIT_CLEARANCE_M = 15;
+
+export interface BuildingOrbitSeed {
+  center: [number, number];
+  radiusM: number;
+}
+
+/**
+ * Recommended orbit center + radius for flying around a building footprint:
+ * center is the footprint's centroid, radius is the farthest vertex from
+ * that centroid plus a safety clearance so the orbit clears every corner
+ * (including non-rectangular or rotated footprints).
+ */
+export function computeOrbitSeedForBuilding(
+  vertices: [number, number][],
+): BuildingOrbitSeed {
+  const centerLat =
+    vertices.reduce((sum, v) => sum + v[0], 0) / vertices.length;
+  const centerLng =
+    vertices.reduce((sum, v) => sum + v[1], 0) / vertices.length;
+  const center: [number, number] = [centerLat, centerLng];
+  const maxDist = Math.max(
+    ...vertices.map((v) => haversine(center[0], center[1], v[0], v[1])),
+  );
+  return {
+    center,
+    radiusM: Math.round(maxDist + BUILDING_ORBIT_CLEARANCE_M),
+  };
 }
 
 // ── Generators ───────────────────────────────────────────
@@ -673,24 +714,6 @@ function rotatePoint2D(
   return [x * cos - y * sin, x * sin + y * cos];
 }
 
-/** Angle (radians) of the polygon's longest edge — used as the flight-line direction so lines run parallel to the panel rows. */
-function longestEdgeAngleRad(localPoly: [number, number][]): number {
-  let maxLenSq = -1;
-  let angle = 0;
-  for (let i = 0; i < localPoly.length; i++) {
-    const [x1, y1] = localPoly[i];
-    const [x2, y2] = localPoly[(i + 1) % localPoly.length];
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq > maxLenSq) {
-      maxLenSq = lenSq;
-      angle = Math.atan2(dy, dx);
-    }
-  }
-  return angle;
-}
-
 /**
  * X-coordinates where the horizontal line y=y0 crosses the polygon's edges,
  * sorted ascending. Standard scanline-fill (even-odd rule): consecutive
@@ -720,12 +743,21 @@ function scanlineIntersectionsX(
 /**
  * Generates a lawn-mower flight path clipped to an arbitrary drawn polygon
  * (not just its bounding rectangle) — for surveying an irregular field of
- * solar panels without flying beyond its edges. Flight lines automatically
- * run parallel to the polygon's longest edge so they line up with panel
- * rows in the common case of a rectangular array.
+ * solar panels without flying beyond its edges. Flight lines run at
+ * `rowAngleDeg` (set by the user's drawn reference line) so they line up
+ * with the actual panel rows instead of a guessed edge, and photos are
+ * placed every `photoSpacingM` along each line — not just at its two
+ * endpoints — so nothing between the ends of a long row goes unphotographed.
  */
 export function generateSolarSurvey(params: SolarParams): TemplateResult {
-  const { vertices, altitude, spacingM, addPhotos } = params;
+  const {
+    vertices,
+    altitude,
+    spacingM,
+    photoSpacingM,
+    rowAngleDeg,
+    addPhotos,
+  } = params;
 
   if (vertices.length < 3) return { waypoints: [], pois: [] };
 
@@ -734,7 +766,11 @@ export function generateSolarSurvey(params: SolarParams): TemplateResult {
     toLocalMeters(lat, lng, refLat, refLng),
   );
 
-  const orientationRad = longestEdgeAngleRad(localPoly);
+  // rowAngleDeg is a compass bearing (0=N, 90=E, clockwise), but the
+  // rotation math below (rotatePoint2D) works in the standard counter-
+  // clockwise-from-east "math angle" convention — the two are
+  // complementary: mathAngle = 90 - bearing.
+  const orientationRad = ((90 - rowAngleDeg) * Math.PI) / 180;
   // De-rotate into a frame where flight lines are horizontal (constant y),
   // so clipping reduces to a simple 1D scanline test.
   const derotated = localPoly.map((p) => rotatePoint2D(p, -orientationRad));
@@ -760,6 +796,8 @@ export function generateSolarSurvey(params: SolarParams): TemplateResult {
   const sampleMinY = minY + eps;
   const sampleMaxY = maxY - eps;
 
+  const safePhotoSpacingM = Math.max(photoSpacingM, 0.1);
+
   const waypoints: TemplateResult["waypoints"] = [];
   let segmentIndex = 0;
 
@@ -776,7 +814,18 @@ export function generateSolarSurvey(params: SolarParams): TemplateResult {
         ? [xs[j + 1], xs[j]]
         : [xs[j], xs[j + 1]];
 
-      for (const x of [xStart, xEnd]) {
+      // Evenly spaced points along the whole segment (not just its two
+      // endpoints), so a photo is taken every ~photoSpacingM the entire
+      // length of the row, including between the ends.
+      const segLength = Math.abs(xEnd - xStart);
+      const numPointsOnLine = Math.max(
+        2,
+        Math.ceil(segLength / safePhotoSpacingM) + 1,
+      );
+
+      for (let k = 0; k < numPointsOnLine; k++) {
+        const t = numPointsOnLine <= 1 ? 0 : k / (numPointsOnLine - 1);
+        const x = xStart + t * (xEnd - xStart);
         const [rx, ry] = rotatePoint2D([x, y], orientationRad);
         const [lat, lng] = fromLocalMeters(rx, ry, refLat, refLng);
 

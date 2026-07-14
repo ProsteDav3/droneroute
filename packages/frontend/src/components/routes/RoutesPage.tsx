@@ -39,6 +39,7 @@ interface SavedMission {
   waypoints: string;
   pois: string;
   obstacles: string;
+  buildings: string;
   share_token: string | null;
 }
 
@@ -144,6 +145,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
       const config = JSON.parse(mission.config);
       const pois = mission.pois ? JSON.parse(mission.pois) : [];
       const obstacles = mission.obstacles ? JSON.parse(mission.obstacles) : [];
+      const buildings = mission.buildings ? JSON.parse(mission.buildings) : [];
       loadMission({
         id: mission.id,
         name: mission.name,
@@ -151,6 +153,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
         waypoints,
         pois,
         obstacles,
+        buildings,
       });
       setCurrentPage("editor");
     } catch (e) {

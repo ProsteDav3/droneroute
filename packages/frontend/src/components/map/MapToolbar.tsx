@@ -10,6 +10,9 @@ import {
   ChevronDown,
   Triangle,
   Sun,
+  Warehouse,
+  Square,
+  Spline,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -65,7 +68,7 @@ const TEMPLATE_OPTIONS: {
     label: "Solar panel survey",
     shortLabel: "Solar",
     icon: Sun,
-    description: "Trace panel array, clipped scan",
+    description: "Trace panel array + row direction, clipped scan",
     key: "S",
   },
 ];
@@ -75,14 +78,19 @@ export function MapToolbar() {
     isAddingWaypoint,
     isAddingPoi,
     isDrawingObstacle,
+    isDrawingBuilding,
+    buildingDrawMode,
     templateMode,
     setIsAddingWaypoint,
     setIsAddingPoi,
     setIsDrawingObstacle,
+    setIsDrawingBuilding,
+    setBuildingDrawMode,
     setTemplateMode,
     waypoints,
     pois,
     obstacles,
+    buildings,
     clearMission,
   } = useMissionStore();
 
@@ -102,7 +110,11 @@ export function MapToolbar() {
   }, [showTemplateMenu]);
 
   const isPanning =
-    !isAddingWaypoint && !isAddingPoi && !isDrawingObstacle && !templateMode;
+    !isAddingWaypoint &&
+    !isAddingPoi &&
+    !isDrawingObstacle &&
+    !isDrawingBuilding &&
+    !templateMode;
 
   return (
     <div className="absolute top-4 right-4 z-10 flex flex-col gap-2 min-w-[130px]">
@@ -151,6 +163,45 @@ export function MapToolbar() {
           B
         </kbd>
       </Button>
+      <Button
+        variant={isDrawingBuilding ? "default" : "outline"}
+        size="sm"
+        onClick={() => setIsDrawingBuilding(!isDrawingBuilding)}
+        title="Draw a building footprint (H)"
+        className={`justify-between ${isDrawingBuilding ? activeClass : inactiveClass}`}
+      >
+        <span className="flex items-center gap-1.5">
+          <Warehouse className="h-4 w-4" />
+          <span className="text-xs">Building</span>
+        </span>
+        <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
+          H
+        </kbd>
+      </Button>
+      {isDrawingBuilding && (
+        <div className="flex gap-1">
+          <Button
+            variant={buildingDrawMode === "rectangle" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setBuildingDrawMode("rectangle")}
+            title="Draw a 2-corner rectangle"
+            className={`flex-1 ${buildingDrawMode === "rectangle" ? activeClass : inactiveClass}`}
+          >
+            <Square className="h-3.5 w-3.5" />
+            <span className="text-xs">Rect</span>
+          </Button>
+          <Button
+            variant={buildingDrawMode === "polygon" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setBuildingDrawMode("polygon")}
+            title="Click to trace an irregular footprint"
+            className={`flex-1 ${buildingDrawMode === "polygon" ? activeClass : inactiveClass}`}
+          >
+            <Spline className="h-3.5 w-3.5" />
+            <span className="text-xs">Polygon</span>
+          </Button>
+        </div>
+      )}
 
       {/* Template dropdown */}
       <div className="relative" ref={menuRef}>
@@ -223,6 +274,7 @@ export function MapToolbar() {
           setIsAddingWaypoint(false);
           setIsAddingPoi(false);
           setIsDrawingObstacle(false);
+          setIsDrawingBuilding(false);
           setTemplateMode(null);
         }}
         title="Pan / select mode (Esc)"
@@ -236,15 +288,18 @@ export function MapToolbar() {
           Esc
         </kbd>
       </Button>
-      {(waypoints.length > 0 || pois.length > 0 || obstacles.length > 0) && (
+      {(waypoints.length > 0 ||
+        pois.length > 0 ||
+        obstacles.length > 0 ||
+        buildings.length > 0) && (
         <Button
           variant="outline"
           size="sm"
           onClick={() => {
-            if (confirm("Clear all waypoints, POIs, and obstacles?"))
+            if (confirm("Clear all waypoints, POIs, obstacles, and buildings?"))
               clearMission();
           }}
-          title="Clear all waypoints, POIs, and obstacles"
+          title="Clear all waypoints, POIs, obstacles, and buildings"
           className="bg-background/90 backdrop-blur-sm text-destructive hover:text-destructive"
         >
           <Trash2 className="h-4 w-4" />

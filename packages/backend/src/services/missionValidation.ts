@@ -13,6 +13,8 @@ const MAX_WAYPOINTS = 5000;
 const MAX_POIS = 2000;
 const MAX_OBSTACLES = 1000;
 const MAX_VERTICES_PER_OBSTACLE = 5000;
+const MAX_BUILDINGS = 1000;
+const MAX_VERTICES_PER_BUILDING = 5000;
 
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
@@ -94,12 +96,41 @@ function validateObstacles(value: unknown): string | null {
   return null;
 }
 
+function validateBuildings(value: unknown): string | null {
+  if (value === undefined) return null;
+  if (!Array.isArray(value)) return "buildings must be an array";
+  if (value.length > MAX_BUILDINGS) return "too many buildings";
+  for (const building of value) {
+    if (!isPlainObject(building)) return "invalid building";
+    if (!Array.isArray(building.vertices)) return "invalid building vertices";
+    if (building.vertices.length > MAX_VERTICES_PER_BUILDING) {
+      return "too many building vertices";
+    }
+    for (const vertex of building.vertices) {
+      if (
+        !Array.isArray(vertex) ||
+        vertex.length !== 2 ||
+        !isLatitude(vertex[0]) ||
+        !isLongitude(vertex[1])
+      ) {
+        return "building vertex out of range";
+      }
+    }
+    if (!isFiniteNumber(building.height) || building.height < 0) {
+      return "invalid building height";
+    }
+    if (!isOptionalName(building.name)) return "invalid building name";
+  }
+  return null;
+}
+
 export interface MissionPayload {
   name?: unknown;
   config?: unknown;
   waypoints?: unknown;
   pois?: unknown;
   obstacles?: unknown;
+  buildings?: unknown;
 }
 
 /** Validate a full mission-create payload. Returns an error message or null. */
@@ -109,7 +140,8 @@ export function validateMissionCreate(body: MissionPayload): string | null {
   return (
     validateWaypoints(body.waypoints) ??
     validatePois(body.pois) ??
-    validateObstacles(body.obstacles)
+    validateObstacles(body.obstacles) ??
+    validateBuildings(body.buildings)
   );
 }
 
@@ -128,7 +160,11 @@ export function validateMissionUpdate(body: MissionPayload): string | null {
     const error = validateWaypoints(body.waypoints);
     if (error) return error;
   }
-  return validatePois(body.pois) ?? validateObstacles(body.obstacles);
+  return (
+    validatePois(body.pois) ??
+    validateObstacles(body.obstacles) ??
+    validateBuildings(body.buildings)
+  );
 }
 
 /**
@@ -139,6 +175,7 @@ export function validateMissionGeometry(body: MissionPayload): string | null {
   return (
     validateWaypoints(body.waypoints) ??
     validatePois(body.pois) ??
-    validateObstacles(body.obstacles)
+    validateObstacles(body.obstacles) ??
+    validateBuildings(body.buildings)
   );
 }

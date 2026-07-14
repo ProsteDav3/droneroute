@@ -4,11 +4,14 @@ import {
   DEFAULT_ORBIT_PARAMS,
   computeGimbalPitch,
   computeAltitudeForPitch,
+  computeOrbitSeedForBuilding,
   generateSolarSurvey,
   bearing,
   destinationPoint,
 } from "./templates";
 import type { OrbitParams, SolarParams } from "./templates";
+import { recommendSolarSpacing, THERMAL_CAMERA_FOV } from "@/lib/solarCamera";
+import { haversineDistance } from "@/lib/geo";
 
 const CENTER: [number, number] = [50.06, 14.43];
 
@@ -148,11 +151,21 @@ describe("generateSolarSurvey", () => {
     });
   }
 
+  // rowAngleDeg is a compass bearing (0=N, 90=E). For an un-rotated
+  // rectVertices(w, h) shape, the "width" edge runs due east — bearing 90° —
+  // which is what these fixtures pass unless testing a rotated shape.
+  const EAST_ROW_ANGLE = 90;
+
   it("every flight line contributes waypoints — the topmost line must not be silently dropped (regression)", () => {
     const params: SolarParams = {
       vertices: rectVertices(100, 40),
       altitude: 30,
       spacingM: 10,
+      // Larger than the row length, so each line still gets exactly its
+      // two endpoints — isolates the topmost-line regression from the
+      // separate along-track photo-spacing behavior tested below.
+      photoSpacingM: 200,
+      rowAngleDeg: EAST_ROW_ANGLE,
       addPhotos: true,
     };
     const result = generateSolarSurvey(params);
@@ -170,24 +183,33 @@ describe("generateSolarSurvey", () => {
     expect(result.waypoints.length).toBeGreaterThanOrEqual(10);
   });
 
-  it("aligns flight lines with the shape's longest edge regardless of rotation", () => {
+  it("produces the same waypoint count for a rotated shape when rowAngleDeg is adjusted to match (manual row-angle rotation-invariance)", () => {
+    // rectVertices' rotationDeg is a counterclockwise math rotation of the
+    // local (east, north) coordinates, which *decreases* compass bearing
+    // (clockwise-increasing) by the same amount — a +30° shape rotation
+    // means the row's compass bearing drops from 90° to 60°.
     const rotated = generateSolarSurvey({
       vertices: rectVertices(100, 40, 30),
       altitude: 30,
       spacingM: 10,
+      photoSpacingM: 200,
+      rowAngleDeg: EAST_ROW_ANGLE - 30,
       addPhotos: false,
     });
     const unrotated = generateSolarSurvey({
       vertices: rectVertices(100, 40, 0),
       altitude: 30,
       spacingM: 10,
+      photoSpacingM: 200,
+      rowAngleDeg: EAST_ROW_ANGLE,
       addPhotos: false,
     });
-    // Same shape, just rotated — should produce the same waypoint count.
+    // Same shape, just rotated, with rowAngleDeg rotated by the same
+    // amount — should produce the same waypoint count.
     expect(rotated.waypoints.length).toBe(unrotated.waypoints.length);
   });
 
-  it("clips flight lines to a concave (L-shaped) polygon — no waypoint lands in the missing corner", () => {
+  it("clips flight lines to a concave (L-shaped) polygon — no waypoint lands in the missing corner, including along-track points mid-row", () => {
     // L-shape: a big block with the top-right quadrant notched out.
     const local: [number, number][] = [
       [0, 0],
@@ -209,6 +231,10 @@ describe("generateSolarSurvey", () => {
       vertices,
       altitude: 30,
       spacingM: 15,
+      // Small on purpose: stresses that intermediate along-track points
+      // (not just each row's two endpoints) also respect the clip boundary.
+      photoSpacingM: 5,
+      rowAngleDeg: EAST_ROW_ANGLE,
       addPhotos: false,
     });
 
@@ -233,8 +259,115 @@ describe("generateSolarSurvey", () => {
       vertices: [CENTER, destinationPoint(CENTER[0], CENTER[1], 10, 0)],
       altitude: 30,
       spacingM: 10,
+      photoSpacingM: 8,
+      rowAngleDeg: EAST_ROW_ANGLE,
       addPhotos: false,
     });
     expect(result.waypoints).toHaveLength(0);
+  });
+
+  it("places photos every ~photoSpacingM along a long row, not just at its two ends (regression for the reported 'only photographs the ends' bug)", () => {
+    // A single long thin strip: one flight line spans its full ~200m length.
+    const result = generateSolarSurvey({
+      vertices: rectVertices(200, 10),
+      altitude: 30,
+      spacingM: 100, // wider than the 10m extent -> exactly one flight line
+      photoSpacingM: 20,
+      rowAngleDeg: EAST_ROW_ANGLE,
+      addPhotos: true,
+    });
+
+    // ceil(200/20)+1 = 11 points along the single row.
+    expect(result.waypoints.length).toBeGreaterThanOrEqual(11);
+    expect(result.waypoints.every((wp) => wp.actions.length === 1)).toBe(true);
+
+    // The points must actually be spread along the row, not clustered at
+    // the two ends — the middle third of the row must contain at least one
+    // waypoint (would fail under the old "2 points per line" behavior).
+    const lngs = result.waypoints.map((wp) => wp.longitude);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+    const midLow = minLng + (maxLng - minLng) / 3;
+    const midHigh = maxLng - (maxLng - minLng) / 3;
+    expect(lngs.some((lng) => lng > midLow && lng < midHigh)).toBe(true);
+  });
+});
+
+describe("recommendSolarSpacing", () => {
+  const H20T = 43;
+  const M30T = 53;
+
+  it("returns null for a payload with no known thermal FOV", () => {
+    expect(recommendSolarSpacing(30, 999999)).toBeNull();
+  });
+
+  it("returns positive spacing values, smaller than the raw (no-overlap) footprint, for a known payload", () => {
+    const rec = recommendSolarSpacing(30, M30T);
+    expect(rec).not.toBeNull();
+    expect(rec!.lineSpacingM).toBeGreaterThan(0);
+    expect(rec!.photoSpacingM).toBeGreaterThan(0);
+    // Default overlap is positive, so the recommendation must be strictly
+    // less than the raw (0% overlap) ground footprint at this altitude.
+    const rawFootprintWidth = 2 * 30 * Math.tan((49.4 * Math.PI) / 180 / 2);
+    expect(rec!.lineSpacingM).toBeLessThan(rawFootprintWidth);
+  });
+
+  it("recommends larger spacing at a higher altitude (wider ground footprint)", () => {
+    const low = recommendSolarSpacing(20, H20T)!;
+    const high = recommendSolarSpacing(60, H20T)!;
+    expect(high.lineSpacingM).toBeGreaterThan(low.lineSpacingM);
+    expect(high.photoSpacingM).toBeGreaterThan(low.photoSpacingM);
+  });
+
+  it("flags the Matrice 4T entry as experimental, matching its unconfirmed drone/payload identity in DRONE_MODELS", () => {
+    expect(THERMAL_CAMERA_FOV[103].experimental).toBe(true);
+    // Verified payloads must not carry the caveat.
+    expect(THERMAL_CAMERA_FOV[43].experimental).toBeUndefined();
+    expect(THERMAL_CAMERA_FOV[53].experimental).toBeUndefined();
+  });
+
+  it("a narrower-FOV camera (H20T) recommends tighter spacing than a wider-FOV one (M30T) at the same altitude", () => {
+    const h20t = recommendSolarSpacing(30, H20T)!;
+    const m30t = recommendSolarSpacing(30, M30T)!;
+    expect(h20t.lineSpacingM).toBeLessThan(m30t.lineSpacingM);
+  });
+});
+
+describe("computeOrbitSeedForBuilding", () => {
+  it("centers on the footprint centroid and radius covers the farthest corner plus clearance", () => {
+    const size = 40;
+    const c00 = CENTER;
+    const c10 = destinationPoint(c00[0], c00[1], size, 90);
+    const c01 = destinationPoint(c00[0], c00[1], size, 0);
+    const c11 = destinationPoint(c01[0], c01[1], size, 90);
+    const vertices: [number, number][] = [c00, c10, c11, c01];
+
+    const seed = computeOrbitSeedForBuilding(vertices);
+
+    // True geometric center of a 40x40 square is ~28.3m from any corner.
+    const distFromCorner = haversineDistance(
+      seed.center[0],
+      seed.center[1],
+      c00[0],
+      c00[1],
+    );
+    expect(distFromCorner).toBeGreaterThan(25);
+    expect(distFromCorner).toBeLessThan(32);
+
+    // Radius covers the half-diagonal (~28.3m) plus the fixed clearance.
+    expect(seed.radiusM).toBeGreaterThan(40);
+    expect(seed.radiusM).toBeLessThan(46);
+  });
+
+  it("is invariant under vertex winding order", () => {
+    const vertices: [number, number][] = [
+      CENTER,
+      destinationPoint(CENTER[0], CENTER[1], 30, 90),
+      destinationPoint(CENTER[0], CENTER[1], 30, 45),
+    ];
+    const forward = computeOrbitSeedForBuilding(vertices);
+    const reversed = computeOrbitSeedForBuilding([...vertices].reverse());
+    expect(reversed.center).toEqual(forward.center);
+    expect(reversed.radiusM).toEqual(forward.radiusM);
   });
 });

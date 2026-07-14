@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useMissionStore } from "./missionStore";
-import { DEFAULT_ORBIT_PARAMS } from "@/lib/templates";
+import { DEFAULT_ORBIT_PARAMS, destinationPoint } from "@/lib/templates";
 import type { OrbitParams } from "@/lib/templates";
 
 function baseWaypoint(lat: number, lng: number) {
@@ -192,5 +192,83 @@ describe("missionStore — template groups (edit-after-apply)", () => {
     expect(Object.keys(templateGroups)).toHaveLength(0);
     expect(editingTemplateGroupId).toBeNull();
     expect(waypoints).toHaveLength(0);
+  });
+});
+
+describe("missionStore — buildings and POI-triggered orbit pre-fill", () => {
+  beforeEach(() => {
+    useMissionStore.getState().clearMission();
+  });
+
+  const CENTER: [number, number] = [50.06, 14.43];
+
+  function squareFootprint(size: number): [number, number][] {
+    const c00 = CENTER;
+    const c10 = destinationPoint(c00[0], c00[1], size, 90);
+    const c01 = destinationPoint(c00[0], c00[1], size, 0);
+    const c11 = destinationPoint(c01[0], c01[1], size, 90);
+    return [c00, c10, c11, c01];
+  }
+
+  it("addBuilding records height and vertices, and selects it", () => {
+    const store = useMissionStore.getState();
+    store.addBuilding(squareFootprint(40), 25);
+
+    const { buildings, selectedBuildingId, isDrawingBuilding } =
+      useMissionStore.getState();
+    expect(buildings).toHaveLength(1);
+    expect(buildings[0].height).toBe(25);
+    expect(buildings[0].vertices).toHaveLength(4);
+    expect(selectedBuildingId).toBe(buildings[0].id);
+    expect(isDrawingBuilding).toBe(false);
+  });
+
+  it("placing a POI inside a building sets its height and pre-fills pendingOrbitParams, without generating any waypoints", () => {
+    const store = useMissionStore.getState();
+    store.addBuilding(squareFootprint(40), 25);
+
+    // A point well inside the 40x40 footprint (~20m in from the corner).
+    const inside = destinationPoint(CENTER[0], CENTER[1], 15, 45);
+    store.addPoi(inside[0], inside[1]);
+
+    const { pois, pendingOrbitParams, waypoints, buildings } =
+      useMissionStore.getState();
+    expect(pois).toHaveLength(1);
+    expect(pois[0].height).toBe(25);
+    expect(waypoints).toHaveLength(0);
+
+    expect(pendingOrbitParams).not.toBeNull();
+    expect(pendingOrbitParams!.poiHeight).toBe(25);
+    expect(pendingOrbitParams!.radiusM).toBeGreaterThan(0);
+    expect(pendingOrbitParams!.altitude).toBeGreaterThan(25);
+    // Center should be near the building, not at the POI's own coordinates.
+    const seedCenterDist = Math.abs(
+      pendingOrbitParams!.center[0] - buildings[0].vertices[0][0],
+    );
+    expect(seedCenterDist).toBeLessThan(0.01);
+  });
+
+  it("placing a POI far from any building leaves height at 0 and pendingOrbitParams untouched", () => {
+    const store = useMissionStore.getState();
+    store.addBuilding(squareFootprint(40), 25);
+
+    const farAway = destinationPoint(CENTER[0], CENTER[1], 5000, 180);
+    store.addPoi(farAway[0], farAway[1]);
+
+    const { pois, pendingOrbitParams } = useMissionStore.getState();
+    expect(pois[0].height).toBe(0);
+    expect(pendingOrbitParams).toBeNull();
+  });
+
+  it("clearMission resets pendingOrbitParams (regression: a stale seed must not leak into the next mission)", () => {
+    const store = useMissionStore.getState();
+    store.addBuilding(squareFootprint(40), 25);
+    const inside = destinationPoint(CENTER[0], CENTER[1], 15, 45);
+    store.addPoi(inside[0], inside[1]);
+    expect(useMissionStore.getState().pendingOrbitParams).not.toBeNull();
+
+    useMissionStore.getState().clearMission();
+
+    expect(useMissionStore.getState().pendingOrbitParams).toBeNull();
   });
 });

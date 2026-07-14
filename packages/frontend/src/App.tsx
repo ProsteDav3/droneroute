@@ -22,6 +22,7 @@ import {
   Triangle,
   Shield,
   Scissors,
+  Warehouse,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,7 @@ import { BulkActionToolbar } from "@/components/waypoint/BulkActionToolbar";
 import { MissionConfig } from "@/components/mission/MissionConfig";
 import { PoiList } from "@/components/mission/PoiList";
 import { ObstacleList } from "@/components/mission/ObstacleList";
+import { BuildingList } from "@/components/mission/BuildingList";
 import { RoutesPage } from "@/components/routes/RoutesPage";
 import { SharedMissionPage } from "@/components/routes/SharedMissionPage";
 import { AdminPage } from "@/pages/AdminPage";
@@ -50,7 +52,12 @@ import { useAirspaceStore } from "@/store/airspaceStore";
 import { api } from "@/lib/api";
 import { getObstacleWarnings, getAirspaceWarnings } from "@/lib/geo";
 
-type SidebarSection = "waypoints" | "pois" | "obstacles" | "config";
+type SidebarSection =
+  | "waypoints"
+  | "pois"
+  | "obstacles"
+  | "buildings"
+  | "config";
 
 export default function App() {
   const {
@@ -62,6 +69,7 @@ export default function App() {
     waypoints,
     pois,
     obstacles,
+    buildings,
     loadMission,
     currentPage,
     setCurrentPage,
@@ -77,6 +85,7 @@ export default function App() {
     waypoints: true,
     pois: false,
     obstacles: false,
+    buildings: false,
     config: false,
   });
 
@@ -128,14 +137,23 @@ export default function App() {
     const handler = (e: BeforeUnloadEvent) => {
       if (
         dirty &&
-        (waypoints.length > 1 || pois.length > 0 || obstacles.length > 0)
+        (waypoints.length > 1 ||
+          pois.length > 0 ||
+          obstacles.length > 0 ||
+          buildings.length > 0)
       ) {
         e.preventDefault();
       }
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [dirty, waypoints.length, pois.length, obstacles.length]);
+  }, [
+    dirty,
+    waypoints.length,
+    pois.length,
+    obstacles.length,
+    buildings.length,
+  ]);
 
   // Obstacle warnings
   const obstacleWarnings = useMemo(
@@ -303,6 +321,7 @@ export default function App() {
           waypoints,
           pois,
           obstacles,
+          buildings,
         });
       } else {
         const result = await api.post<{ id: string }>("/missions", {
@@ -311,6 +330,7 @@ export default function App() {
           waypoints,
           pois,
           obstacles,
+          buildings,
         });
         setMissionId(result.id);
       }
@@ -364,6 +384,7 @@ export default function App() {
         setIsAddingWaypoint,
         setIsAddingPoi,
         setIsDrawingObstacle,
+        setIsDrawingBuilding,
         setTemplateMode,
         setEditingTemplateGroupId,
         clearWaypointSelection,
@@ -413,6 +434,11 @@ export default function App() {
           e.preventDefault();
           setIsDrawingObstacle(!useMissionStore.getState().isDrawingObstacle);
           break;
+        case "h":
+          if (e.metaKey || e.ctrlKey) return;
+          e.preventDefault();
+          setIsDrawingBuilding(!useMissionStore.getState().isDrawingBuilding);
+          break;
         case "a":
           if (e.metaKey || e.ctrlKey) {
             e.preventDefault();
@@ -429,6 +455,7 @@ export default function App() {
           setIsAddingWaypoint(false);
           setIsAddingPoi(false);
           setIsDrawingObstacle(false);
+          setIsDrawingBuilding(false);
           setTemplateMode(null);
           setEditingTemplateGroupId(null);
           break;
@@ -664,6 +691,28 @@ export default function App() {
             {expandedSections.obstacles && (
               <div className="max-h-[30vh] overflow-y-auto section-expand">
                 <ObstacleList />
+              </div>
+            )}
+          </div>
+
+          {/* Buildings section — BLUE accent */}
+          <div className="border-l-2 border-blue-500/70 bg-blue-500/[0.03]">
+            <button
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-blue-500/10 hover:bg-blue-500/15 text-blue-400"
+              onClick={() => toggleSection("buildings")}
+              title="Building footprints — helps recommend orbit settings when a POI is placed on one"
+            >
+              {expandedSections.buildings ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              <Warehouse className="h-3 w-3" />
+              Buildings ({buildings.length})
+            </button>
+            {expandedSections.buildings && (
+              <div className="max-h-[30vh] overflow-y-auto section-expand">
+                <BuildingList />
               </div>
             )}
           </div>

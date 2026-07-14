@@ -237,6 +237,16 @@ export interface Obstacle {
   vertices: [number, number][]; // Array of [latitude, longitude] pairs
 }
 
+// ── Building ─────────────────────────────────────────────
+
+export interface Building {
+  id: string;
+  name: string;
+  /** Real height of the building in meters, above ground. */
+  height: number;
+  vertices: [number, number][]; // Array of [latitude, longitude] pairs
+}
+
 // ── Waypoint ─────────────────────────────────────────────
 
 export interface Waypoint {
@@ -293,6 +303,7 @@ export interface Mission {
   waypoints: Waypoint[];
   pois: PointOfInterest[];
   obstacles: Obstacle[];
+  buildings: Building[];
 }
 
 // ── Shared Mission ──────────────────────────────────────

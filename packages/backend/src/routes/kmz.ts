@@ -53,6 +53,7 @@ kmzRoutes.post(
         waypoints,
         pois: pois || [],
         obstacles: [],
+        buildings: [],
       };
 
       const buffer = await generateKmzBuffer(mission);
@@ -102,6 +103,7 @@ kmzRoutes.post(
         waypoints,
         pois: pois || [],
         obstacles: [],
+        buildings: [],
       };
 
       const buffer = await generateMissionSegmentsZip(mission);
@@ -145,6 +147,7 @@ kmzRoutes.get(
         waypoints: JSON.parse(row.waypoints),
         pois: JSON.parse(row.pois || "[]"),
         obstacles: JSON.parse(row.obstacles || "[]"),
+        buildings: JSON.parse(row.buildings || "[]"),
       };
 
       const buffer = await generateKmzBuffer(mission);

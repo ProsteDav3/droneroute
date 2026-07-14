@@ -20,6 +20,7 @@ import { PoiMarker } from "./PoiMarker";
 import { MapToolbar } from "./MapToolbar";
 import { TemplateDrawHandler } from "./TemplateDrawHandler";
 import { PencilDrawHandler } from "./PencilDrawHandler";
+import { SolarDrawHandler } from "./SolarDrawHandler";
 import { ObstacleDrawHandler } from "./ObstacleDrawHandler";
 import { ObstaclePolygon } from "./ObstaclePolygon";
 import { AirspaceOverlay } from "./AirspaceOverlay";
@@ -626,6 +627,7 @@ export function MapView() {
         <PoiPointingLines is3D={is3D} />
         <TemplateDrawHandler />
         <PencilDrawHandler />
+        <SolarDrawHandler />
         <ObstacleDrawHandler />
         <AirspaceOverlay />
         {obstacles.map((obstacle) => (

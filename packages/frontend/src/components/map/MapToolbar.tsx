@@ -9,6 +9,7 @@ import {
   PenLine,
   ChevronDown,
   Triangle,
+  Sun,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,14 @@ const TEMPLATE_OPTIONS: {
     icon: PenLine,
     description: "Draw a freehand path",
     key: "Z",
+  },
+  {
+    type: "solar",
+    label: "Solar panel survey",
+    shortLabel: "Solar",
+    icon: Sun,
+    description: "Trace panel array, clipped scan",
+    key: "S",
   },
 ];
 
@@ -161,6 +170,8 @@ export function MapToolbar() {
               <Building2 className="h-4 w-4" />
             ) : templateMode === "pencil" ? (
               <PenLine className="h-4 w-4" />
+            ) : templateMode === "solar" ? (
+              <Sun className="h-4 w-4" />
             ) : (
               <Grid3X3 className="h-4 w-4" />
             )}

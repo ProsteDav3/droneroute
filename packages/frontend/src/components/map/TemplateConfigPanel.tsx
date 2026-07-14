@@ -34,6 +34,7 @@ import {
   type GridParams,
   type FacadeParams,
   type PencilParams,
+  type SolarParams,
 } from "@/lib/templates";
 import type { PointOfInterest, HeightMode } from "@droneroute/shared";
 
@@ -56,10 +57,12 @@ interface TemplateConfigPanelProps {
   gridParams?: GridParams | null;
   facadeParams?: FacadeParams | null;
   pencilParams?: PencilParams | null;
+  solarParams?: SolarParams | null;
   onOrbitChange?: (params: OrbitParams) => void;
   onGridChange?: (params: GridParams) => void;
   onFacadeChange?: (params: FacadeParams) => void;
   onPencilChange?: (params: PencilParams) => void;
+  onSolarChange?: (params: SolarParams) => void;
   onApply: () => void;
   onCancel: () => void;
   waypointCount: number;
@@ -72,10 +75,12 @@ export function TemplateConfigPanel({
   gridParams,
   facadeParams,
   pencilParams,
+  solarParams,
   onOrbitChange,
   onGridChange,
   onFacadeChange,
   onPencilChange,
+  onSolarChange,
   onApply,
   onCancel,
   waypointCount,
@@ -92,7 +97,9 @@ export function TemplateConfigPanel({
         ? "Grid survey"
         : type === "facade"
           ? "Facade scan"
-          : "Pencil path";
+          : type === "solar"
+            ? "Solar panel survey"
+            : "Pencil path";
   const description =
     type === "orbit"
       ? "Circular flight path around a center point. Adjust the radius, number of points, and enable POI to keep the camera focused on the center. Set end angle below 360° for an open arc between a start and end bearing instead of a full loop."
@@ -100,7 +107,9 @@ export function TemplateConfigPanel({
         ? "Lawn-mower zigzag pattern for systematic area coverage. Control line spacing for overlap and rotation to align with the terrain."
         : type === "facade"
           ? "Vertical scanning pattern along a wall or building face. Set the standoff distance, altitude range, and grid density for full coverage."
-          : "Freehand flight path drawn on the map. Adjust the number of waypoints to control how closely the path is followed.";
+          : type === "solar"
+            ? "Lawn-mower path clipped to the exact shape you traced around the panel array — the drone never flies past its edges. Flight lines automatically line up with the panel rows (the shape's longest edge)."
+            : "Freehand flight path drawn on the map. Adjust the number of waypoints to control how closely the path is followed.";
 
   // Stop all pointer/keyboard/wheel events from reaching Leaflet (native DOM level)
   const panelRef = useRef<HTMLDivElement>(null);
@@ -685,6 +694,74 @@ export function TemplateConfigPanel({
               </Select>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Solar params */}
+      {type === "solar" && solarParams && onSolarChange && (
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <div>
+            <Label
+              className="text-[10px]"
+              title={`How high the drone flies, ${heightModeText} (this mission's height reference).`}
+            >
+              Altitude ({heightLabel(unitSystem)})
+            </Label>
+            <NumericInput
+              value={toDisplayHeight(solarParams.altitude, unitSystem)}
+              onChange={(v) =>
+                onSolarChange({
+                  ...solarParams,
+                  altitude: fromDisplayHeight(v, unitSystem),
+                })
+              }
+              min={5}
+              step={5}
+              fallback={30}
+              className="h-7 text-xs"
+            />
+          </div>
+          <div>
+            <Label
+              className="text-[10px]"
+              title="Distance between flight lines. Tighter spacing gives more thermal image overlap but a longer flight."
+            >
+              Line spacing ({distanceLabel(unitSystem)})
+            </Label>
+            <NumericInput
+              value={toDisplayDistance(solarParams.spacingM, unitSystem)}
+              onChange={(v) =>
+                onSolarChange({
+                  ...solarParams,
+                  spacingM: fromDisplayDistance(v, unitSystem),
+                })
+              }
+              min={2}
+              step={1}
+              fallback={10}
+              className="h-7 text-xs"
+            />
+          </div>
+          <div className="col-span-2 flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={solarParams.addPhotos}
+                onChange={(e) =>
+                  onSolarChange({
+                    ...solarParams,
+                    addPhotos: e.target.checked,
+                  })
+                }
+                className="rounded"
+              />
+              Thermal (IR) photo at each waypoint
+            </label>
+          </div>
+          <div className="col-span-2 text-[10px] text-muted-foreground">
+            Gimbal is fixed straight down (nadir) — standard framing for
+            photographing a flat panel surface from above.
+          </div>
         </div>
       )}
 

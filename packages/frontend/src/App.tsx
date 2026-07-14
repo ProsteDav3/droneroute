@@ -402,6 +402,11 @@ export default function App() {
           e.preventDefault();
           setTemplateMode(templateMode === "pencil" ? null : "pencil");
           break;
+        case "s":
+          if (e.metaKey || e.ctrlKey) return; // don't intercept Cmd+S (save)
+          e.preventDefault();
+          setTemplateMode(templateMode === "solar" ? null : "solar");
+          break;
         case "b":
           if (e.metaKey || e.ctrlKey) return;
           e.preventDefault();

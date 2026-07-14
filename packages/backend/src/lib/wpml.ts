@@ -47,11 +47,19 @@ function buildActionXml(action: WaypointAction): string {
   let paramsXml = "";
 
   switch (action.actionType) {
-    case "takePhoto":
+    case "takePhoto": {
+      const p = action.params as any;
       paramsXml = `
-              <wpml:payloadPositionIndex>${(action.params as any).payloadPositionIndex ?? 0}</wpml:payloadPositionIndex>
-              <wpml:fileSuffix>${escapeXml((action.params as any).fileSuffix || "")}</wpml:fileSuffix>`;
+              <wpml:payloadPositionIndex>${p.payloadPositionIndex ?? 0}</wpml:payloadPositionIndex>
+              <wpml:fileSuffix>${escapeXml(p.fileSuffix || "")}</wpml:fileSuffix>${
+                p.payloadLensIndex
+                  ? `
+              <wpml:payloadLensIndex>${escapeXml(p.payloadLensIndex)}</wpml:payloadLensIndex>
+              <wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex>`
+                  : ""
+              }`;
       break;
+    }
     case "startRecord":
       paramsXml = `
               <wpml:payloadPositionIndex>${(action.params as any).payloadPositionIndex ?? 0}</wpml:payloadPositionIndex>

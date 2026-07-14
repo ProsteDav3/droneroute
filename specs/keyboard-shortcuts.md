@@ -12,6 +12,7 @@ Quick reference for all available keyboard shortcuts.
 | **G**                      | Open the grid survey template                    |
 | **F**                      | Open the facade scan template                    |
 | **Z**                      | Open the pencil path template                    |
+| **S**                      | Open the solar panel survey template             |
 | **B**                      | Enter obstacle drawing mode                      |
 | **A**                      | Toggle airspace restriction zones overlay        |
 | **Escape**                 | Cancel the current action or deselect everything |

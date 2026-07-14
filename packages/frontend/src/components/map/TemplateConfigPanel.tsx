@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Check, X, MapPin } from "lucide-react";
+import { Check, X, MapPin, Lock, Unlock } from "lucide-react";
 import { LocationSearch } from "@/components/ui/location-search";
 import { useMissionStore } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
@@ -26,14 +26,29 @@ import {
   fromDisplayDistance,
   speedRange,
 } from "@/lib/units";
-import type {
-  TemplateType,
-  OrbitParams,
-  GridParams,
-  FacadeParams,
-  PencilParams,
+import {
+  computeGimbalPitch,
+  computeAltitudeForPitch,
+  type TemplateType,
+  type OrbitParams,
+  type GridParams,
+  type FacadeParams,
+  type PencilParams,
 } from "@/lib/templates";
-import type { PointOfInterest } from "@droneroute/shared";
+import type { PointOfInterest, HeightMode } from "@droneroute/shared";
+
+function heightModeLabel(mode: HeightMode): string {
+  switch (mode) {
+    case "relativeToStartPoint":
+      return "relative to the takeoff point";
+    case "aboveGroundLevel":
+      return "above ground level";
+    case "EGM96":
+      return "above mean sea level (EGM96)";
+    default:
+      return mode;
+  }
+}
 
 interface TemplateConfigPanelProps {
   type: TemplateType;
@@ -68,6 +83,8 @@ export function TemplateConfigPanel({
 }: TemplateConfigPanelProps) {
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
   const setFlyToTarget = useMissionStore((s) => s.setFlyToTarget);
+  const heightMode = useMissionStore((s) => s.config.heightMode);
+  const heightModeText = heightModeLabel(heightMode);
   const title =
     type === "orbit"
       ? "Orbit"
@@ -149,38 +166,33 @@ export function TemplateConfigPanel({
             />
           </div>
           <div>
-            <Label className="text-[10px]">
+            <Label
+              className="text-[10px]"
+              title="Horizontal distance from the center point to the flight path."
+            >
               Radius ({distanceLabel(unitSystem)})
             </Label>
             <NumericInput
               value={toDisplayDistance(orbitParams.radiusM, unitSystem)}
-              onChange={(v) =>
-                onOrbitChange({
-                  ...orbitParams,
-                  radiusM: fromDisplayDistance(v, unitSystem),
-                })
-              }
+              onChange={(v) => {
+                const radiusM = fromDisplayDistance(v, unitSystem);
+                if (orbitParams.altitudeGimbalLinked) {
+                  onOrbitChange({
+                    ...orbitParams,
+                    radiusM,
+                    gimbalPitchDeg: computeGimbalPitch(
+                      orbitParams.altitude,
+                      orbitParams.poiHeight,
+                      radiusM,
+                    ),
+                  });
+                } else {
+                  onOrbitChange({ ...orbitParams, radiusM });
+                }
+              }}
               min={5}
               step={5}
               fallback={5}
-              className="h-7 text-xs"
-            />
-          </div>
-          <div>
-            <Label className="text-[10px]">
-              Altitude ({heightLabel(unitSystem)})
-            </Label>
-            <NumericInput
-              value={toDisplayHeight(orbitParams.altitude, unitSystem)}
-              onChange={(v) =>
-                onOrbitChange({
-                  ...orbitParams,
-                  altitude: fromDisplayHeight(v, unitSystem),
-                })
-              }
-              min={5}
-              step={5}
-              fallback={30}
               className="h-7 text-xs"
             />
           </div>
@@ -194,6 +206,135 @@ export function TemplateConfigPanel({
               integer
               className="h-7 text-xs"
             />
+          </div>
+          <div>
+            <Label
+              className="text-[10px]"
+              title={`How high the drone flies, ${heightModeText} (this mission's height reference).`}
+            >
+              Flight altitude ({heightLabel(unitSystem)})
+            </Label>
+            <NumericInput
+              value={toDisplayHeight(orbitParams.altitude, unitSystem)}
+              onChange={(v) => {
+                const altitude = fromDisplayHeight(v, unitSystem);
+                if (orbitParams.altitudeGimbalLinked) {
+                  onOrbitChange({
+                    ...orbitParams,
+                    altitude,
+                    gimbalPitchDeg: computeGimbalPitch(
+                      altitude,
+                      orbitParams.poiHeight,
+                      orbitParams.radiusM,
+                    ),
+                  });
+                } else {
+                  onOrbitChange({ ...orbitParams, altitude });
+                }
+              }}
+              min={5}
+              step={5}
+              fallback={30}
+              className="h-7 text-xs"
+            />
+          </div>
+          <div>
+            <Label
+              className="text-[10px]"
+              title={`Real height of the point the camera should look at (e.g. a rooftop), ${heightModeText} — same reference as flight altitude.`}
+            >
+              POI height ({heightLabel(unitSystem)})
+            </Label>
+            <NumericInput
+              value={toDisplayHeight(orbitParams.poiHeight, unitSystem)}
+              onChange={(v) => {
+                const poiHeight = fromDisplayHeight(v, unitSystem);
+                if (orbitParams.altitudeGimbalLinked) {
+                  onOrbitChange({
+                    ...orbitParams,
+                    poiHeight,
+                    gimbalPitchDeg: computeGimbalPitch(
+                      orbitParams.altitude,
+                      poiHeight,
+                      orbitParams.radiusM,
+                    ),
+                  });
+                } else {
+                  onOrbitChange({ ...orbitParams, poiHeight });
+                }
+              }}
+              min={0}
+              step={1}
+              fallback={0}
+              className="h-7 text-xs"
+            />
+          </div>
+          <div className="col-span-2">
+            <div className="flex items-center justify-between">
+              <Label
+                className="text-[10px]"
+                title="Camera tilt. -90° = straight down, 0° = horizon."
+              >
+                Gimbal pitch (°)
+              </Label>
+              <button
+                type="button"
+                onClick={() =>
+                  onOrbitChange({
+                    ...orbitParams,
+                    altitudeGimbalLinked: !orbitParams.altitudeGimbalLinked,
+                  })
+                }
+                title={
+                  orbitParams.altitudeGimbalLinked
+                    ? "Altitude and gimbal pitch auto-update each other. Click to lock and edit them independently."
+                    : "Altitude and gimbal pitch are locked independently. Click to link them again."
+                }
+                className="text-muted-foreground hover:text-foreground"
+              >
+                {orbitParams.altitudeGimbalLinked ? (
+                  <Unlock className="h-3 w-3" />
+                ) : (
+                  <Lock className="h-3 w-3 text-amber-400" />
+                )}
+              </button>
+            </div>
+            <NumericInput
+              value={orbitParams.gimbalPitchDeg}
+              onChange={(v) => {
+                if (orbitParams.altitudeGimbalLinked) {
+                  const altitude = computeAltitudeForPitch(
+                    v,
+                    orbitParams.poiHeight,
+                    orbitParams.radiusM,
+                  );
+                  // Re-derive pitch from the (possibly floor/ceiling-clamped)
+                  // altitude so the displayed pitch never silently diverges
+                  // from what the stored altitude actually produces.
+                  onOrbitChange({
+                    ...orbitParams,
+                    altitude,
+                    gimbalPitchDeg: computeGimbalPitch(
+                      altitude,
+                      orbitParams.poiHeight,
+                      orbitParams.radiusM,
+                    ),
+                  });
+                } else {
+                  onOrbitChange({ ...orbitParams, gimbalPitchDeg: v });
+                }
+              }}
+              min={-120}
+              max={45}
+              step={1}
+              fallback={-45}
+              className="h-7 text-xs"
+            />
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              {orbitParams.altitudeGimbalLinked
+                ? "Linked with altitude — changing either recalculates the other from radius + POI height."
+                : "Locked — altitude and gimbal pitch no longer auto-update each other."}
+            </div>
           </div>
           <div>
             <Label className="text-[10px]">Start angle (°)</Label>

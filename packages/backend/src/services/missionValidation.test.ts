@@ -121,6 +121,31 @@ describe("validateMissionCreate", () => {
       }),
     ).toBe("obstacle vertex out of range");
   });
+
+  it("validates buildings", () => {
+    expect(
+      validateMissionCreate({
+        ...validCreate,
+        buildings: [{ name: "B", height: 20, vertices: [[91, 0]] }],
+      }),
+    ).toBe("building vertex out of range");
+    expect(
+      validateMissionCreate({
+        ...validCreate,
+        buildings: [
+          {
+            name: "B",
+            height: -5,
+            vertices: [
+              [41, 0],
+              [41, 1],
+              [42, 1],
+            ],
+          },
+        ],
+      }),
+    ).toBe("invalid building height");
+  });
 });
 
 describe("validateMissionUpdate", () => {

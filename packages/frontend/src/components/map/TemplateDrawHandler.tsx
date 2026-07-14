@@ -186,6 +186,8 @@ export function TemplateDrawHandler() {
     (s) => s.setEditingTemplateGroupId,
   );
   const templateGroups = useMissionStore((s) => s.templateGroups);
+  const pendingOrbitParams = useMissionStore((s) => s.pendingOrbitParams);
+  const setPendingOrbitParams = useMissionStore((s) => s.setPendingOrbitParams);
   const { current: map } = useMap();
 
   const [dragging, setDragging] = useState(false);
@@ -206,9 +208,36 @@ export function TemplateDrawHandler() {
   }, []);
 
   useEffect(() => {
-    if (editingTemplateGroupId) return;
+    if (editingTemplateGroupId || pendingOrbitParams) return;
     resetState();
-  }, [templateMode, editingTemplateGroupId, resetState]);
+  }, [templateMode, editingTemplateGroupId, pendingOrbitParams, resetState]);
+
+  // A POI was placed on a building: open the Orbit panel pre-filled with a
+  // recommended altitude/radius/gimbal pitch instead of an empty drag
+  // gesture. Mirrors the editingTemplateGroupId reopen-effect below.
+  //
+  // Deliberately does NOT clear pendingOrbitParams here, and deliberately
+  // does NOT depend on `templateMode`. The sibling reset-effect above uses
+  // `pendingOrbitParams` as a guard to skip resetState() — clearing it in
+  // this same effect batches the clear into the same render as the
+  // setTemplateMode("orbit") call above, so on the *next* render the guard
+  // is already false and the reset-effect wipes what this effect just set.
+  // Instead, pendingOrbitParams stays truthy (a one-shot flag consumed only
+  // once, since it's not in this effect's deps) until handleApply/
+  // handleCancel explicitly clear it — the same lifecycle editingTemplateGroupId
+  // already uses.
+  useEffect(() => {
+    if (!pendingOrbitParams) return;
+    setOrbitParams(pendingOrbitParams);
+    setGridParams(null);
+    setFacadeParams(null);
+    setDragging(false);
+    setDragState(null);
+    setConfirmed(true);
+    if (useMissionStore.getState().templateMode !== "orbit") {
+      setTemplateMode("orbit");
+    }
+  }, [pendingOrbitParams, setTemplateMode]);
 
   // Reopening an already-applied orbit/grid/facade for editing: load its
   // stored params straight into "confirmed" state, skipping the drag
@@ -411,6 +440,7 @@ export function TemplateDrawHandler() {
   const handleApply = () => {
     if (!preview) {
       resetState();
+      setPendingOrbitParams(null);
       return;
     }
     const params = orbitParams || gridParams || facadeParams;
@@ -428,12 +458,14 @@ export function TemplateDrawHandler() {
       });
     }
     resetState();
+    setPendingOrbitParams(null);
   };
 
   const handleCancel = () => {
     resetState();
     setTemplateMode(null);
     setEditingTemplateGroupId(null);
+    setPendingOrbitParams(null);
   };
 
   const activePreview = confirmed ? preview : dragPreview;

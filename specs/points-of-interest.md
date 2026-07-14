@@ -24,3 +24,4 @@ Mark a location on the map that the drone should look at during flight.
 - The smart pitch calculation uses the distance and height difference between the drone and the POI, so you don't have to do the math yourself.
 - You can use multiple POIs in the same mission — different waypoints can aim at different POIs.
 - The Orbit template (see [Templates](templates.md)) has its own POI-height field with flight altitude and gimbal pitch linked together, so orbits keep a consistent camera angle without you doing the trigonometry by hand.
+- Placing a POI on a drawn [building](buildings.md) copies the building's height onto the POI and pre-fills the Orbit template panel with a recommended radius, altitude, and gimbal pitch for orbiting it.

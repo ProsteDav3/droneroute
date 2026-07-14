@@ -5,10 +5,21 @@ import type {
   WaypointAction,
   PointOfInterest,
   Obstacle,
+  Building,
 } from "@droneroute/shared";
 import { DEFAULT_MISSION_CONFIG, DEFAULT_WAYPOINT } from "@droneroute/shared";
 import { usePreferencesStore } from "@/store/preferencesStore";
-import type { TemplateType, TemplateParams } from "@/lib/templates";
+import type {
+  TemplateType,
+  TemplateParams,
+  OrbitParams,
+} from "@/lib/templates";
+import {
+  computeOrbitSeedForBuilding,
+  computeAltitudeForPitch,
+  DEFAULT_ORBIT_PARAMS,
+} from "@/lib/templates";
+import { pointInPolygon } from "@/lib/geo";
 
 export type SelectionMode = "replace" | "toggle" | "range";
 
@@ -41,6 +52,13 @@ interface MissionState {
   isDrawingObstacle: boolean;
   drawingVertices: [number, number][];
 
+  // Buildings
+  buildings: Building[];
+  selectedBuildingId: string | null;
+  isDrawingBuilding: boolean;
+  buildingDrawMode: "rectangle" | "polygon";
+  drawingBuildingVertices: [number, number][];
+
   // UI state
   isAddingWaypoint: boolean;
   isAddingPoi: boolean;
@@ -48,6 +66,9 @@ interface MissionState {
   /** Set to pan/zoom the map to a [lat, lng], e.g. after a location search. */
   flyToTarget: [number, number] | null;
   setFlyToTarget: (target: [number, number] | null) => void;
+  /** Seeded when a POI is placed on a building — TemplateDrawHandler opens the Orbit panel pre-filled with these values instead of an empty drag gesture. */
+  pendingOrbitParams: OrbitParams | null;
+  setPendingOrbitParams: (params: OrbitParams | null) => void;
   /** Params of every applied template, keyed by the id tagged onto its waypoints/POIs — lets a template be reopened and edited after Apply instead of only being addable once. */
   templateGroups: Record<string, TemplateGroup>;
   /** Set to reopen a template's config panel for editing (see BulkActionToolbar's "Edit template"). */
@@ -123,6 +144,28 @@ interface MissionState {
   setIsDrawingObstacle: (drawing: boolean) => void;
   setDrawingVertices: (vertices: [number, number][]) => void;
 
+  // Building actions
+  addBuilding: (vertices: [number, number][], height: number) => void;
+  updateBuilding: (id: string, updates: Partial<Building>) => void;
+  removeBuilding: (id: string) => void;
+  moveBuildingVertex: (
+    id: string,
+    vertexIndex: number,
+    lat: number,
+    lng: number,
+  ) => void;
+  addBuildingVertex: (
+    id: string,
+    afterIndex: number,
+    lat: number,
+    lng: number,
+  ) => void;
+  removeBuildingVertex: (id: string, vertexIndex: number) => void;
+  selectBuilding: (id: string | null) => void;
+  setIsDrawingBuilding: (drawing: boolean) => void;
+  setBuildingDrawMode: (mode: "rectangle" | "polygon") => void;
+  setDrawingBuildingVertices: (vertices: [number, number][]) => void;
+
   // Mission actions
   loadMission: (data: {
     id?: string;
@@ -131,6 +174,7 @@ interface MissionState {
     waypoints: Waypoint[];
     pois?: PointOfInterest[];
     obstacles?: Obstacle[];
+    buildings?: Building[];
   }) => void;
   clearMission: () => void;
   setDirty: (dirty: boolean) => void;
@@ -150,11 +194,18 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   selectedObstacleId: null,
   isDrawingObstacle: false,
   drawingVertices: [],
+  buildings: [],
+  selectedBuildingId: null,
+  isDrawingBuilding: false,
+  buildingDrawMode: "rectangle",
+  drawingBuildingVertices: [],
   isAddingWaypoint: true,
   isAddingPoi: false,
   templateMode: null,
   flyToTarget: null,
   setFlyToTarget: (target) => set({ flyToTarget: target }),
+  pendingOrbitParams: null,
+  setPendingOrbitParams: (params) => set({ pendingOrbitParams: params }),
   templateGroups: {},
   editingTemplateGroupId: null,
   setEditingTemplateGroupId: (id) => set({ editingTemplateGroupId: id }),
@@ -342,6 +393,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       isAddingWaypoint: adding,
       isAddingPoi: adding ? false : state.isAddingPoi,
       isDrawingObstacle: adding ? false : state.isDrawingObstacle,
+      isDrawingBuilding: adding ? false : state.isDrawingBuilding,
       templateMode: adding ? null : state.templateMode,
     })),
 
@@ -386,16 +438,43 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   // POI actions
   addPoi: (lat, lng) =>
     set((state) => {
+      const building = state.buildings.find(
+        (b) => b.vertices.length >= 3 && pointInPolygon([lat, lng], b.vertices),
+      );
+
       const poi: PointOfInterest = {
         id: crypto.randomUUID(),
         name: `POI ${state.pois.length + 1}`,
         latitude: lat,
         longitude: lng,
-        height: 0,
+        height: building ? building.height : 0,
       };
+
+      // A POI dropped on a building: pre-fill the Orbit panel with a
+      // recommended altitude/radius/gimbal pitch for orbiting it, instead
+      // of generating a route automatically.
+      let pendingOrbitParams = state.pendingOrbitParams;
+      if (building) {
+        const seed = computeOrbitSeedForBuilding(building.vertices);
+        const gimbalPitchDeg = DEFAULT_ORBIT_PARAMS.gimbalPitchDeg;
+        pendingOrbitParams = {
+          ...DEFAULT_ORBIT_PARAMS,
+          center: seed.center,
+          radiusM: seed.radiusM,
+          poiHeight: building.height,
+          gimbalPitchDeg,
+          altitude: computeAltitudeForPitch(
+            gimbalPitchDeg,
+            building.height,
+            seed.radiusM,
+          ),
+        };
+      }
+
       return {
         pois: [...state.pois, poi],
         selectedPoiId: poi.id,
+        pendingOrbitParams,
         dirty: true,
       };
     }),
@@ -432,6 +511,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       isAddingPoi: adding,
       isAddingWaypoint: adding ? false : state.isAddingWaypoint,
       isDrawingObstacle: adding ? false : state.isDrawingObstacle,
+      isDrawingBuilding: adding ? false : state.isDrawingBuilding,
       templateMode: adding ? null : state.templateMode,
     })),
 
@@ -510,6 +590,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       isDrawingObstacle: drawing,
       isAddingWaypoint: drawing ? false : state.isAddingWaypoint,
       isAddingPoi: drawing ? false : state.isAddingPoi,
+      isDrawingBuilding: drawing ? false : state.isDrawingBuilding,
       templateMode: drawing ? null : state.templateMode,
       selectedWaypointIndices: drawing
         ? new Set<number>()
@@ -520,12 +601,103 @@ export const useMissionStore = create<MissionState>((set, get) => ({
 
   setDrawingVertices: (vertices) => set({ drawingVertices: vertices }),
 
+  // Building actions
+  addBuilding: (vertices, height) =>
+    set((state) => {
+      const building: Building = {
+        id: crypto.randomUUID(),
+        name: `Building ${state.buildings.length + 1}`,
+        height,
+        vertices,
+      };
+      return {
+        buildings: [...state.buildings, building],
+        selectedBuildingId: building.id,
+        isDrawingBuilding: false,
+        drawingBuildingVertices: [],
+        dirty: true,
+      };
+    }),
+
+  updateBuilding: (id, updates) =>
+    set((state) => ({
+      buildings: state.buildings.map((b) =>
+        b.id === id ? { ...b, ...updates } : b,
+      ),
+      dirty: true,
+    })),
+
+  removeBuilding: (id) =>
+    set((state) => ({
+      buildings: state.buildings.filter((b) => b.id !== id),
+      selectedBuildingId:
+        state.selectedBuildingId === id ? null : state.selectedBuildingId,
+      dirty: true,
+    })),
+
+  moveBuildingVertex: (id, vertexIndex, lat, lng) =>
+    set((state) => ({
+      buildings: state.buildings.map((b) => {
+        if (b.id !== id) return b;
+        const vertices = [...b.vertices] as [number, number][];
+        vertices[vertexIndex] = [lat, lng];
+        return { ...b, vertices };
+      }),
+      dirty: true,
+    })),
+
+  addBuildingVertex: (id, afterIndex, lat, lng) =>
+    set((state) => ({
+      buildings: state.buildings.map((b) => {
+        if (b.id !== id) return b;
+        const vertices = [...b.vertices] as [number, number][];
+        vertices.splice(afterIndex + 1, 0, [lat, lng]);
+        return { ...b, vertices };
+      }),
+      dirty: true,
+    })),
+
+  removeBuildingVertex: (id, vertexIndex) =>
+    set((state) => ({
+      buildings: state.buildings.map((b) => {
+        if (b.id !== id || b.vertices.length <= 3) return b;
+        const vertices = b.vertices.filter(
+          (_: [number, number], i: number) => i !== vertexIndex,
+        );
+        return { ...b, vertices };
+      }),
+      dirty: true,
+    })),
+
+  selectBuilding: (id) => set({ selectedBuildingId: id }),
+
+  setIsDrawingBuilding: (drawing) =>
+    set((state) => ({
+      isDrawingBuilding: drawing,
+      isAddingWaypoint: drawing ? false : state.isAddingWaypoint,
+      isAddingPoi: drawing ? false : state.isAddingPoi,
+      isDrawingObstacle: drawing ? false : state.isDrawingObstacle,
+      templateMode: drawing ? null : state.templateMode,
+      selectedWaypointIndices: drawing
+        ? new Set<number>()
+        : state.selectedWaypointIndices,
+      selectedPoiId: drawing ? null : state.selectedPoiId,
+      drawingBuildingVertices: drawing ? [] : state.drawingBuildingVertices,
+    })),
+
+  setBuildingDrawMode: (mode) =>
+    set({ buildingDrawMode: mode, drawingBuildingVertices: [] }),
+
+  setDrawingBuildingVertices: (vertices) =>
+    set({ drawingBuildingVertices: vertices }),
+
   setTemplateMode: (mode) =>
     set({
       templateMode: mode,
       isAddingWaypoint: false,
       isAddingPoi: false,
       isDrawingObstacle: false,
+      isDrawingBuilding: false,
       selectedWaypointIndices: new Set(),
       selectedPoiId: null,
     }),
@@ -639,10 +811,12 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       waypoints: data.waypoints,
       pois: data.pois || [],
       obstacles: data.obstacles || [],
+      buildings: data.buildings || [],
       selectedWaypointIndices: new Set<number>(),
       lastSelectedWaypointIndex: null,
       selectedPoiId: null,
       selectedObstacleId: null,
+      selectedBuildingId: null,
       // Template params aren't persisted with a saved mission (yet), so any
       // waypoints/POIs tagged with a templateGroupId from a previous session
       // become plain, non-editable-as-a-template waypoints after a
@@ -650,6 +824,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       // carry over dangling group ids the store has no params for.
       templateGroups: {},
       editingTemplateGroupId: null,
+      pendingOrbitParams: null,
       dirty: false,
     }),
 
@@ -662,14 +837,19 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       waypoints: [],
       pois: [],
       obstacles: [],
+      buildings: [],
       selectedWaypointIndices: new Set<number>(),
       lastSelectedWaypointIndex: null,
       selectedPoiId: null,
       selectedObstacleId: null,
+      selectedBuildingId: null,
       isDrawingObstacle: false,
       drawingVertices: [],
+      isDrawingBuilding: false,
+      drawingBuildingVertices: [],
       templateGroups: {},
       editingTemplateGroupId: null,
+      pendingOrbitParams: null,
       dirty: false,
     });
   },

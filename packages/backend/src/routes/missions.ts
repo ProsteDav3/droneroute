@@ -19,7 +19,7 @@ missionRoutes.get("/", authMiddleware, (req: AuthRequest, res) => {
   const db = getDb();
   const rows = db
     .prepare(
-      "SELECT id, name, config, waypoints, pois, obstacles, share_token, created_at, updated_at FROM missions WHERE user_id = ? ORDER BY updated_at DESC",
+      "SELECT id, name, config, waypoints, pois, obstacles, buildings, share_token, created_at, updated_at FROM missions WHERE user_id = ? ORDER BY updated_at DESC",
     )
     .all(req.userId!) as any[];
 
@@ -53,6 +53,7 @@ missionRoutes.get("/:id", authMiddleware, (req: AuthRequest, res) => {
     waypoints: JSON.parse(row.waypoints),
     pois: JSON.parse(row.pois || "[]"),
     obstacles: JSON.parse(row.obstacles || "[]"),
+    buildings: JSON.parse(row.buildings || "[]"),
   };
 
   res.json(mission);
@@ -60,7 +61,7 @@ missionRoutes.get("/:id", authMiddleware, (req: AuthRequest, res) => {
 
 // Create mission
 missionRoutes.post("/", optionalAuth, (req: AuthRequest, res) => {
-  const { name, config, waypoints, pois, obstacles } = req.body;
+  const { name, config, waypoints, pois, obstacles, buildings } = req.body;
   if (!name || !config || !waypoints) {
     res.status(400).json({ error: "name, config, and waypoints are required" });
     return;
@@ -75,7 +76,7 @@ missionRoutes.post("/", optionalAuth, (req: AuthRequest, res) => {
   const db = getDb();
   const id = uuidv4();
   db.prepare(
-    "INSERT INTO missions (id, name, user_id, config, waypoints, pois, obstacles) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO missions (id, name, user_id, config, waypoints, pois, obstacles, buildings) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
   ).run(
     id,
     name,
@@ -84,6 +85,7 @@ missionRoutes.post("/", optionalAuth, (req: AuthRequest, res) => {
     JSON.stringify(waypoints),
     JSON.stringify(pois || []),
     JSON.stringify(obstacles || []),
+    JSON.stringify(buildings || []),
   );
 
   res.status(201).json({ id, name });
@@ -91,7 +93,7 @@ missionRoutes.post("/", optionalAuth, (req: AuthRequest, res) => {
 
 // Update mission (owner only)
 missionRoutes.put("/:id", authMiddleware, (req: AuthRequest, res) => {
-  const { name, config, waypoints, pois, obstacles } = req.body;
+  const { name, config, waypoints, pois, obstacles, buildings } = req.body;
   const db = getDb();
 
   const existing = db
@@ -135,6 +137,10 @@ missionRoutes.put("/:id", authMiddleware, (req: AuthRequest, res) => {
   if (obstacles !== undefined) {
     updates.push("obstacles = ?");
     values.push(JSON.stringify(obstacles));
+  }
+  if (buildings !== undefined) {
+    updates.push("buildings = ?");
+    values.push(JSON.stringify(buildings));
   }
 
   updates.push("updated_at = datetime('now')");

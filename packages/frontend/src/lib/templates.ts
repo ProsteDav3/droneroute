@@ -246,6 +246,39 @@ export function computeAltitudeForPitch(
   return Math.max(1, Math.min(MAX_DERIVED_ALTITUDE_M, Math.round(altitude)));
 }
 
+// ── Building-derived orbit seed ──────────────────────────
+
+/** Extra clearance (meters) beyond a building's footprint so an orbit around it clears every corner. */
+const BUILDING_ORBIT_CLEARANCE_M = 15;
+
+export interface BuildingOrbitSeed {
+  center: [number, number];
+  radiusM: number;
+}
+
+/**
+ * Recommended orbit center + radius for flying around a building footprint:
+ * center is the footprint's centroid, radius is the farthest vertex from
+ * that centroid plus a safety clearance so the orbit clears every corner
+ * (including non-rectangular or rotated footprints).
+ */
+export function computeOrbitSeedForBuilding(
+  vertices: [number, number][],
+): BuildingOrbitSeed {
+  const centerLat =
+    vertices.reduce((sum, v) => sum + v[0], 0) / vertices.length;
+  const centerLng =
+    vertices.reduce((sum, v) => sum + v[1], 0) / vertices.length;
+  const center: [number, number] = [centerLat, centerLng];
+  const maxDist = Math.max(
+    ...vertices.map((v) => haversine(center[0], center[1], v[0], v[1])),
+  );
+  return {
+    center,
+    radiusM: Math.round(maxDist + BUILDING_ORBIT_CLEARANCE_M),
+  };
+}
+
 // ── Generators ───────────────────────────────────────────
 
 export function generateOrbit(params: OrbitParams): TemplateResult {

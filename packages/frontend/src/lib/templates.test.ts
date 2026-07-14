@@ -4,11 +4,13 @@ import {
   DEFAULT_ORBIT_PARAMS,
   computeGimbalPitch,
   computeAltitudeForPitch,
+  computeOrbitSeedForBuilding,
   generateSolarSurvey,
   bearing,
   destinationPoint,
 } from "./templates";
 import type { OrbitParams, SolarParams } from "./templates";
+import { haversineDistance } from "@/lib/geo";
 
 const CENTER: [number, number] = [50.06, 14.43];
 
@@ -236,5 +238,44 @@ describe("generateSolarSurvey", () => {
       addPhotos: false,
     });
     expect(result.waypoints).toHaveLength(0);
+  });
+});
+
+describe("computeOrbitSeedForBuilding", () => {
+  it("centers on the footprint centroid and radius covers the farthest corner plus clearance", () => {
+    const size = 40;
+    const c00 = CENTER;
+    const c10 = destinationPoint(c00[0], c00[1], size, 90);
+    const c01 = destinationPoint(c00[0], c00[1], size, 0);
+    const c11 = destinationPoint(c01[0], c01[1], size, 90);
+    const vertices: [number, number][] = [c00, c10, c11, c01];
+
+    const seed = computeOrbitSeedForBuilding(vertices);
+
+    // True geometric center of a 40x40 square is ~28.3m from any corner.
+    const distFromCorner = haversineDistance(
+      seed.center[0],
+      seed.center[1],
+      c00[0],
+      c00[1],
+    );
+    expect(distFromCorner).toBeGreaterThan(25);
+    expect(distFromCorner).toBeLessThan(32);
+
+    // Radius covers the half-diagonal (~28.3m) plus the fixed clearance.
+    expect(seed.radiusM).toBeGreaterThan(40);
+    expect(seed.radiusM).toBeLessThan(46);
+  });
+
+  it("is invariant under vertex winding order", () => {
+    const vertices: [number, number][] = [
+      CENTER,
+      destinationPoint(CENTER[0], CENTER[1], 30, 90),
+      destinationPoint(CENTER[0], CENTER[1], 30, 45),
+    ];
+    const forward = computeOrbitSeedForBuilding(vertices);
+    const reversed = computeOrbitSeedForBuilding([...vertices].reverse());
+    expect(reversed.center).toEqual(forward.center);
+    expect(reversed.radiusM).toEqual(forward.radiusM);
   });
 });

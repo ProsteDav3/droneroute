@@ -1,0 +1,22 @@
+# Buildings
+
+Draw building footprints on the map so the app can recommend orbit settings automatically instead of guessing radius and altitude by hand.
+
+## What you can do
+
+- Draw a building's footprint either as a 2-corner rectangle or by clicking out an irregular polygon, and set its real height.
+- See a list of all buildings in the sidebar, with area and height, and edit or delete them.
+- Place a point of interest (POI) on a building to have its height copied automatically, and to pre-fill the Orbit template panel with a recommended flight altitude, radius, and gimbal pitch for orbiting that building — instead of typing those numbers in by hand.
+
+## How it works
+
+1. Press **H** or click the "Building" button in the toolbar to enter building drawing mode.
+2. Choose **Rect** (click-and-drag two opposite corners) or **Polygon** (click to place each corner, then click near the first point or double-click to close the shape).
+3. Enter the building's height in the panel that appears, then click Apply.
+4. Switch to **Add POI** (press **P**) and click somewhere inside the building's footprint. The new POI's height is set to the building's height, and the Orbit template panel opens pre-filled with a center, radius, and gimbal pitch recommended for orbiting that building — adjust any of these before applying, exactly as with a manually placed orbit.
+
+## Good to know
+
+- The recommended radius clears every corner of the footprint (not just a bounding box average), plus a safety margin, so it works for rotated or non-rectangular buildings too.
+- Placing a POI on a building only pre-fills the Orbit panel's values — it does not generate a flight path automatically. You still need to open the Orbit template and click Apply.
+- Buildings are a planning aid, similar to [obstacles](obstacles.md) — they don't generate a flight path themselves and aren't included in the exported KMZ.

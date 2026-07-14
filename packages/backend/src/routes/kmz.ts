@@ -2,7 +2,10 @@ import { Router } from "express";
 import multer from "multer";
 import { v4 as uuidv4 } from "uuid";
 import type { Mission } from "@droneroute/shared";
-import { generateKmzBuffer } from "../services/kmzGenerator.js";
+import {
+  generateKmzBuffer,
+  generateMissionSegmentsZip,
+} from "../services/kmzGenerator.js";
 import { parseKmz } from "../services/kmzParser.js";
 import { getDb } from "../models/db.js";
 import {
@@ -64,6 +67,55 @@ kmzRoutes.post(
     } catch (err: any) {
       console.error("KMZ download error:", err);
       res.status(500).json({ error: "Failed to generate KMZ" });
+    }
+  },
+);
+
+// Split a mission into consecutive one-leg missions and return them all as a
+// single zip of .kmz files (one per leg: WP1→WP2, WP2→WP3, ...)
+kmzRoutes.post(
+  "/generate-segments",
+  strictLimiter,
+  optionalAuth,
+  async (req: AuthRequest, res) => {
+    try {
+      const { name, config, waypoints, pois } = req.body;
+      if (!config || !waypoints || waypoints.length < 2) {
+        res
+          .status(400)
+          .json({ error: "At least 2 waypoints and a config are required" });
+        return;
+      }
+
+      const geometryError = validateMissionGeometry({ waypoints, pois });
+      if (geometryError) {
+        res.status(400).json({ error: geometryError });
+        return;
+      }
+
+      const mission: Mission = {
+        id: uuidv4(),
+        name: name || "mission",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        config,
+        waypoints,
+        pois: pois || [],
+        obstacles: [],
+      };
+
+      const buffer = await generateMissionSegmentsZip(mission);
+
+      const filename = `${mission.name.replace(/[^a-zA-Z0-9_-]/g, "_")}-segments.zip`;
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`,
+      );
+      res.send(buffer);
+    } catch (err: any) {
+      console.error("KMZ segments export error:", err);
+      res.status(500).json({ error: "Failed to generate mission segments" });
     }
   },
 );

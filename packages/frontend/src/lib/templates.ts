@@ -81,6 +81,19 @@ export interface OrbitParams {
   numPoints: number;
   clockwise: boolean;
   createPoi: boolean;
+  /** Start bearing in degrees, 0=North. Ignored for a full 360° circle. */
+  startAngleDeg: number;
+  /**
+   * End bearing in degrees. When `endAngleDeg - startAngleDeg >= 360` the
+   * result is a closed loop (original full-circle behavior). Otherwise the
+   * generator places `numPoints` waypoints from startAngleDeg to endAngleDeg
+   * inclusive (the first/last waypoint always lands exactly on the two
+   * bearings the caller asked for, regardless of `clockwise`). `clockwise`
+   * then only picks *which* of the two arcs between those bearings to fly:
+   * the direct increasing-angle sweep, or the complementary arc the other
+   * way around the circle.
+   */
+  endAngleDeg: number;
 }
 
 export interface GridParams {
@@ -132,6 +145,8 @@ export const DEFAULT_ORBIT_PARAMS: Omit<OrbitParams, "center" | "radiusM"> = {
   numPoints: 12,
   clockwise: true,
   createPoi: true,
+  startAngleDeg: 0,
+  endAngleDeg: 360,
 };
 
 export const DEFAULT_GRID_PARAMS: Omit<GridParams, "corner1" | "corner2"> = {
@@ -162,7 +177,16 @@ export const DEFAULT_PENCIL_PARAMS: Omit<PencilParams, "path"> = {
 // ── Generators ───────────────────────────────────────────
 
 export function generateOrbit(params: OrbitParams): TemplateResult {
-  const { center, radiusM, altitude, numPoints, clockwise, createPoi } = params;
+  const {
+    center,
+    radiusM,
+    altitude,
+    numPoints,
+    clockwise,
+    createPoi,
+    startAngleDeg,
+    endAngleDeg,
+  } = params;
   const [cLat, cLng] = center;
 
   const waypoints: TemplateResult["waypoints"] = [];
@@ -175,10 +199,30 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     pois.push({ name: poiName, latitude: cLat, longitude: cLng, height: 0 });
   }
 
+  // A full circle is a closed loop: numPoints evenly spaced gaps, no
+  // duplicate waypoint at the seam. A partial arc is open-ended: numPoints
+  // waypoints span startAngleDeg..endAngleDeg inclusive (numPoints - 1 gaps),
+  // so the first and last waypoints land exactly on the requested bounds —
+  // in BOTH directions. For an open arc, "clockwise" picks which of the two
+  // possible arcs between the same two bearings to fly: the direct
+  // (increasing-angle) sweep, or its 360°-complement the other way around.
+  // Naively negating the sweep (as an earlier version of this code did)
+  // only works for a closed loop — for an open arc it lands the last
+  // waypoint on the wrong bearing and backtracks through already-flown
+  // airspace instead of tracing the requested end angle.
+  const isClosedLoop = endAngleDeg - startAngleDeg >= 360;
+  const divisor = isClosedLoop ? numPoints : Math.max(1, numPoints - 1);
+  let signedSweep: number;
+  if (isClosedLoop) {
+    signedSweep = clockwise ? 360 : -360;
+  } else {
+    const clockwiseSweep = (((endAngleDeg - startAngleDeg) % 360) + 360) % 360;
+    signedSweep = clockwise ? clockwiseSweep : clockwiseSweep - 360;
+  }
+
   for (let i = 0; i < numPoints; i++) {
-    const fraction = i / numPoints;
-    // Start from North (0°), go clockwise or counter-clockwise
-    const angleDeg = clockwise ? fraction * 360 : 360 - fraction * 360;
+    const fraction = i / divisor;
+    const angleDeg = startAngleDeg + fraction * signedSweep;
     const [lat, lng] = destinationPoint(cLat, cLng, radiusM, angleDeg);
 
     // Calculate heading angle toward center

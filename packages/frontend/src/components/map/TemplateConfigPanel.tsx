@@ -75,7 +75,7 @@ export function TemplateConfigPanel({
           : "Pencil path";
   const description =
     type === "orbit"
-      ? "Circular flight path around a center point. Adjust the radius, number of points, and enable POI to keep the camera focused on the center."
+      ? "Circular flight path around a center point. Adjust the radius, number of points, and enable POI to keep the camera focused on the center. Set end angle below 360° for an open arc between a start and end bearing instead of a full loop."
       : type === "grid"
         ? "Lawn-mower zigzag pattern for systematic area coverage. Control line spacing for overlap and rotation to align with the terrain."
         : type === "facade"
@@ -176,9 +176,38 @@ export function TemplateConfigPanel({
               value={orbitParams.numPoints}
               onChange={(v) => onOrbitChange({ ...orbitParams, numPoints: v })}
               min={3}
-              max={72}
               fallback={12}
               integer
+              className="h-7 text-xs"
+            />
+          </div>
+          <div>
+            <Label className="text-[10px]">Start angle (°)</Label>
+            <NumericInput
+              value={orbitParams.startAngleDeg}
+              onChange={(v) =>
+                onOrbitChange({ ...orbitParams, startAngleDeg: v })
+              }
+              min={-360}
+              max={360}
+              step={5}
+              fallback={0}
+              className="h-7 text-xs"
+            />
+          </div>
+          <div>
+            <Label className="text-[10px]">
+              End angle (°, 360 = full circle)
+            </Label>
+            <NumericInput
+              value={orbitParams.endAngleDeg}
+              onChange={(v) =>
+                onOrbitChange({ ...orbitParams, endAngleDeg: v })
+              }
+              min={orbitParams.startAngleDeg}
+              max={720}
+              step={5}
+              fallback={360}
               className="h-7 text-xs"
             />
           </div>

@@ -21,6 +21,7 @@ import {
   CircleHelp,
   Triangle,
   Shield,
+  Scissors,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,6 +82,7 @@ export default function App() {
 
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingSegments, setExportingSegments] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -252,6 +254,34 @@ export default function App() {
       toast.error(`Export failed: ${err.message}`);
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleExportSegments = async () => {
+    if (waypoints.length < 2) {
+      toast.warning("Need at least 2 waypoints to export segments");
+      return;
+    }
+
+    setExportingSegments(true);
+    try {
+      const blob = await api.post<Blob>("/kmz/generate-segments", {
+        name: missionName,
+        config,
+        waypoints,
+        pois,
+      });
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${missionName.replace(/[^a-zA-Z0-9_-]/g, "_")}-segments.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      toast.error(`Segment export failed: ${err.message}`);
+    } finally {
+      setExportingSegments(false);
     }
   };
 
@@ -544,6 +574,23 @@ export default function App() {
             className="hidden"
             onChange={handleImport}
           />
+        </div>
+        <div className="flex gap-1 px-2 pb-2 border-b border-border">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportSegments}
+            disabled={exportingSegments || waypoints.length < 2}
+            className="flex-1 text-xs h-7 border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 hover:text-blue-300"
+            title={
+              waypoints.length < 2
+                ? "Add at least 2 waypoints to export segments"
+                : "Split the route into one-leg missions (WP1→WP2, WP2→WP3, ...) and download them all as a zip of .kmz files"
+            }
+          >
+            <Scissors className="h-3 w-3" />
+            {exportingSegments ? "..." : "Export segments (.zip)"}
+          </Button>
         </div>
 
         {/* Scrollable content */}

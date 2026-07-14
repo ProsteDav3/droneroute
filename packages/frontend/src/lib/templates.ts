@@ -8,7 +8,7 @@ import { DEFAULT_WAYPOINT } from "@droneroute/shared";
 // ── Helpers ──────────────────────────────────────────────
 
 /** Move a lat/lng point by a distance (meters) and bearing (degrees, 0=N) */
-function destinationPoint(
+export function destinationPoint(
   lat: number,
   lng: number,
   distanceM: number,
@@ -37,7 +37,7 @@ function destinationPoint(
 }
 
 /** Bearing from point A to point B in degrees (0=N, 90=E) */
-function bearing(
+export function bearing(
   lat1: number,
   lng1: number,
   lat2: number,

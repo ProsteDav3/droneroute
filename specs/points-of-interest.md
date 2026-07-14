@@ -5,6 +5,7 @@ Mark a location on the map that the drone should look at during flight.
 ## What you can do
 
 - Place one or more points of interest (POIs) on the map.
+- Move a POI to an address or exact coordinates by typing it into the search field in the POI's settings, instead of only being able to drag it on the map.
 - Set a height for each POI.
 - Assign a POI to any waypoint so the drone automatically aims the camera at it.
 - Get a smart gimbal pitch calculation — the app figures out the best camera angle based on the drone's position and the POI's location and height.

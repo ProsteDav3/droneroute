@@ -13,6 +13,8 @@ import {
   generateOrbit,
   generateGrid,
   generateFacade,
+  destinationPoint,
+  bearing,
   DEFAULT_ORBIT_PARAMS,
   DEFAULT_GRID_PARAMS,
   DEFAULT_FACADE_PARAMS,
@@ -58,6 +60,54 @@ function circleGeoJson(center: [number, number], radiusM: number) {
     properties: {},
     geometry: { type: "LineString" as const, coordinates: coords },
   };
+}
+
+/**
+ * A draggable handle sitting on the orbit's start bearing. Dragging it
+ * rotates the whole arc (keeping its angular width constant) around the
+ * center — lets you pick exactly where the first waypoint goes by eye,
+ * without typing a start-angle number.
+ */
+function OrbitRotationHandle({
+  orbitParams,
+  onRotate,
+}: {
+  orbitParams: OrbitParams;
+  onRotate: (startAngleDeg: number) => void;
+}) {
+  const { center, radiusM, startAngleDeg } = orbitParams;
+  const [cLat, cLng] = center;
+  const [hLat, hLng] = destinationPoint(cLat, cLng, radiusM, startAngleDeg);
+
+  const handleDrag = useCallback(
+    (e: { lngLat: { lng: number; lat: number } }) => {
+      onRotate(bearing(cLat, cLng, e.lngLat.lat, e.lngLat.lng));
+    },
+    [cLat, cLng, onRotate],
+  );
+
+  return (
+    <Marker
+      longitude={hLng}
+      latitude={hLat}
+      anchor="center"
+      draggable
+      onDrag={handleDrag}
+    >
+      <div
+        title="Drag to rotate the arc"
+        style={{
+          width: 16,
+          height: 16,
+          borderRadius: "50%",
+          background: "#fff",
+          border: "3px solid #a78bfa",
+          boxShadow: "0 0 0 4px rgba(167,139,250,0.35)",
+          cursor: "grab",
+        }}
+      />
+    </Marker>
+  );
 }
 
 export function TemplateDrawHandler() {
@@ -345,6 +395,21 @@ export function TemplateDrawHandler() {
 
       {/* Preview waypoints */}
       {activePreview && <TemplatePreview result={activePreview} />}
+
+      {/* Rotation handle for a confirmed orbit */}
+      {confirmed && orbitParams && (
+        <OrbitRotationHandle
+          orbitParams={orbitParams}
+          onRotate={(newStartAngleDeg) => {
+            const width = orbitParams.endAngleDeg - orbitParams.startAngleDeg;
+            setOrbitParams({
+              ...orbitParams,
+              startAngleDeg: newStartAngleDeg,
+              endAngleDeg: newStartAngleDeg + width,
+            });
+          }}
+        />
+      )}
 
       {/* Config panel */}
       {confirmed && (

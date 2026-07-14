@@ -40,6 +40,9 @@ interface MissionState {
   isAddingWaypoint: boolean;
   isAddingPoi: boolean;
   templateMode: TemplateType | null;
+  /** Set to pan/zoom the map to a [lat, lng], e.g. after a location search. */
+  flyToTarget: [number, number] | null;
+  setFlyToTarget: (target: [number, number] | null) => void;
   currentPage: "editor" | "routes" | "shared" | "admin";
   shareToken: string | null;
   setCurrentPage: (page: "editor" | "routes" | "shared" | "admin") => void;
@@ -132,6 +135,8 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   isAddingWaypoint: true,
   isAddingPoi: false,
   templateMode: null,
+  flyToTarget: null,
+  setFlyToTarget: (target) => set({ flyToTarget: target }),
   currentPage: "editor",
   shareToken: null,
   setCurrentPage: (page) => set({ currentPage: page }),

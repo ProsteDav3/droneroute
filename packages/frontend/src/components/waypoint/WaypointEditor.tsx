@@ -1,6 +1,7 @@
 import { useMissionStore } from "@/store/missionStore";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LocationSearch } from "@/components/ui/location-search";
 import {
   Select,
   SelectContent,
@@ -56,7 +57,8 @@ interface WaypointEditorInlineProps {
 export function WaypointEditorInline({
   waypointIndex,
 }: WaypointEditorInlineProps) {
-  const { waypoints, updateWaypoint, config, pois } = useMissionStore();
+  const { waypoints, updateWaypoint, config, pois, setFlyToTarget } =
+    useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
 
   const wp = waypoints.find((w) => w.index === waypointIndex);
@@ -68,6 +70,16 @@ export function WaypointEditorInline({
 
   return (
     <div className="p-3 space-y-3">
+      <div>
+        <Label className="text-xs">Move to address or coordinates</Label>
+        <LocationSearch
+          onLocationFound={(lat, lng) => {
+            update({ latitude: lat, longitude: lng });
+            setFlyToTarget([lat, lng]);
+          }}
+        />
+      </div>
+
       <div className="grid grid-cols-2 gap-2">
         <div>
           <Label className="text-xs">

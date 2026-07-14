@@ -11,6 +11,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Check, X, MapPin } from "lucide-react";
+import { LocationSearch } from "@/components/ui/location-search";
+import { useMissionStore } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import {
   heightLabel,
@@ -65,6 +67,7 @@ export function TemplateConfigPanel({
   pois,
 }: TemplateConfigPanelProps) {
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
+  const setFlyToTarget = useMissionStore((s) => s.setFlyToTarget);
   const title =
     type === "orbit"
       ? "Orbit"
@@ -134,6 +137,17 @@ export function TemplateConfigPanel({
       {/* Orbit params */}
       {type === "orbit" && orbitParams && onOrbitChange && (
         <div className="grid grid-cols-2 gap-2 mb-3">
+          <div className="col-span-2">
+            <Label className="text-[10px]">
+              Center on address or coordinates
+            </Label>
+            <LocationSearch
+              onLocationFound={(lat, lng) => {
+                onOrbitChange({ ...orbitParams, center: [lat, lng] });
+                setFlyToTarget([lat, lng]);
+              }}
+            />
+          </div>
           <div>
             <Label className="text-[10px]">
               Radius ({distanceLabel(unitSystem)})

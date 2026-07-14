@@ -49,6 +49,7 @@ The map is the central workspace. Everything you do — placing waypoints, POIs,
 - The map opens centered on Barcelona by default. Self-hosted instances can change the starting location by setting `DEFAULT_MAP_VIEW` in their environment (or `docker-compose.yml`), formatted as `lat,lng` or `lat,lng,zoom`, so the map opens on their local area. Invalid or out-of-range values fall back to the built-in default.
 - You can click waypoints and POIs directly on the map to select and edit them.
 - The geocoding search box collapses to an icon when not in use to save space.
+- The same address-or-coordinates search also appears inline in the orbit template panel and in the waypoint/POI settings — entering a location there both flies the map there and moves the orbit center, waypoint, or POI to that exact spot.
 - A Mapbox access token is required. Self-hosted instances must set `MAPBOX_TOKEN` in their `.env` file.
 
 ## Airspace restriction zones

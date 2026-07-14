@@ -4,11 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { LocationSearch } from "@/components/ui/location-search";
 import { useMissionStore } from "@/store/missionStore";
 
 export function PoiList() {
-  const { pois, selectedPoiId, selectPoi, removePoi, updatePoi } =
-    useMissionStore();
+  const {
+    pois,
+    selectedPoiId,
+    selectPoi,
+    removePoi,
+    updatePoi,
+    setFlyToTarget,
+  } = useMissionStore();
   const [editingName, setEditingName] = useState<string | null>(null);
   const [expandedEditor, setExpandedEditor] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -121,6 +128,17 @@ export function PoiList() {
             {/* Inline editor */}
             {isEditorOpen && (
               <div className="ml-4 mr-1 mt-1 mb-2 border-l-2 border-amber-400/30 bg-amber-500/5 rounded-r-md p-3 space-y-2">
+                <div>
+                  <Label className="text-xs">
+                    Move to address or coordinates
+                  </Label>
+                  <LocationSearch
+                    onLocationFound={(lat, lng) => {
+                      updatePoi(poi.id, { latitude: lat, longitude: lng });
+                      setFlyToTarget([lat, lng]);
+                    }}
+                  />
+                </div>
                 <div>
                   <Label className="text-xs">Height (m)</Label>
                   <Input

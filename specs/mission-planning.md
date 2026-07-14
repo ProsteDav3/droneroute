@@ -5,6 +5,7 @@ Plan a drone flight by placing waypoints on the map and configuring what the dro
 ## What you can do
 
 - Place waypoints by clicking on the map.
+- Move an existing waypoint to an address or exact coordinates by typing it into the search field in the waypoint's settings, instead of only being able to drag it on the map.
 - Set altitude, speed, gimbal pitch (camera angle), and heading for each waypoint.
 - Choose a heading mode: follow the flight path, set a fixed angle, smooth transition between angles, or aim toward a point of interest.
 - Choose a turn mode: smooth curve, stop at the waypoint then continue, or fly through without stopping.

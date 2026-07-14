@@ -178,6 +178,30 @@ function GeocoderControl() {
 }
 
 /**
+ * Pans/zooms the map to `flyToTarget` whenever it's set (e.g. by a
+ * LocationSearch box in the sidebar), then clears it so the same location
+ * can be flown to again later.
+ */
+function FlyToTargetHandler() {
+  const { current: map } = useMap();
+  const flyToTarget = useMissionStore((s) => s.flyToTarget);
+  const setFlyToTarget = useMissionStore((s) => s.setFlyToTarget);
+
+  useEffect(() => {
+    if (!map || !flyToTarget) return;
+    const [lat, lng] = flyToTarget;
+    map.flyTo({
+      center: [lng, lat],
+      zoom: Math.max(map.getZoom(), 15),
+      duration: 800,
+    });
+    setFlyToTarget(null);
+  }, [map, flyToTarget, setFlyToTarget]);
+
+  return null;
+}
+
+/**
  * Automatically fits the map to show all waypoints when a mission is loaded.
  * Triggers when waypoints go from 0 to N (N >= 2).
  */
@@ -596,6 +620,7 @@ export function MapView() {
         />
         <FitBoundsOnLoad />
         <GeocoderControl />
+        <FlyToTargetHandler />
         <SceneSetup is3D={is3D} mapStyle={mapStyle} />
         <FlightPath is3D={is3D} />
         <PoiPointingLines is3D={is3D} />

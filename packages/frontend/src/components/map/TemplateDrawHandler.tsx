@@ -15,10 +15,28 @@ import {
   generateFacade,
   destinationPoint,
   bearing,
+  computeGimbalPitch,
   DEFAULT_ORBIT_PARAMS,
   DEFAULT_GRID_PARAMS,
   DEFAULT_FACADE_PARAMS,
 } from "@/lib/templates";
+
+/** DEFAULT_ORBIT_PARAMS + a freshly-drawn center/radius, with gimbal pitch
+ * recomputed for that radius instead of the static default. */
+function initialOrbitParams(
+  center: [number, number],
+  radiusM: number,
+): OrbitParams {
+  const base = { ...DEFAULT_ORBIT_PARAMS, center, radiusM };
+  return {
+    ...base,
+    gimbalPitchDeg: computeGimbalPitch(
+      base.altitude,
+      base.poiHeight,
+      base.radiusM,
+    ),
+  };
+}
 
 /** Haversine distance in meters */
 function haversine(
@@ -231,11 +249,7 @@ export function TemplateDrawHandler() {
 
       const tm = useMissionStore.getState().templateMode;
       if (tm === "orbit") {
-        setOrbitParams({
-          ...DEFAULT_ORBIT_PARAMS,
-          center: finalDrag.start,
-          radiusM: Math.round(dist),
-        });
+        setOrbitParams(initialOrbitParams(finalDrag.start, Math.round(dist)));
       } else if (tm === "grid") {
         setGridParams({
           ...DEFAULT_GRID_PARAMS,
@@ -284,11 +298,9 @@ export function TemplateDrawHandler() {
     if (dist < 5) return null;
 
     if (templateMode === "orbit") {
-      return generateOrbit({
-        ...DEFAULT_ORBIT_PARAMS,
-        center: dragState.start,
-        radiusM: Math.round(dist),
-      });
+      return generateOrbit(
+        initialOrbitParams(dragState.start, Math.round(dist)),
+      );
     }
     if (templateMode === "grid") {
       return generateGrid({

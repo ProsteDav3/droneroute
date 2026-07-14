@@ -94,6 +94,17 @@ export interface OrbitParams {
    * way around the circle.
    */
   endAngleDeg: number;
+  /** Real height of the point the camera should look at (e.g. a rooftop). */
+  poiHeight: number;
+  /** Current gimbal pitch (degrees, negative = looking down) applied to every waypoint. */
+  gimbalPitchDeg: number;
+  /**
+   * When true (default), editing altitude/gimbal pitch/radius/POI height
+   * keeps the other of {altitude, gimbalPitchDeg} in sync via the
+   * radius/height-difference geometry. Set to false to "lock" the current
+   * pair and edit either one independently without the other jumping.
+   */
+  altitudeGimbalLinked: boolean;
 }
 
 export interface GridParams {
@@ -147,6 +158,9 @@ export const DEFAULT_ORBIT_PARAMS: Omit<OrbitParams, "center" | "radiusM"> = {
   createPoi: true,
   startAngleDeg: 0,
   endAngleDeg: 360,
+  poiHeight: 0,
+  gimbalPitchDeg: -45,
+  altitudeGimbalLinked: true,
 };
 
 export const DEFAULT_GRID_PARAMS: Omit<GridParams, "corner1" | "corner2"> = {
@@ -174,6 +188,49 @@ export const DEFAULT_PENCIL_PARAMS: Omit<PencilParams, "path"> = {
   reverse: false,
 };
 
+// ── Altitude / gimbal pitch geometry ─────────────────────
+
+/**
+ * Gimbal pitch (degrees, -90 = straight down, 0 = horizon) needed to keep a
+ * point `poiHeight` meters up centered in frame from `radiusM` meters away
+ * horizontally, while flying at `altitude`.
+ */
+export function computeGimbalPitch(
+  altitude: number,
+  poiHeight: number,
+  radiusM: number,
+): number {
+  const heightDiff = altitude - poiHeight;
+  const pitchRad = Math.atan2(heightDiff, radiusM);
+  return Math.round(-pitchRad * (180 / Math.PI));
+}
+
+/** Sane flight-ceiling cap for altitudes derived from a gimbal pitch. */
+const MAX_DERIVED_ALTITUDE_M = 500;
+
+/**
+ * Inverse of computeGimbalPitch: altitude needed to hit a target pitch.
+ *
+ * At exactly ±90° (straight down/up) there is no finite altitude that
+ * keeps a point `radiusM` away horizontally centered in frame — the
+ * required altitude grows without bound as pitch approaches that limit.
+ * `Math.tan()` doesn't throw there (π/2 isn't exactly representable in
+ * float64, so it returns an enormous but finite number instead of Infinity),
+ * so without a guard this silently produces astronomical altitudes. Clamp
+ * the input away from the asymptote and cap the output so this always
+ * returns something you could actually fly.
+ */
+export function computeAltitudeForPitch(
+  gimbalPitchDeg: number,
+  poiHeight: number,
+  radiusM: number,
+): number {
+  const clampedPitch = Math.max(-89, Math.min(89, gimbalPitchDeg));
+  const pitchRad = (-clampedPitch * Math.PI) / 180;
+  const altitude = poiHeight + radiusM * Math.tan(pitchRad);
+  return Math.max(1, Math.min(MAX_DERIVED_ALTITUDE_M, Math.round(altitude)));
+}
+
 // ── Generators ───────────────────────────────────────────
 
 export function generateOrbit(params: OrbitParams): TemplateResult {
@@ -186,17 +243,25 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     createPoi,
     startAngleDeg,
     endAngleDeg,
+    poiHeight,
+    gimbalPitchDeg,
   } = params;
   const [cLat, cLng] = center;
 
   const waypoints: TemplateResult["waypoints"] = [];
   const pois: TemplateResult["pois"] = [];
 
-  // Optionally create a POI at the center
+  // Optionally create a POI at the center, at the real height the camera
+  // should look at (not always ground level).
   const poiName = "Orbit center";
 
   if (createPoi) {
-    pois.push({ name: poiName, latitude: cLat, longitude: cLng, height: 0 });
+    pois.push({
+      name: poiName,
+      latitude: cLat,
+      longitude: cLng,
+      height: poiHeight,
+    });
   }
 
   // A full circle is a closed loop: numPoints evenly spaced gaps, no
@@ -231,12 +296,6 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     const normalizedHeading =
       headingAngle > 180 ? headingAngle - 360 : headingAngle;
 
-    // Calculate ideal gimbal pitch
-    const horizontalDist = radiusM;
-    const heightDiff = altitude; // drone is above POI at ground level
-    const pitchRad = Math.atan2(heightDiff, horizontalDist);
-    const gimbalPitch = Math.round(-pitchRad * (180 / Math.PI));
-
     waypoints.push({
       ...DEFAULT_WAYPOINT,
       latitude: lat,
@@ -247,7 +306,7 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
       useGlobalHeadingParam: false,
       headingMode: "fixed",
       headingAngle: Math.round(normalizedHeading),
-      gimbalPitchAngle: gimbalPitch,
+      gimbalPitchAngle: gimbalPitchDeg,
       turnMode: "toPointAndPassWithContinuityCurvature",
       useGlobalTurnParam: false,
       actions: [],

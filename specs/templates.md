@@ -21,6 +21,17 @@ Create common flight patterns automatically instead of placing waypoints one by 
 3. For Orbit, Grid, and Facade: click-and-drag on the map to place the template. For Solar: click to place each boundary point, then click near the first point or double-click to close the shape. For Pencil: click-and-drag to draw a freehand path.
 4. The generated waypoints appear in the sidebar and can be edited individually.
 
+## Editing an already-applied template
+
+Realized the orbit's radius was too small only after clicking Apply? You don't have to delete it and start over:
+
+1. Select all the waypoints that came from that template (e.g. Ctrl+A / Cmd+A if they're the only waypoints, or Shift-click to select the range).
+2. If the whole selection came from one template application, an **"Edit template"** button appears in the selection toolbar.
+3. Click it to reopen that template's settings panel with its original values — adjust radius, spacing, altitude, or any other field, and the preview updates live, just like when you first placed it.
+4. Click Apply again to replace the old waypoints with the updated ones (or Cancel to leave them as they were).
+
+This works for Orbit, Grid, Facade, Pencil, and Solar. It does **not** survive saving and reloading a mission yet — after a save/reload, template-generated waypoints behave like any manually placed ones (still fully editable individually, just not as a re-adjustable group).
+
 ## Good to know
 
 - You can combine templates — for example, use a grid survey and then add an orbit around a specific structure.

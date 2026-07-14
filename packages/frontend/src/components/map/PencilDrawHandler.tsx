@@ -16,6 +16,14 @@ export function PencilDrawHandler() {
   const templateMode = useMissionStore((s) => s.templateMode);
   const setTemplateMode = useMissionStore((s) => s.setTemplateMode);
   const appendWaypoints = useMissionStore((s) => s.appendWaypoints);
+  const replaceTemplateGroup = useMissionStore((s) => s.replaceTemplateGroup);
+  const editingTemplateGroupId = useMissionStore(
+    (s) => s.editingTemplateGroupId,
+  );
+  const setEditingTemplateGroupId = useMissionStore(
+    (s) => s.setEditingTemplateGroupId,
+  );
+  const templateGroups = useMissionStore((s) => s.templateGroups);
   const pois = useMissionStore((s) => s.pois);
   const { current: map } = useMap();
 
@@ -37,8 +45,26 @@ export function PencilDrawHandler() {
   }, []);
 
   useEffect(() => {
+    if (editingTemplateGroupId) return;
     resetState();
-  }, [templateMode, resetState]);
+  }, [templateMode, editingTemplateGroupId, resetState]);
+
+  // Reopening an already-applied pencil path for editing: reload its stored
+  // params (including the originally drawn path) straight into "confirmed"
+  // state — no need to redraw the path to tweak e.g. altitude or speed.
+  useEffect(() => {
+    if (!editingTemplateGroupId) return;
+    const group = templateGroups[editingTemplateGroupId];
+    if (!group || group.type !== "pencil") return;
+
+    const params = group.params as PencilParams;
+    setPencilParams(params);
+    setRawPath(params.path);
+    setConfirmed(true);
+    if (templateMode !== "pencil") {
+      setTemplateMode("pencil");
+    }
+  }, [editingTemplateGroupId, templateGroups, templateMode, setTemplateMode]);
 
   // Map mouse events for pencil drawing
   useEffect(() => {
@@ -121,8 +147,22 @@ export function PencilDrawHandler() {
   if (templateMode !== "pencil") return null;
 
   const handleApply = () => {
-    if (preview) {
-      appendWaypoints(preview.waypoints, preview.pois);
+    if (!preview || !pencilParams) {
+      resetState();
+      return;
+    }
+    if (editingTemplateGroupId) {
+      replaceTemplateGroup(
+        editingTemplateGroupId,
+        preview.waypoints,
+        preview.pois,
+        pencilParams,
+      );
+    } else {
+      appendWaypoints(preview.waypoints, preview.pois, {
+        type: "pencil",
+        params: pencilParams,
+      });
     }
     resetState();
   };
@@ -130,6 +170,7 @@ export function PencilDrawHandler() {
   const handleCancel = () => {
     resetState();
     setTemplateMode(null);
+    setEditingTemplateGroupId(null);
   };
 
   return (

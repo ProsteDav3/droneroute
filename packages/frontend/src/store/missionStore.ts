@@ -8,9 +8,14 @@ import type {
 } from "@droneroute/shared";
 import { DEFAULT_MISSION_CONFIG, DEFAULT_WAYPOINT } from "@droneroute/shared";
 import { usePreferencesStore } from "@/store/preferencesStore";
-import type { TemplateType } from "@/lib/templates";
+import type { TemplateType, TemplateParams } from "@/lib/templates";
 
 export type SelectionMode = "replace" | "toggle" | "range";
+
+export interface TemplateGroup {
+  type: TemplateType;
+  params: TemplateParams;
+}
 
 interface MissionState {
   // Mission metadata
@@ -43,6 +48,11 @@ interface MissionState {
   /** Set to pan/zoom the map to a [lat, lng], e.g. after a location search. */
   flyToTarget: [number, number] | null;
   setFlyToTarget: (target: [number, number] | null) => void;
+  /** Params of every applied template, keyed by the id tagged onto its waypoints/POIs — lets a template be reopened and edited after Apply instead of only being addable once. */
+  templateGroups: Record<string, TemplateGroup>;
+  /** Set to reopen a template's config panel for editing (see BulkActionToolbar's "Edit template"). */
+  editingTemplateGroupId: string | null;
+  setEditingTemplateGroupId: (id: string | null) => void;
   currentPage: "editor" | "routes" | "shared" | "admin";
   shareToken: string | null;
   setCurrentPage: (page: "editor" | "routes" | "shared" | "admin") => void;
@@ -82,6 +92,14 @@ interface MissionState {
   appendWaypoints: (
     waypoints: Omit<Waypoint, "index" | "name">[],
     pois?: Omit<PointOfInterest, "id">[],
+    templateGroup?: TemplateGroup,
+  ) => void;
+  /** Removes a previously-applied template's waypoints/POIs and replaces them with a freshly regenerated set — used when editing an already-applied template instead of appending a duplicate. */
+  replaceTemplateGroup: (
+    groupId: string,
+    waypoints: Omit<Waypoint, "index" | "name">[],
+    pois: Omit<PointOfInterest, "id">[],
+    params: TemplateParams,
   ) => void;
 
   // Obstacle actions
@@ -137,6 +155,9 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   templateMode: null,
   flyToTarget: null,
   setFlyToTarget: (target) => set({ flyToTarget: target }),
+  templateGroups: {},
+  editingTemplateGroupId: null,
+  setEditingTemplateGroupId: (id) => set({ editingTemplateGroupId: id }),
   currentPage: "editor",
   shareToken: null,
   setCurrentPage: (page) => set({ currentPage: page }),
@@ -509,18 +530,22 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       selectedPoiId: null,
     }),
 
-  appendWaypoints: (newWps, newPois) =>
+  appendWaypoints: (newWps, newPois, templateGroup) =>
     set((state) => {
       const startIndex = state.waypoints.length;
+      const groupId = templateGroup ? crypto.randomUUID() : undefined;
+
       const fullWaypoints: Waypoint[] = newWps.map((wp, i) => ({
         ...wp,
         index: startIndex + i,
         name: `Waypoint ${startIndex + i + 1}`,
+        ...(groupId ? { templateGroupId: groupId } : {}),
       }));
 
       const fullPois: PointOfInterest[] = (newPois || []).map((p) => ({
         ...p,
         id: crypto.randomUUID(),
+        ...(groupId ? { templateGroupId: groupId } : {}),
       }));
 
       // If orbit template created a POI, link the waypoints to it
@@ -538,12 +563,70 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       return {
         waypoints: [...state.waypoints, ...fullWaypoints],
         pois: [...state.pois, ...fullPois],
+        templateGroups:
+          groupId && templateGroup
+            ? { ...state.templateGroups, [groupId]: templateGroup }
+            : state.templateGroups,
         selectedWaypointIndices: new Set(fullWaypoints.map((wp) => wp.index)),
         lastSelectedWaypointIndex:
           fullWaypoints.length > 0
             ? fullWaypoints[fullWaypoints.length - 1].index
             : state.lastSelectedWaypointIndex,
         templateMode: null,
+        dirty: true,
+      };
+    }),
+
+  replaceTemplateGroup: (groupId, newWps, newPois, params) =>
+    set((state) => {
+      const existingGroup = state.templateGroups[groupId];
+      if (!existingGroup) return state;
+
+      const remainingWaypoints = state.waypoints
+        .filter((wp) => wp.templateGroupId !== groupId)
+        .map((wp, i) => ({ ...wp, index: i }));
+      const remainingPois = state.pois.filter(
+        (p) => p.templateGroupId !== groupId,
+      );
+      const startIndex = remainingWaypoints.length;
+
+      const fullWaypoints: Waypoint[] = newWps.map((wp, i) => ({
+        ...wp,
+        index: startIndex + i,
+        name: `Waypoint ${startIndex + i + 1}`,
+        templateGroupId: groupId,
+      }));
+
+      const fullPois: PointOfInterest[] = newPois.map((p) => ({
+        ...p,
+        id: crypto.randomUUID(),
+        templateGroupId: groupId,
+      }));
+
+      if (fullPois.length === 1) {
+        const poiId = fullPois[0].id;
+        for (const wp of fullWaypoints) {
+          if (wp.headingMode === "fixed") {
+            wp.headingMode = "towardPOI";
+            wp.poiId = poiId;
+          }
+        }
+      }
+
+      return {
+        waypoints: [...remainingWaypoints, ...fullWaypoints],
+        pois: [...remainingPois, ...fullPois],
+        templateGroups: {
+          ...state.templateGroups,
+          [groupId]: { type: existingGroup.type, params },
+        },
+        selectedWaypointIndices: new Set(fullWaypoints.map((wp) => wp.index)),
+        lastSelectedWaypointIndex:
+          fullWaypoints.length > 0
+            ? fullWaypoints[fullWaypoints.length - 1].index
+            : state.lastSelectedWaypointIndex,
+        templateMode: null,
+        editingTemplateGroupId: null,
         dirty: true,
       };
     }),
@@ -560,6 +643,13 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       lastSelectedWaypointIndex: null,
       selectedPoiId: null,
       selectedObstacleId: null,
+      // Template params aren't persisted with a saved mission (yet), so any
+      // waypoints/POIs tagged with a templateGroupId from a previous session
+      // become plain, non-editable-as-a-template waypoints after a
+      // save/reload round-trip — start with a clean slate here rather than
+      // carry over dangling group ids the store has no params for.
+      templateGroups: {},
+      editingTemplateGroupId: null,
       dirty: false,
     }),
 
@@ -578,6 +668,8 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       selectedObstacleId: null,
       isDrawingObstacle: false,
       drawingVertices: [],
+      templateGroups: {},
+      editingTemplateGroupId: null,
       dirty: false,
     });
   },

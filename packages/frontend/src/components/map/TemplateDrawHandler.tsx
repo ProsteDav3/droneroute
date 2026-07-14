@@ -178,6 +178,14 @@ export function TemplateDrawHandler() {
   const templateMode = useMissionStore((s) => s.templateMode);
   const setTemplateMode = useMissionStore((s) => s.setTemplateMode);
   const appendWaypoints = useMissionStore((s) => s.appendWaypoints);
+  const replaceTemplateGroup = useMissionStore((s) => s.replaceTemplateGroup);
+  const editingTemplateGroupId = useMissionStore(
+    (s) => s.editingTemplateGroupId,
+  );
+  const setEditingTemplateGroupId = useMissionStore(
+    (s) => s.setEditingTemplateGroupId,
+  );
+  const templateGroups = useMissionStore((s) => s.templateGroups);
   const { current: map } = useMap();
 
   const [dragging, setDragging] = useState(false);
@@ -198,8 +206,41 @@ export function TemplateDrawHandler() {
   }, []);
 
   useEffect(() => {
+    if (editingTemplateGroupId) return;
     resetState();
-  }, [templateMode, resetState]);
+  }, [templateMode, editingTemplateGroupId, resetState]);
+
+  // Reopening an already-applied orbit/grid/facade for editing: load its
+  // stored params straight into "confirmed" state, skipping the drag
+  // gesture. Only handles the three types this component owns — pencil and
+  // solar templates load themselves the same way in their own handlers.
+  useEffect(() => {
+    if (!editingTemplateGroupId) return;
+    const group = templateGroups[editingTemplateGroupId];
+    if (!group) return;
+
+    if (group.type === "orbit") {
+      setOrbitParams(group.params as OrbitParams);
+      setGridParams(null);
+      setFacadeParams(null);
+    } else if (group.type === "grid") {
+      setGridParams(group.params as GridParams);
+      setOrbitParams(null);
+      setFacadeParams(null);
+    } else if (group.type === "facade") {
+      setFacadeParams(group.params as FacadeParams);
+      setOrbitParams(null);
+      setGridParams(null);
+    } else {
+      return;
+    }
+    setDragging(false);
+    setDragState(null);
+    setConfirmed(true);
+    if (templateMode !== group.type) {
+      setTemplateMode(group.type);
+    }
+  }, [editingTemplateGroupId, templateGroups, templateMode, setTemplateMode]);
 
   // Map mouse events for drag-to-draw
   useEffect(() => {
@@ -368,8 +409,23 @@ export function TemplateDrawHandler() {
   if (!templateMode || templateMode === "pencil") return null;
 
   const handleApply = () => {
-    if (preview) {
-      appendWaypoints(preview.waypoints, preview.pois);
+    if (!preview) {
+      resetState();
+      return;
+    }
+    const params = orbitParams || gridParams || facadeParams;
+    if (editingTemplateGroupId && params) {
+      replaceTemplateGroup(
+        editingTemplateGroupId,
+        preview.waypoints,
+        preview.pois,
+        params,
+      );
+    } else if (params) {
+      appendWaypoints(preview.waypoints, preview.pois, {
+        type: templateMode as "orbit" | "grid" | "facade",
+        params,
+      });
     }
     resetState();
   };
@@ -377,6 +433,7 @@ export function TemplateDrawHandler() {
   const handleCancel = () => {
     resetState();
     setTemplateMode(null);
+    setEditingTemplateGroupId(null);
   };
 
   const activePreview = confirmed ? preview : dragPreview;

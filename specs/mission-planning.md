@@ -39,5 +39,5 @@ At each waypoint, you can tell the drone to:
 ## Good to know
 
 - The flight path is drawn on the map as an animated dashed line. The animation speed reflects the drone's configured speed at each segment.
-- You can mix manual waypoints with template-generated ones — they all work the same once placed.
+- You can mix manual waypoints with template-generated ones — they all work the same once placed. Template-generated waypoints have one extra trick: select them all and you can reopen and adjust the original template instead of redrawing it — see [Templates](templates.md#editing-an-already-applied-template).
 - The sidebar shows an elevation graph so you can visualize altitude changes across the flight.

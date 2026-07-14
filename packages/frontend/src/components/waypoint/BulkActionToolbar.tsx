@@ -5,6 +5,7 @@ import {
   ArrowUp,
   Gauge,
   SlidersHorizontal,
+  Pencil,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -55,6 +56,8 @@ export function BulkActionToolbar() {
     clearWaypointSelection,
     removeSelectedWaypoints,
     updateSelectedWaypoints,
+    templateGroups,
+    setEditingTemplateGroupId,
   } = useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
 
@@ -62,6 +65,19 @@ export function BulkActionToolbar() {
 
   const count = selectedWaypointIndices.size;
   if (count < 2) return null;
+
+  // Only offer "Edit template" when every selected waypoint came from the
+  // same template application, and its original params are still available
+  // (they aren't after a save/reload — see missionStore's loadMission).
+  const commonTemplateGroupId = getCommonValue(
+    waypoints,
+    selectedWaypointIndices,
+    "templateGroupId",
+  );
+  const editableTemplateGroup =
+    commonTemplateGroupId && templateGroups[commonTemplateGroupId]
+      ? templateGroups[commonTemplateGroupId]
+      : null;
 
   const handleDelete = () => {
     if (confirm(`Delete ${count} waypoints?`)) {
@@ -172,6 +188,23 @@ export function BulkActionToolbar() {
             <SlidersHorizontal className="h-3 w-3" />
             Edit
           </Button>
+
+          {/* Edit template — only when the whole selection is one template's output */}
+          {editableTemplateGroup && commonTemplateGroupId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                clearWaypointSelection();
+                setEditingTemplateGroupId(commonTemplateGroupId);
+              }}
+              className="h-7 text-xs gap-1.5 px-2"
+              title={`Reopen this ${editableTemplateGroup.type} template's settings to adjust it (e.g. radius, spacing) without redrawing it`}
+            >
+              <Pencil className="h-3 w-3" />
+              Edit template
+            </Button>
+          )}
 
           <div className="h-4 w-px bg-border" />
 

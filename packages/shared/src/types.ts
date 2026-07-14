@@ -201,6 +201,17 @@ export const DRONE_MODELS: DroneModel[] = [
     droneSubEnumValue: 0,
     payloads: [{ label: "Mini 4 Pro Camera", payloadEnumValue: 100 }],
   },
+  {
+    // droneEnumValue is NOT part of any DJI-published WPML spec as of this
+    // writing (Matrice 4 Enterprise Series postdates the last public
+    // revision). This value is an unverified placeholder — treat every
+    // generated KMZ for this drone as untested until confirmed on real
+    // hardware (see GUIDE.md flight-test guidance before production use).
+    label: "DJI Matrice 4T (experimental)",
+    droneEnumValue: 103,
+    droneSubEnumValue: 0,
+    payloads: [{ label: "Matrice 4T Camera", payloadEnumValue: 103 }],
+  },
 ];
 
 // ── Point of Interest ────────────────────────────────────

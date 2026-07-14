@@ -4,7 +4,7 @@ Configure your drone model, camera, altitude reference, and safety options for t
 
 ## What you can do
 
-- **Choose your drone model**: M300 RTK, M350 RTK, M30/M30T, M30 Dock, Mavic 3E/3T/3M/3D/3TD, Mini 4 Pro.
+- **Choose your drone model**: M300 RTK, M350 RTK, M30/M30T, M30 Dock, Mavic 3E/3T/3M/3D/3TD, Mini 4 Pro, Matrice 4T (experimental — see note below).
 - **Choose a camera/payload** available for the selected drone.
 - **Set a global flight speed** and takeoff security height.
 - **Choose a height reference**:
@@ -30,3 +30,4 @@ Configure your drone model, camera, altitude reference, and safety options for t
 - Height reference affects how altitude values are interpreted by the drone — choose the one that matches your operational needs. The default is **above ground level**.
 - All height fields enforce a minimum of 1 meter.
 - You can set default values for all mission settings in the **Mission defaults** tab of the settings dialog. New missions will use those defaults instead of the factory defaults.
+- **Matrice 4T is marked experimental**: DJI has not published an official WPML drone identifier for the Matrice 4 Enterprise Series, so this option uses a placeholder value. Test any Matrice 4T mission on a non-critical flight before relying on it operationally.

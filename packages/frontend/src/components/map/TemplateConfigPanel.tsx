@@ -36,6 +36,7 @@ import {
   type PencilParams,
   type SolarParams,
 } from "@/lib/templates";
+import { recommendSolarSpacing, THERMAL_CAMERA_FOV } from "@/lib/solarCamera";
 import type { PointOfInterest, HeightMode } from "@droneroute/shared";
 
 function heightModeLabel(mode: HeightMode): string {
@@ -89,6 +90,7 @@ export function TemplateConfigPanel({
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
   const setFlyToTarget = useMissionStore((s) => s.setFlyToTarget);
   const heightMode = useMissionStore((s) => s.config.heightMode);
+  const payloadEnumValue = useMissionStore((s) => s.config.payloadEnumValue);
   const heightModeText = heightModeLabel(heightMode);
   const title =
     type === "orbit"
@@ -108,8 +110,16 @@ export function TemplateConfigPanel({
         : type === "facade"
           ? "Vertical scanning pattern along a wall or building face. Set the standoff distance, altitude range, and grid density for full coverage."
           : type === "solar"
-            ? "Lawn-mower path clipped to the exact shape you traced around the panel array — the drone never flies past its edges. Flight lines automatically line up with the panel rows (the shape's longest edge)."
+            ? "Lawn-mower path clipped to the exact shape you traced around the panel array — the drone never flies past its edges. Flight lines run at the row angle you set by drawing a reference line along a panel row."
             : "Freehand flight path drawn on the map. Adjust the number of waypoints to control how closely the path is followed.";
+
+  // Must stay in sync with MAX_WAYPOINTS in
+  // packages/backend/src/services/missionValidation.ts — surfaced here so
+  // a template that would exceed the mission's hard waypoint limit (e.g. a
+  // large solar array with tight line/photo spacing) is caught before
+  // Apply, not at save/export time.
+  const MAX_WAYPOINTS = 5000;
+  const exceedsWaypointLimit = waypointCount > MAX_WAYPOINTS;
 
   // Stop all pointer/keyboard/wheel events from reaching Leaflet (native DOM level)
   const panelRef = useRef<HTMLDivElement>(null);
@@ -146,7 +156,10 @@ export function TemplateConfigPanel({
           <span className="text-xs font-semibold uppercase tracking-wider text-purple-400">
             {title}
           </span>
-          <Badge variant="secondary" className="text-[10px] gap-1">
+          <Badge
+            variant={exceedsWaypointLimit ? "destructive" : "secondary"}
+            className="text-[10px] gap-1"
+          >
             <MapPin className="h-3 w-3" />
             {waypointCount} waypoints
           </Badge>
@@ -724,7 +737,18 @@ export function TemplateConfigPanel({
           <div>
             <Label
               className="text-[10px]"
-              title="Distance between flight lines. Tighter spacing gives more thermal image overlap but a longer flight."
+              title="Compass bearing the flight lines run at, set by the reference line you drew along a panel row."
+            >
+              Row angle
+            </Label>
+            <div className="h-7 flex items-center text-xs px-2 rounded-md border border-input bg-muted/30">
+              {Math.round(solarParams.rowAngleDeg)}&deg;
+            </div>
+          </div>
+          <div>
+            <Label
+              className="text-[10px]"
+              title="Distance between flight lines (cross-track). Tighter spacing gives more thermal image overlap but a longer flight."
             >
               Line spacing ({distanceLabel(unitSystem)})
             </Label>
@@ -742,6 +766,80 @@ export function TemplateConfigPanel({
               className="h-7 text-xs"
             />
           </div>
+          <div>
+            <Label
+              className="text-[10px]"
+              title="Distance between photos along each flight line (along-track). Without this, only the two ends of each row would ever be photographed."
+            >
+              Photo spacing ({distanceLabel(unitSystem)})
+            </Label>
+            <NumericInput
+              value={toDisplayDistance(solarParams.photoSpacingM, unitSystem)}
+              onChange={(v) =>
+                onSolarChange({
+                  ...solarParams,
+                  photoSpacingM: fromDisplayDistance(v, unitSystem),
+                })
+              }
+              min={1}
+              step={1}
+              fallback={8}
+              className="h-7 text-xs"
+            />
+          </div>
+          {(() => {
+            const fov = THERMAL_CAMERA_FOV[payloadEnumValue];
+            const rec = fov
+              ? recommendSolarSpacing(solarParams.altitude, payloadEnumValue)
+              : null;
+            if (!rec) {
+              return (
+                <div className="col-span-2 text-[10px] text-muted-foreground">
+                  Field of view for the current camera isn't known — set spacing
+                  manually. (Recommended spacing is available for DJI thermal
+                  payloads: H20T, M30T, M3T, M3TD, Matrice 4T.)
+                </div>
+              );
+            }
+            return (
+              <div className="col-span-2 flex flex-col gap-1 text-[10px] text-muted-foreground bg-muted/20 rounded-md px-2 py-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span>
+                    Recommended for {fov.label} at this altitude:{" "}
+                    {Math.round(
+                      toDisplayDistance(rec.lineSpacingM, unitSystem),
+                    )}
+                    {distanceLabel(unitSystem)} line /{" "}
+                    {Math.round(
+                      toDisplayDistance(rec.photoSpacingM, unitSystem),
+                    )}
+                    {distanceLabel(unitSystem)} photo
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-5 text-[10px] px-2 shrink-0"
+                    onClick={() =>
+                      onSolarChange({
+                        ...solarParams,
+                        spacingM: rec.lineSpacingM,
+                        photoSpacingM: rec.photoSpacingM,
+                      })
+                    }
+                  >
+                    Use
+                  </Button>
+                </div>
+                {fov.experimental && (
+                  <div className="text-amber-500">
+                    This drone/camera identity is unconfirmed (no published DJI
+                    spec) — treat this recommendation as provisional until
+                    verified on real hardware.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div className="col-span-2 flex items-center gap-2">
             <label className="flex items-center gap-1.5 text-xs cursor-pointer">
               <input
@@ -765,12 +863,20 @@ export function TemplateConfigPanel({
         </div>
       )}
 
+      {exceedsWaypointLimit && (
+        <div className="text-[10px] text-destructive mb-2">
+          This would generate {waypointCount} waypoints, over the mission limit
+          of {MAX_WAYPOINTS} — increase spacing before applying.
+        </div>
+      )}
+
       {/* Action buttons */}
       <div className="flex gap-2">
         <Button
           size="sm"
           onClick={onApply}
-          className="flex-1 h-7 text-xs bg-purple-600 hover:bg-purple-700 text-white"
+          disabled={exceedsWaypointLimit}
+          className="flex-1 h-7 text-xs bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
         >
           <Check className="h-3 w-3 mr-1" />
           Apply

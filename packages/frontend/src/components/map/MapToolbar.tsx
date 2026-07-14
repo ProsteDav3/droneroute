@@ -68,7 +68,7 @@ const TEMPLATE_OPTIONS: {
     label: "Solar panel survey",
     shortLabel: "Solar",
     icon: Sun,
-    description: "Trace panel array, clipped scan",
+    description: "Trace panel array + row direction, clipped scan",
     key: "S",
   },
 ];

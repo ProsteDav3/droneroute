@@ -1,11 +1,12 @@
 import { useState, useRef } from "react";
-import { Warehouse, X, Settings } from "lucide-react";
+import { Warehouse, X, Settings, Orbit } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { useMissionStore } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { polygonArea, formatArea } from "@/lib/geo";
+import { orbitParamsForBuilding } from "@/lib/templates";
 import { heightLabel, toDisplayHeight, fromDisplayHeight } from "@/lib/units";
 
 export function BuildingList() {
@@ -15,6 +16,7 @@ export function BuildingList() {
     selectBuilding,
     removeBuilding,
     updateBuilding,
+    setPendingOrbitParams,
   } = useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
   const [editingName, setEditingName] = useState<string | null>(null);
@@ -100,6 +102,18 @@ export function BuildingList() {
                   {formatArea(polygonArea(building.vertices), unitSystem)}
                 </div>
               </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 shrink-0 text-muted-foreground hover:text-blue-400"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPendingOrbitParams(orbitParamsForBuilding(building));
+                }}
+                title="Create an orbit around this building, with radius, altitude, and gimbal pitch pre-filled"
+              >
+                <Orbit className="h-3 w-3" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"

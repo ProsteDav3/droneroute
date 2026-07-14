@@ -14,11 +14,7 @@ import type {
   TemplateParams,
   OrbitParams,
 } from "@/lib/templates";
-import {
-  computeOrbitSeedForBuilding,
-  computeAltitudeForPitch,
-  DEFAULT_ORBIT_PARAMS,
-} from "@/lib/templates";
+import { orbitParamsForBuilding } from "@/lib/templates";
 import { pointInPolygon } from "@/lib/geo";
 
 export type SelectionMode = "replace" | "toggle" | "range";
@@ -453,23 +449,9 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       // A POI dropped on a building: pre-fill the Orbit panel with a
       // recommended altitude/radius/gimbal pitch for orbiting it, instead
       // of generating a route automatically.
-      let pendingOrbitParams = state.pendingOrbitParams;
-      if (building) {
-        const seed = computeOrbitSeedForBuilding(building.vertices);
-        const gimbalPitchDeg = DEFAULT_ORBIT_PARAMS.gimbalPitchDeg;
-        pendingOrbitParams = {
-          ...DEFAULT_ORBIT_PARAMS,
-          center: seed.center,
-          radiusM: seed.radiusM,
-          poiHeight: building.height,
-          gimbalPitchDeg,
-          altitude: computeAltitudeForPitch(
-            gimbalPitchDeg,
-            building.height,
-            seed.radiusM,
-          ),
-        };
-      }
+      const pendingOrbitParams = building
+        ? orbitParamsForBuilding(building)
+        : state.pendingOrbitParams;
 
       return {
         pois: [...state.pois, poi],

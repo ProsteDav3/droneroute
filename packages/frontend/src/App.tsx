@@ -365,6 +365,7 @@ export default function App() {
         setIsAddingPoi,
         setIsDrawingObstacle,
         setTemplateMode,
+        setEditingTemplateGroupId,
         clearWaypointSelection,
         removeSelectedWaypoints,
         selectAllWaypoints,
@@ -429,6 +430,7 @@ export default function App() {
           setIsAddingPoi(false);
           setIsDrawingObstacle(false);
           setTemplateMode(null);
+          setEditingTemplateGroupId(null);
           break;
         case "delete":
         case "backspace":

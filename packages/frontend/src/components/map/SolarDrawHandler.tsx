@@ -17,6 +17,14 @@ export function SolarDrawHandler() {
   const templateMode = useMissionStore((s) => s.templateMode);
   const setTemplateMode = useMissionStore((s) => s.setTemplateMode);
   const appendWaypoints = useMissionStore((s) => s.appendWaypoints);
+  const replaceTemplateGroup = useMissionStore((s) => s.replaceTemplateGroup);
+  const editingTemplateGroupId = useMissionStore(
+    (s) => s.editingTemplateGroupId,
+  );
+  const setEditingTemplateGroupId = useMissionStore(
+    (s) => s.setEditingTemplateGroupId,
+  );
+  const templateGroups = useMissionStore((s) => s.templateGroups);
   const { current: map } = useMap();
 
   const [vertices, setVertices] = useState<[number, number][]>([]);
@@ -30,8 +38,24 @@ export function SolarDrawHandler() {
   }, []);
 
   useEffect(() => {
+    if (editingTemplateGroupId) return;
     resetState();
-  }, [templateMode, resetState]);
+  }, [templateMode, editingTemplateGroupId, resetState]);
+
+  // Reopening an already-applied solar survey for editing: load its stored
+  // params straight into "confirmed" state, skipping the drawing gesture.
+  useEffect(() => {
+    if (!editingTemplateGroupId) return;
+    const group = templateGroups[editingTemplateGroupId];
+    if (!group || group.type !== "solar") return;
+
+    setSolarParams(group.params as SolarParams);
+    setVertices((group.params as SolarParams).vertices);
+    setConfirmed(true);
+    if (templateMode !== "solar") {
+      setTemplateMode("solar");
+    }
+  }, [editingTemplateGroupId, templateGroups, templateMode, setTemplateMode]);
 
   const closeShape = useCallback((verts: [number, number][]) => {
     if (verts.length < 3) return;
@@ -46,6 +70,7 @@ export function SolarDrawHandler() {
       if (e.key === "Escape") {
         if (confirmed || vertices.length > 0) {
           resetState();
+          setEditingTemplateGroupId(null);
         } else {
           setTemplateMode(null);
         }
@@ -53,7 +78,14 @@ export function SolarDrawHandler() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [templateMode, confirmed, vertices.length, resetState, setTemplateMode]);
+  }, [
+    templateMode,
+    confirmed,
+    vertices.length,
+    resetState,
+    setTemplateMode,
+    setEditingTemplateGroupId,
+  ]);
 
   // Map click handler for placing vertices
   useEffect(() => {
@@ -130,8 +162,22 @@ export function SolarDrawHandler() {
   if (templateMode !== "solar") return null;
 
   const handleApply = () => {
-    if (preview) {
-      appendWaypoints(preview.waypoints, preview.pois);
+    if (!preview || !solarParams) {
+      resetState();
+      return;
+    }
+    if (editingTemplateGroupId) {
+      replaceTemplateGroup(
+        editingTemplateGroupId,
+        preview.waypoints,
+        preview.pois,
+        solarParams,
+      );
+    } else {
+      appendWaypoints(preview.waypoints, preview.pois, {
+        type: "solar",
+        params: solarParams,
+      });
     }
     resetState();
   };
@@ -139,6 +185,7 @@ export function SolarDrawHandler() {
   const handleCancel = () => {
     resetState();
     setTemplateMode(null);
+    setEditingTemplateGroupId(null);
   };
 
   return (

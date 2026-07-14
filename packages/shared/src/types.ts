@@ -224,6 +224,8 @@ export interface PointOfInterest {
   latitude: number;
   longitude: number;
   height: number;
+  /** Set when this POI was created by a template application, so it can be replaced when that template is edited. */
+  templateGroupId?: string;
 }
 
 // ── Obstacle ─────────────────────────────────────────────
@@ -255,6 +257,8 @@ export interface Waypoint {
   turnDampingDist?: number;
   gimbalPitchAngle: number;
   actions: WaypointAction[];
+  /** Set when this waypoint was created by a template application, so a batch of waypoints from the same template can be selected and re-edited together. */
+  templateGroupId?: string;
 }
 
 // ── Mission Config ───────────────────────────────────────

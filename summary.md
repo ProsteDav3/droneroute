@@ -27,3 +27,18 @@ a47358a chore: bump version to 0.7.1 (#52)
 ?? .claude-history.state
 ?? CONVERSATION.md
 
+
+## 2026-07-14 17:39 - Konec sezení
+
+### Poslední commity:
+2790294 chore: Update session summary 2026-07-14 17:37
+85b9cca chore: Update session summary 2026-07-14 17:32
+2b27ac2 chore: bump version to 0.7.2 (#58)
+721c03a fix(backend): create DB directory synchronously before opening database (#57)
+a47358a chore: bump version to 0.7.1 (#52)
+
+### Nezaznamenané změny:
+ M fly.toml
+?? .claude-history.state
+?? CONVERSATION.md
+

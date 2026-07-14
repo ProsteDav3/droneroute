@@ -287,6 +287,34 @@ export function computeOrbitSeedForBuilding(
   };
 }
 
+/**
+ * Full OrbitParams recommended for orbiting a building: center/radius from
+ * `computeOrbitSeedForBuilding`, POI height set to the building's real
+ * height, and altitude/gimbal pitch linked from that radius+height via the
+ * same trig already used for manual POI-height linking. Shared by the
+ * "place a POI on a building" flow and any direct "create orbit around
+ * this building" action so both compute the recommendation identically.
+ */
+export function orbitParamsForBuilding(building: {
+  vertices: [number, number][];
+  height: number;
+}): OrbitParams {
+  const seed = computeOrbitSeedForBuilding(building.vertices);
+  const gimbalPitchDeg = DEFAULT_ORBIT_PARAMS.gimbalPitchDeg;
+  return {
+    ...DEFAULT_ORBIT_PARAMS,
+    center: seed.center,
+    radiusM: seed.radiusM,
+    poiHeight: building.height,
+    gimbalPitchDeg,
+    altitude: computeAltitudeForPitch(
+      gimbalPitchDeg,
+      building.height,
+      seed.radiusM,
+    ),
+  };
+}
+
 // ── Generators ───────────────────────────────────────────
 
 export function generateOrbit(params: OrbitParams): TemplateResult {

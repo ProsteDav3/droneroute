@@ -5,6 +5,7 @@ import {
   computeGimbalPitch,
   computeAltitudeForPitch,
   computeOrbitSeedForBuilding,
+  orbitParamsForBuilding,
   generateSolarSurvey,
   bearing,
   destinationPoint,
@@ -369,5 +370,40 @@ describe("computeOrbitSeedForBuilding", () => {
     const reversed = computeOrbitSeedForBuilding([...vertices].reverse());
     expect(reversed.center).toEqual(forward.center);
     expect(reversed.radiusM).toEqual(forward.radiusM);
+  });
+});
+
+describe("orbitParamsForBuilding", () => {
+  function squareFootprint(size: number): [number, number][] {
+    const c00 = CENTER;
+    const c10 = destinationPoint(c00[0], c00[1], size, 90);
+    const c01 = destinationPoint(c00[0], c00[1], size, 0);
+    const c11 = destinationPoint(c01[0], c01[1], size, 90);
+    return [c00, c10, c11, c01];
+  }
+
+  it("uses the building's height as POI height, and derives center/radius/altitude/gimbal pitch consistently with computeOrbitSeedForBuilding + computeAltitudeForPitch", () => {
+    const vertices = squareFootprint(40);
+    const params = orbitParamsForBuilding({ vertices, height: 25 });
+
+    const seed = computeOrbitSeedForBuilding(vertices);
+    expect(params.center).toEqual(seed.center);
+    expect(params.radiusM).toBe(seed.radiusM);
+    expect(params.poiHeight).toBe(25);
+    expect(params.altitude).toBe(
+      computeAltitudeForPitch(params.gimbalPitchDeg, 25, seed.radiusM),
+    );
+    // Round-trip sanity: the stored altitude/gimbal pair should reproduce
+    // itself through computeGimbalPitch, same as any linked orbit.
+    expect(computeGimbalPitch(params.altitude, 25, seed.radiusM)).toBe(
+      params.gimbalPitchDeg,
+    );
+  });
+
+  it("produces params usable directly by generateOrbit (a full waypoint loop, not just a seed)", () => {
+    const vertices = squareFootprint(40);
+    const params = orbitParamsForBuilding({ vertices, height: 25 });
+    const result = generateOrbit(params);
+    expect(result.waypoints.length).toBe(params.numPoints);
   });
 });

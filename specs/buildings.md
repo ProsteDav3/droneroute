@@ -7,13 +7,18 @@ Draw building footprints on the map so the app can recommend orbit settings auto
 - Draw a building's footprint either as a 2-corner rectangle or by clicking out an irregular polygon, and set its real height.
 - See a list of all buildings in the sidebar, with area and height, and edit or delete them.
 - Place a point of interest (POI) on a building to have its height copied automatically, and to pre-fill the Orbit template panel with a recommended flight altitude, radius, and gimbal pitch for orbiting that building — instead of typing those numbers in by hand.
+- Click the orbit icon next to a building in the sidebar list for the same pre-filled Orbit panel directly, without placing a POI first.
 
 ## How it works
 
 1. Press **H** or click the "Building" button in the toolbar to enter building drawing mode.
 2. Choose **Rect** (click-and-drag two opposite corners) or **Polygon** (click to place each corner, then click near the first point or double-click to close the shape).
 3. Enter the building's height in the panel that appears, then click Apply.
-4. Switch to **Add POI** (press **P**) and click somewhere inside the building's footprint. The new POI's height is set to the building's height, and the Orbit template panel opens pre-filled with a center, radius, and gimbal pitch recommended for orbiting that building — adjust any of these before applying, exactly as with a manually placed orbit.
+4. To create an orbit around it, either:
+   - Click the orbit icon next to that building in the sidebar list, or
+   - Switch to **Add POI** (press **P**) and click somewhere inside the building's footprint. The new POI's height is set to the building's height.
+
+   Either way, the Orbit template panel opens pre-filled with a center, radius, altitude, and gimbal pitch recommended for orbiting that building — adjust any of these before applying, exactly as with a manually placed orbit.
 
 ## Good to know
 

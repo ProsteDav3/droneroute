@@ -96,6 +96,83 @@ export function symbolLabel(symbolCode: string | null): string {
   return SYMBOL_LABELS[base] ?? base;
 }
 
+export type FlightVerdict = "go" | "caution" | "no-go";
+
+export interface FlightConditionAssessment {
+  verdict: FlightVerdict;
+  /** Czech, human-readable reasons behind the verdict — empty for "go". */
+  reasons: string[];
+}
+
+// Thresholds are deliberately conservative rather than tuned to any one
+// drone's exact spec sheet, since the mission's configured drone isn't
+// necessarily the one actually flown on a given day. Rough basis: DJI's
+// enterprise M300/M350/Matrice 4-series wind resistance rating (~12 m/s)
+// and typical 0-40°C battery-safe operating range, with a few degrees of
+// margin on both ends.
+const NO_GO_WIND_MS = 12;
+/** Exported so the forecast list's own amber wind-number highlight uses the exact same threshold as the verdict below, instead of a second hardcoded copy that could silently drift out of sync. */
+export const CAUTION_WIND_MS = 8;
+const MIN_SAFE_TEMP_C = -10;
+const MAX_SAFE_TEMP_C = 40;
+const HEAVY_PRECIP_MM = 2.5; // per representative period — enough to risk water ingress on non-sealed payloads
+const LIGHT_PRECIP_MM = 0.5;
+
+/**
+ * Synthesizes a single go/caution/no-go flight recommendation from a day's
+ * forecast, instead of leaving the operator to mentally combine wind,
+ * temperature, precipitation, and storm risk themselves. Deliberately
+ * conservative and not tied to any specific drone's certified limits — a
+ * planning aid, not an authoritative go/no-go authority. Collects no-go and
+ * caution reasons separately so a no-go verdict never gets silently
+ * downgraded by a later caution-level check, and a caution verdict never
+ * loses its own reasons if a later check turns out to be no-go instead.
+ */
+export function assessFlightConditions(
+  day: DailyForecast,
+): FlightConditionAssessment {
+  const noGoReasons: string[] = [];
+  const cautionReasons: string[] = [];
+
+  if (day.symbolCode?.includes("thunder")) {
+    noGoReasons.push("Bouřka");
+  }
+
+  if (day.maxWindSpeedMs !== null) {
+    if (day.maxWindSpeedMs > NO_GO_WIND_MS) {
+      noGoReasons.push(`Vítr nad ${NO_GO_WIND_MS} m/s`);
+    } else if (day.maxWindSpeedMs >= CAUTION_WIND_MS) {
+      cautionReasons.push("Silnější vítr");
+    }
+  }
+
+  if (day.minTempC !== null && day.minTempC < MIN_SAFE_TEMP_C) {
+    noGoReasons.push(`Teplota pod ${MIN_SAFE_TEMP_C} °C`);
+  }
+  if (day.maxTempC !== null && day.maxTempC > MAX_SAFE_TEMP_C) {
+    noGoReasons.push(`Teplota nad ${MAX_SAFE_TEMP_C} °C`);
+  }
+
+  if (day.totalPrecipitationMm !== null) {
+    if (day.totalPrecipitationMm >= HEAVY_PRECIP_MM) {
+      noGoReasons.push("Vydatné srážky");
+    } else if (day.totalPrecipitationMm >= LIGHT_PRECIP_MM) {
+      cautionReasons.push("Srážky");
+    }
+  }
+
+  if (noGoReasons.length > 0) {
+    // Caution-level factors are still worth surfacing alongside the no-go
+    // ones (e.g. strong wind AND light rain) — the verdict itself is
+    // unaffected either way, only the displayed reasons gain context.
+    return { verdict: "no-go", reasons: [...noGoReasons, ...cautionReasons] };
+  }
+  if (cautionReasons.length > 0) {
+    return { verdict: "caution", reasons: cautionReasons };
+  }
+  return { verdict: "go", reasons: [] };
+}
+
 export type SymbolIconKey = "sun" | "cloud" | "rain" | "snow" | "fog";
 
 /** Coarse condition bucket for choosing a display icon. */

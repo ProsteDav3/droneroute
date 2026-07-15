@@ -291,13 +291,24 @@ export function TemplateConfigPanel({
 
       const handlePointerUp = () => {
         window.removeEventListener("pointermove", handlePointerMove);
-        window.removeEventListener("pointerup", handlePointerUp);
+        window.removeEventListener("pointerup", handlePointerUp, true);
+        window.removeEventListener("pointercancel", handlePointerUp, true);
         activeDrag = null;
       };
 
       activeDrag = { move: handlePointerMove, up: handlePointerUp };
       window.addEventListener("pointermove", handlePointerMove);
-      window.addEventListener("pointerup", handlePointerUp);
+      // Capture phase, not bubble: the stopPropagation effect above (guarding
+      // Leaflet/Mapbox) calls stopPropagation on this same panel for
+      // pointerup during the BUBBLE phase, which — since the pointer is
+      // almost always released back over the panel itself while dragging —
+      // would otherwise stop this pointerup from ever reaching a
+      // bubble-phase window listener, leaving the drag stuck following the
+      // cursor forever with no way to "let go" short of unmounting the
+      // whole panel. A capture-phase listener runs top-down, before the
+      // event ever reaches the panel and before that stopPropagation call.
+      window.addEventListener("pointerup", handlePointerUp, true);
+      window.addEventListener("pointercancel", handlePointerUp, true);
     };
 
     handle.addEventListener("pointerdown", handlePointerDown);
@@ -305,7 +316,8 @@ export function TemplateConfigPanel({
       handle.removeEventListener("pointerdown", handlePointerDown);
       if (activeDrag) {
         window.removeEventListener("pointermove", activeDrag.move);
-        window.removeEventListener("pointerup", activeDrag.up);
+        window.removeEventListener("pointerup", activeDrag.up, true);
+        window.removeEventListener("pointercancel", activeDrag.up, true);
       }
     };
   }, []);

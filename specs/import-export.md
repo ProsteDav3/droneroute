@@ -12,6 +12,9 @@ Bring in existing missions or export your planned flight as a file ready for DJI
   orbit revisited every few days), where each visit only needs to fly the next
   leg but every leg should keep the same POI heading target and mission
   settings as the original route.
+- **Save segments as missions**: instead of (or in addition to) downloading
+  the zip, save every leg as its own named mission in your account, right
+  alongside the original full-route mission — requires being signed in.
 - **Import** an existing KMZ file to load its waypoints, actions, POIs, and settings into the editor.
 
 ## How it works
@@ -29,6 +32,15 @@ Bring in existing missions or export your planned flight as a file ready for DJI
 2. Click "Export segments (.zip)".
 3. A zip file downloads containing one .kmz per consecutive waypoint pair, each named with its position in the sequence (e.g. `mission-seg-01-of-42.kmz`).
 4. Import each .kmz into the drone controller individually, one per scheduled visit.
+
+### Saving segments as missions
+
+1. Plan a route with 2 or more waypoints, same as for exporting segments.
+2. Click "Uložit segmenty jako mise" (sign in first if you haven't already).
+3. Each consecutive-pair leg is saved as its own mission (e.g.
+   `mission-seg-1-of-41`) in **Moje trasy**, alongside the original full route
+   — open, edit, or export any of them individually from there like any other
+   saved mission.
 
 ### Importing
 

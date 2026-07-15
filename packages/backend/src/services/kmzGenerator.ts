@@ -2,6 +2,7 @@ import archiver from "archiver";
 import { PassThrough } from "stream";
 import type { Mission } from "@droneroute/shared";
 import { buildTemplateKml, buildWaylinesWpml } from "../lib/wpml.js";
+import { buildMissionSegments } from "./missionSegments.js";
 
 export function generateKmzBuffer(mission: Mission): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -50,23 +51,10 @@ export function generateMissionSegmentsZip(mission: Mission): Promise<Buffer> {
 
     archive.pipe(passthrough);
 
-    const segmentCount = mission.waypoints.length - 1;
-    const pad = String(segmentCount).length;
-    const safeName = mission.name.replace(/[^a-zA-Z0-9_-]/g, "_");
-
     (async () => {
-      for (let i = 0; i < segmentCount; i++) {
-        const segmentName = `${safeName}-seg-${String(i + 1).padStart(pad, "0")}-of-${segmentCount}`;
-        const segmentMission: Mission = {
-          ...mission,
-          name: segmentName,
-          waypoints: [
-            { ...mission.waypoints[i], index: 0 },
-            { ...mission.waypoints[i + 1], index: 1 },
-          ],
-        };
-        const segmentBuffer = await generateKmzBuffer(segmentMission);
-        archive.append(segmentBuffer, { name: `${segmentName}.kmz` });
+      for (const segment of buildMissionSegments(mission)) {
+        const segmentBuffer = await generateKmzBuffer(segment);
+        archive.append(segmentBuffer, { name: `${segment.name}.kmz` });
       }
       archive.finalize();
     })().catch(reject);

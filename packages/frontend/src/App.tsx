@@ -22,6 +22,7 @@ import {
   Triangle,
   Shield,
   Scissors,
+  FolderPlus,
   Warehouse,
   Bookmark,
   CloudSun,
@@ -103,6 +104,7 @@ export default function App() {
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportingSegments, setExportingSegments] = useState(false);
+  const [savingSegments, setSavingSegments] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -326,6 +328,42 @@ export default function App() {
       toast.error(`Export segmentů selhal: ${err.message}`);
     } finally {
       setExportingSegments(false);
+    }
+  };
+
+  const handleSaveSegments = async () => {
+    if (!token) {
+      setShowAuthModal(true);
+      return;
+    }
+    if (waypoints.length < 2) {
+      toast.warning("Pro uložení segmentů je potřeba alespoň 2 body trasy");
+      return;
+    }
+    if (!missionName.trim()) {
+      toast.warning("Před uložením zadejte název mise");
+      return;
+    }
+
+    setSavingSegments(true);
+    try {
+      const created = await api.post<{ id: string; name: string }[]>(
+        "/missions/segments",
+        {
+          name: missionName,
+          config,
+          waypoints,
+          pois,
+          obstacles,
+          buildings,
+          templateGroups,
+        },
+      );
+      toast.success(`Uloženo ${created.length} samostatných misí`);
+    } catch (err: any) {
+      toast.error(`Uložení segmentů selhalo: ${err.message}`);
+    } finally {
+      setSavingSegments(false);
     }
   };
 
@@ -652,13 +690,13 @@ export default function App() {
             onChange={handleImport}
           />
         </div>
-        <div className="flex gap-1 px-2 pb-2 border-b border-border">
+        <div className="flex flex-col gap-1 px-2 pb-2 border-b border-border">
           <Button
             variant="outline"
             size="sm"
             onClick={handleExportSegments}
             disabled={exportingSegments || waypoints.length < 2}
-            className="flex-1 text-xs h-7 border-[#00c2ff]/30 bg-[#00c2ff]/5 hover:bg-[#00c2ff]/15 hover:text-[#33cfff]"
+            className="w-full text-xs h-7 border-[#00c2ff]/30 bg-[#00c2ff]/5 hover:bg-[#00c2ff]/15 hover:text-[#33cfff]"
             title={
               waypoints.length < 2
                 ? "Pro export segmentů přidejte alespoň 2 body trasy"
@@ -667,6 +705,21 @@ export default function App() {
           >
             <Scissors className="h-3 w-3" />
             {exportingSegments ? "..." : "Export segmentů (.zip)"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSaveSegments}
+            disabled={savingSegments || waypoints.length < 2}
+            className="w-full text-xs h-7 border-[#00c2ff]/30 bg-[#00c2ff]/5 hover:bg-[#00c2ff]/15 hover:text-[#33cfff]"
+            title={
+              waypoints.length < 2
+                ? "Pro uložení segmentů přidejte alespoň 2 body trasy"
+                : "Rozdělit trasu na jednotlivé úseky (WP1→WP2, WP2→WP3, ...) a uložit je jako samostatné mise ve vašem účtu"
+            }
+          >
+            <FolderPlus className="h-3 w-3" />
+            {savingSegments ? "..." : "Uložit segmenty jako mise"}
           </Button>
         </div>
 

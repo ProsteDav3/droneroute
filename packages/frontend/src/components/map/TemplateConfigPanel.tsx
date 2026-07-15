@@ -260,6 +260,20 @@ export function TemplateConfigPanel({
     null,
   );
 
+  // Re-measures the panel's ACTUAL on-screen position after every
+  // dragPosition update, so the debug readout can show "intended" (state)
+  // vs. "actually rendered" (DOM) side by side — settles whether the state
+  // math is right but not being applied, vs. the math itself being wrong.
+  useEffect(() => {
+    if (!dragPosition || !panelRef.current) return;
+    const rect = panelRef.current.getBoundingClientRect();
+    setDragDebug((prev) => ({
+      ...prev,
+      actualLeft: rect.left,
+      actualTop: rect.top,
+    }));
+  }, [dragPosition]);
+
   useEffect(() => {
     const handle = dragHandleRef.current;
     const panel = panelRef.current;
@@ -383,6 +397,23 @@ export function TemplateConfigPanel({
             .map(([k, v]) => `${k}: ${v}`)
             .join("\n")}
         </div>
+      )}
+      {/* TEMPORARY: red dot at the intended (state) position, for a direct
+          visual check against where the panel actually renders */}
+      {dragPosition && (
+        <div
+          className="fixed z-50 pointer-events-none"
+          style={{
+            position: "fixed",
+            left: dragPosition.left,
+            top: dragPosition.top,
+            width: 12,
+            height: 12,
+            borderRadius: "50%",
+            background: "red",
+            transform: "translate(-50%, -50%)",
+          }}
+        />
       )}
       {/* Header */}
       <div className="flex items-center justify-between mb-1">

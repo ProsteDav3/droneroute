@@ -272,3 +272,93 @@ describe("missionStore — buildings and POI-triggered orbit pre-fill", () => {
     expect(useMissionStore.getState().pendingOrbitParams).toBeNull();
   });
 });
+
+describe("missionStore — pendingPresetLoad", () => {
+  beforeEach(() => {
+    useMissionStore.getState().clearMission();
+  });
+
+  it("setPendingPresetLoad stores the type/params pair as-is", () => {
+    const load = {
+      type: "orbit" as const,
+      params: {
+        ...DEFAULT_ORBIT_PARAMS,
+        center: [50, 14] as [number, number],
+        radiusM: 60,
+      },
+    };
+    useMissionStore.getState().setPendingPresetLoad(load);
+    expect(useMissionStore.getState().pendingPresetLoad).toEqual(load);
+  });
+
+  it("clearMission resets pendingPresetLoad (same regression class as pendingOrbitParams)", () => {
+    useMissionStore.getState().setPendingPresetLoad({
+      type: "orbit",
+      params: { ...DEFAULT_ORBIT_PARAMS, center: [50, 14], radiusM: 60 },
+    });
+    expect(useMissionStore.getState().pendingPresetLoad).not.toBeNull();
+
+    useMissionStore.getState().clearMission();
+
+    expect(useMissionStore.getState().pendingPresetLoad).toBeNull();
+  });
+
+  it("loadMission resets pendingPresetLoad", () => {
+    useMissionStore.getState().setPendingPresetLoad({
+      type: "orbit",
+      params: { ...DEFAULT_ORBIT_PARAMS, center: [50, 14], radiusM: 60 },
+    });
+
+    useMissionStore.getState().loadMission({
+      name: "Loaded mission",
+      config: useMissionStore.getState().config,
+      waypoints: [],
+    });
+
+    expect(useMissionStore.getState().pendingPresetLoad).toBeNull();
+  });
+
+  it("setPendingPresetLoad clears editingTemplateGroupId (regression: loading a preset must not silently overwrite the template currently open for editing)", () => {
+    const store = useMissionStore.getState();
+    store.appendWaypoints(
+      [baseWaypoint(50, 14), baseWaypoint(50.001, 14)],
+      [{ name: "Orbit center", latitude: 50, longitude: 14, height: 0 }],
+      {
+        type: "orbit",
+        params: { ...DEFAULT_ORBIT_PARAMS, center: [50, 14], radiusM: 70 },
+      },
+    );
+    const groupId = useMissionStore.getState().waypoints[0].templateGroupId!;
+    store.setEditingTemplateGroupId(groupId);
+    expect(useMissionStore.getState().editingTemplateGroupId).toBe(groupId);
+
+    // Loading a different (or even same-type) saved preset must start a
+    // fresh template, not continue replacing the group that was open for
+    // editing — otherwise Apply would call replaceTemplateGroup on the
+    // wrong content.
+    useMissionStore.getState().setPendingPresetLoad({
+      type: "orbit",
+      params: { ...DEFAULT_ORBIT_PARAMS, center: [51, 15], radiusM: 40 },
+    });
+
+    expect(useMissionStore.getState().editingTemplateGroupId).toBeNull();
+  });
+
+  it("setPendingPresetLoad(null) does not disturb an unrelated editingTemplateGroupId", () => {
+    const store = useMissionStore.getState();
+    store.appendWaypoints(
+      [baseWaypoint(50, 14), baseWaypoint(50.001, 14)],
+      [{ name: "Orbit center", latitude: 50, longitude: 14, height: 0 }],
+      {
+        type: "orbit",
+        params: { ...DEFAULT_ORBIT_PARAMS, center: [50, 14], radiusM: 70 },
+      },
+    );
+    const groupId = useMissionStore.getState().waypoints[0].templateGroupId!;
+    store.setEditingTemplateGroupId(groupId);
+
+    useMissionStore.getState().setPendingPresetLoad(null);
+
+    expect(useMissionStore.getState().editingTemplateGroupId).toBe(groupId);
+  });
+});

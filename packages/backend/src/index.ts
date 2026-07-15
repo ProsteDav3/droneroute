@@ -11,6 +11,7 @@ import { sharedRoutes } from "./routes/shared.js";
 import { airspaceRoutes } from "./routes/airspace.js";
 import { adminRoutes } from "./routes/admin.js";
 import { preferencesRoutes } from "./routes/preferences.js";
+import { templatePresetRoutes } from "./routes/templatePresets.js";
 import { globalLimiter } from "./middleware/rateLimit.js";
 import { resolveDefaultMapView } from "./lib/config.js";
 
@@ -63,6 +64,7 @@ app.use("/api/missions", missionRoutes);
 app.use("/api/kmz", kmzRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/preferences", preferencesRoutes);
+app.use("/api/template-presets", templatePresetRoutes);
 app.use("/api/airspace", airspaceRoutes);
 app.use("/api", sharedRoutes);
 

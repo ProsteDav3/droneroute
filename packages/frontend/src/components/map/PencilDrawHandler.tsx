@@ -25,6 +25,10 @@ export function PencilDrawHandler() {
   );
   const templateGroups = useMissionStore((s) => s.templateGroups);
   const pois = useMissionStore((s) => s.pois);
+  const pendingPresetLoad = useMissionStore((s) => s.pendingPresetLoad);
+  const setPendingPresetLoad = useMissionStore((s) => s.setPendingPresetLoad);
+  const pendingPresetForThisHandler =
+    pendingPresetLoad?.type === "pencil" ? pendingPresetLoad : null;
   const { current: map } = useMap();
 
   const [rawPath, setRawPath] = useState<[number, number][]>([]);
@@ -45,9 +49,31 @@ export function PencilDrawHandler() {
   }, []);
 
   useEffect(() => {
-    if (editingTemplateGroupId) return;
+    if (editingTemplateGroupId || pendingPresetForThisHandler) return;
     resetState();
-  }, [templateMode, editingTemplateGroupId, resetState]);
+  }, [
+    templateMode,
+    editingTemplateGroupId,
+    pendingPresetForThisHandler,
+    resetState,
+  ]);
+
+  // A saved "pencil" template preset was loaded: same one-shot seed pattern
+  // as TemplateDrawHandler's pendingOrbitParams — deliberately does NOT
+  // clear pendingPresetLoad here (cleared explicitly in handleApply/
+  // handleCancel instead), so the sibling reset-effect above doesn't wipe
+  // this out on the very next render.
+  useEffect(() => {
+    if (!pendingPresetForThisHandler) return;
+    const params = pendingPresetForThisHandler.params as PencilParams;
+    setPencilParams(params);
+    setRawPath(params.path);
+    drawingRef.current = false;
+    setConfirmed(true);
+    if (useMissionStore.getState().templateMode !== "pencil") {
+      setTemplateMode("pencil");
+    }
+  }, [pendingPresetForThisHandler, setTemplateMode]);
 
   // Reopening an already-applied pencil path for editing: reload its stored
   // params (including the originally drawn path) straight into "confirmed"
@@ -149,6 +175,7 @@ export function PencilDrawHandler() {
   const handleApply = () => {
     if (!preview || !pencilParams) {
       resetState();
+      setPendingPresetLoad(null);
       return;
     }
     if (editingTemplateGroupId) {
@@ -165,12 +192,14 @@ export function PencilDrawHandler() {
       });
     }
     resetState();
+    setPendingPresetLoad(null);
   };
 
   const handleCancel = () => {
     resetState();
     setTemplateMode(null);
     setEditingTemplateGroupId(null);
+    setPendingPresetLoad(null);
   };
 
   return (

@@ -23,6 +23,7 @@ import {
   Shield,
   Scissors,
   Warehouse,
+  Bookmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +34,8 @@ import { MissionConfig } from "@/components/mission/MissionConfig";
 import { PoiList } from "@/components/mission/PoiList";
 import { ObstacleList } from "@/components/mission/ObstacleList";
 import { BuildingList } from "@/components/mission/BuildingList";
+import { TemplatePresetList } from "@/components/mission/TemplatePresetList";
+import { useTemplatePresetsStore } from "@/store/templatePresetsStore";
 import { RoutesPage } from "@/components/routes/RoutesPage";
 import { SharedMissionPage } from "@/components/routes/SharedMissionPage";
 import { AdminPage } from "@/pages/AdminPage";
@@ -57,6 +60,7 @@ type SidebarSection =
   | "pois"
   | "obstacles"
   | "buildings"
+  | "presets"
   | "config";
 
 export default function App() {
@@ -86,6 +90,7 @@ export default function App() {
     pois: false,
     obstacles: false,
     buildings: false,
+    presets: false,
     config: false,
   });
 
@@ -112,6 +117,14 @@ export default function App() {
   useEffect(() => {
     if (token) {
       fetchPreferences();
+    }
+  }, [token]);
+
+  // Fetch saved template presets after auth is restored
+  const { presets, fetchPresets } = useTemplatePresetsStore();
+  useEffect(() => {
+    if (token) {
+      fetchPresets();
     }
   }, [token]);
 
@@ -713,6 +726,28 @@ export default function App() {
             {expandedSections.buildings && (
               <div className="max-h-[30vh] overflow-y-auto section-expand">
                 <BuildingList />
+              </div>
+            )}
+          </div>
+
+          {/* Template presets section — INDIGO accent */}
+          <div className="border-l-2 border-indigo-500/70 bg-indigo-500/[0.03]">
+            <button
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-indigo-500/10 hover:bg-indigo-500/15 text-indigo-400"
+              onClick={() => toggleSection("presets")}
+              title="Saved template settings, reusable across missions"
+            >
+              {expandedSections.presets ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              <Bookmark className="h-3 w-3" />
+              Template presets ({presets.length})
+            </button>
+            {expandedSections.presets && (
+              <div className="max-h-[30vh] overflow-y-auto section-expand">
+                <TemplatePresetList />
               </div>
             )}
           </div>

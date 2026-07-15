@@ -1,8 +1,10 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -10,10 +12,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Check, X, MapPin, Lock, Unlock } from "lucide-react";
+import { Check, X, MapPin, Lock, Unlock, Save } from "lucide-react";
 import { LocationSearch } from "@/components/ui/location-search";
 import { useMissionStore } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
+import { useAuthStore } from "@/store/authStore";
+import { useTemplatePresetsStore } from "@/store/templatePresetsStore";
 import {
   heightLabel,
   speedLabel,
@@ -120,6 +124,37 @@ export function TemplateConfigPanel({
   // Apply, not at save/export time.
   const MAX_WAYPOINTS = 5000;
   const exceedsWaypointLimit = waypointCount > MAX_WAYPOINTS;
+
+  // "Save as preset" — reusable across missions, e.g. the same recurring
+  // orbit around a fixed site. Works generically for whichever template
+  // type/params this panel currently shows.
+  const currentParams =
+    orbitParams || gridParams || facadeParams || pencilParams || solarParams;
+  const token = useAuthStore((s) => s.token);
+  const createPreset = useTemplatePresetsStore((s) => s.createPreset);
+  const [savingPreset, setSavingPreset] = useState(false);
+  const [presetName, setPresetName] = useState("");
+  const [presetSaveInFlight, setPresetSaveInFlight] = useState(false);
+
+  const handleSavePreset = async () => {
+    const name = presetName.trim();
+    if (!name || !currentParams) return;
+    setPresetSaveInFlight(true);
+    try {
+      await createPreset(
+        name,
+        type,
+        currentParams as unknown as Record<string, unknown>,
+      );
+      toast.success(`Saved "${name}" as a template preset`);
+      setSavingPreset(false);
+      setPresetName("");
+    } catch (err: any) {
+      toast.error(`Failed to save preset: ${err.message}`);
+    } finally {
+      setPresetSaveInFlight(false);
+    }
+  };
 
   // Stop all pointer/keyboard/wheel events from reaching Leaflet (native DOM level)
   const panelRef = useRef<HTMLDivElement>(null);
@@ -869,6 +904,64 @@ export function TemplateConfigPanel({
           of {MAX_WAYPOINTS} — increase spacing before applying.
         </div>
       )}
+
+      {/* Save as reusable preset */}
+      {currentParams &&
+        (savingPreset ? (
+          <div className="flex items-center gap-1.5 mb-2">
+            <Input
+              autoFocus
+              value={presetName}
+              onChange={(e) => setPresetName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSavePreset();
+                if (e.key === "Escape") {
+                  setSavingPreset(false);
+                  setPresetName("");
+                }
+              }}
+              placeholder="Preset name"
+              className="h-7 text-xs flex-1"
+            />
+            <Button
+              size="icon"
+              className="h-7 w-7 shrink-0"
+              disabled={!presetName.trim() || presetSaveInFlight}
+              onClick={handleSavePreset}
+              title="Save preset"
+            >
+              <Check className="h-3 w-3" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-7 w-7 shrink-0"
+              onClick={() => {
+                setSavingPreset(false);
+                setPresetName("");
+              }}
+              title="Cancel"
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!token}
+            title={
+              token
+                ? "Save this template's settings as a reusable preset"
+                : "Sign in to save presets"
+            }
+            onClick={() => setSavingPreset(true)}
+            className="w-full h-7 text-xs mb-2"
+          >
+            <Save className="h-3 w-3 mr-1" />
+            Save as preset
+          </Button>
+        ))}
 
       {/* Action buttons */}
       <div className="flex gap-2">

@@ -37,6 +37,17 @@ Realized the orbit's radius was too small only after clicking Apply? You don't h
 
 This works for Orbit, Grid, Facade, Pencil, and Solar. It does **not** survive saving and reloading a mission yet — after a save/reload, template-generated waypoints behave like any manually placed ones (still fully editable individually, just not as a re-adjustable group).
 
+## Reusable template presets
+
+For a template you fly again and again — the same recurring orbit around a fixed site, for example — save its exact settings once and reuse them without redrawing:
+
+1. Configure any template (Orbit, Grid, Facade, Pencil, or Solar) as usual, then click **"Save as preset"** in its config panel before (or instead of) clicking Apply.
+2. Give it a name. It's saved to your account under **Template presets** in the sidebar, requires being signed in (same as saving missions).
+3. To reuse it later — in this mission or any other — open **Template presets** in the sidebar and click a saved preset (or its folder icon). Its config panel opens pre-filled with every saved value, including its original location/shape, ready to click Apply.
+4. Rename a preset by double-clicking its name in the list, or delete it with the **×** button.
+
+Presets are separate from missions — deleting a mission doesn't delete presets you saved from it, and vice versa.
+
 ## Good to know
 
 - You can combine templates — for example, use a grid survey and then add an orbit around a specific structure.

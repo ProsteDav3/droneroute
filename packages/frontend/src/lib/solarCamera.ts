@@ -21,15 +21,10 @@ export const THERMAL_CAMERA_FOV: Record<number, ThermalCameraFov> = {
   53: { label: "M30T Camera", hfovDeg: 49.4, vfovDeg: 40.4 }, // DFOV 61° (DJI spec)
   67: { label: "M3T Camera", hfovDeg: 49.4, vfovDeg: 40.4 }, // DFOV 61° (DJI spec)
   81: { label: "M3TD Camera", hfovDeg: 49.4, vfovDeg: 40.4 }, // same thermal module as M3T
-  103: {
+  89: {
     label: "Matrice 4T Camera",
     hfovDeg: 35.8,
     vfovDeg: 29.0, // DFOV 45° (DJI spec)
-    // DRONE_MODELS already flags this drone/payload identity as an
-    // unverified placeholder (no published WPML spec confirms it) — carry
-    // that caveat into the recommendation UI rather than showing the same
-    // confidence as a verified payload.
-    experimental: true,
   },
 };
 
@@ -69,14 +64,7 @@ export const WIDE_CAMERA_FOV: Record<number, WideCameraFov> = {
   82: { label: "H30", vfovDeg: 55.1 }, // DFOV 82.1° (DJI spec)
   83: { label: "H30T", vfovDeg: 55.1 }, // same wide module as H30
   100: { label: "Mini 4 Pro Camera", vfovDeg: 55.1 }, // DFOV 82.1° (DJI spec)
-  103: {
-    label: "Matrice 4T Camera",
-    vfovDeg: 55.0, // DFOV 82° (DJI spec)
-    // Same unverified-identity caveat as THERMAL_CAMERA_FOV[103] — the FOV
-    // number itself is confirmed against DJI's spec sheet, but the drone's
-    // WPML enum identity is not (see DRONE_MODELS).
-    experimental: true,
-  },
+  89: { label: "Matrice 4T Camera", vfovDeg: 55.0 }, // DFOV 82° (DJI spec)
 };
 
 const DEFAULT_SOLAR_OVERLAP = 0.2;

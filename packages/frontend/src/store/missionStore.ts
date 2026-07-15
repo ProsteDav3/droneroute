@@ -9,6 +9,7 @@ import type {
 } from "@droneroute/shared";
 import { DEFAULT_MISSION_CONFIG, DEFAULT_WAYPOINT } from "@droneroute/shared";
 import { usePreferencesStore } from "@/store/preferencesStore";
+import { useConfigStore } from "@/store/configStore";
 import type {
   TemplateType,
   TemplateParams,
@@ -19,6 +20,9 @@ import { WIDE_CAMERA_FOV } from "@/lib/solarCamera";
 import { pointInPolygon } from "@/lib/geo";
 
 export type SelectionMode = "replace" | "toggle" | "range";
+
+/** Name given to every new mission until it's renamed or auto-named from an address. */
+export const DEFAULT_MISSION_NAME = "Nová mise";
 
 export interface TemplateGroup {
   type: TemplateType;
@@ -185,7 +189,7 @@ interface MissionState {
 
 export const useMissionStore = create<MissionState>((set, get) => ({
   missionId: null,
-  missionName: "Nová mise",
+  missionName: DEFAULT_MISSION_NAME,
   dirty: false,
   config: { ...DEFAULT_MISSION_CONFIG },
   waypoints: [],
@@ -239,7 +243,9 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       dirty: true,
     })),
 
-  addWaypoint: (lat, lng) =>
+  addWaypoint: (lat, lng) => {
+    const isFirstPointOfMission =
+      get().waypoints.length === 0 && get().pois.length === 0;
     set((state) => {
       const index = state.waypoints.length;
       const newWaypoint: Waypoint = {
@@ -256,7 +262,11 @@ export const useMissionStore = create<MissionState>((set, get) => ({
         lastSelectedWaypointIndex: index,
         dirty: true,
       };
-    }),
+    });
+    if (isFirstPointOfMission) {
+      void autoNameFromLocation(lat, lng);
+    }
+  },
 
   updateWaypoint: (index, updates) =>
     set((state) => ({
@@ -452,7 +462,9 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     })),
 
   // POI actions
-  addPoi: (lat, lng) =>
+  addPoi: (lat, lng) => {
+    const isFirstPointOfMission =
+      get().waypoints.length === 0 && get().pois.length === 0;
     set((state) => {
       const building = state.buildings.find(
         (b) => b.vertices.length >= 3 && pointInPolygon([lat, lng], b.vertices),
@@ -482,7 +494,11 @@ export const useMissionStore = create<MissionState>((set, get) => ({
         pendingOrbitParams,
         dirty: true,
       };
-    }),
+    });
+    if (isFirstPointOfMission) {
+      void autoNameFromLocation(lat, lng);
+    }
+  },
 
   updatePoi: (id, updates) =>
     set((state) => ({
@@ -837,7 +853,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     const prefs = usePreferencesStore.getState().preferences;
     set({
       missionId: null,
-      missionName: "Nová mise",
+      missionName: DEFAULT_MISSION_NAME,
       config: { ...DEFAULT_MISSION_CONFIG, ...prefs.missionDefaults },
       waypoints: [],
       pois: [],
@@ -862,3 +878,31 @@ export const useMissionStore = create<MissionState>((set, get) => ({
 
   setDirty: (dirty) => set({ dirty }),
 }));
+
+/**
+ * Reverse-geocodes the mission's first placed point into a human-readable
+ * address and uses it as the mission name — but only if the mission is
+ * still unnamed by the time the request resolves (the user may have typed
+ * their own name, or started a different mission, while this was in flight).
+ * Silent on any failure: auto-naming is a nice-to-have, never worth
+ * interrupting the user's flow over.
+ */
+async function autoNameFromLocation(lat: number, lng: number): Promise<void> {
+  const token = useConfigStore.getState().mapboxToken;
+  if (!token) return;
+
+  try {
+    const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${encodeURIComponent(token)}&limit=1`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    const placeName = data.features?.[0]?.place_name;
+    if (!placeName || typeof placeName !== "string") return;
+
+    if (useMissionStore.getState().missionName === DEFAULT_MISSION_NAME) {
+      useMissionStore.setState({ missionName: placeName, dirty: true });
+    }
+  } catch {
+    // Network failure or malformed response — keep the default name.
+  }
+}

@@ -17,9 +17,15 @@ Save your missions to your account and share them with others via a link.
 
 ## How it works
 
-1. After planning a mission, click **Save** and give it a name.
-2. To find it later, go to the routes page where all your saved missions are listed.
-3. To share, open a saved mission and click the share button. Copy the generated link and send it to anyone.
+1. As soon as you place the first waypoint or point of interest, the mission
+   is automatically named after that location's address (e.g. "Praha 4,
+   Podjavorinské"), so you rarely need to type a name yourself. Rename it any
+   time — an automatic name is only ever applied once, to a mission that
+   hasn't been renamed yet.
+2. After planning a mission, click **Save** to persist it under that name (or
+   whatever you've renamed it to).
+3. To find it later, go to the routes page where all your saved missions are listed.
+4. To share, open a saved mission and click the share button. Copy the generated link and send it to anyone.
 
 ## Good to know
 

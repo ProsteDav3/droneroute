@@ -210,6 +210,7 @@ export function buildTemplateKml(mission: Mission): string {
     </wpml:droneInfo>
     <wpml:payloadInfo>
       <wpml:payloadEnumValue>${c.payloadEnumValue}</wpml:payloadEnumValue>
+      <wpml:payloadSubEnumValue>${c.payloadSubEnumValue ?? 0}</wpml:payloadSubEnumValue>
       <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
     </wpml:payloadInfo>
   </wpml:missionConfig>
@@ -308,6 +309,7 @@ export function buildWaylinesWpml(mission: Mission): string {
     </wpml:droneInfo>
     <wpml:payloadInfo>
       <wpml:payloadEnumValue>${c.payloadEnumValue}</wpml:payloadEnumValue>
+      <wpml:payloadSubEnumValue>${c.payloadSubEnumValue ?? 0}</wpml:payloadSubEnumValue>
       <wpml:payloadPositionIndex>0</wpml:payloadPositionIndex>
     </wpml:payloadInfo>
   </wpml:missionConfig>

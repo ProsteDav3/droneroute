@@ -118,6 +118,8 @@ export interface DroneModel {
 export interface PayloadModel {
   label: string;
   payloadEnumValue: number;
+  /** Sub-variant of the payload (e.g. lens/sensor configuration). Omitted means 0. */
+  payloadSubEnumValue?: number;
 }
 
 export const DRONE_MODELS: DroneModel[] = [
@@ -204,17 +206,22 @@ export const DRONE_MODELS: DroneModel[] = [
     payloads: [{ label: "Mini 4 Pro Camera", payloadEnumValue: 100 }],
   },
   {
-    // droneEnumValue is NOT part of any DJI-published WPML spec as of this
-    // writing (Matrice 4 Enterprise Series postdates the last public
-    // revision) — it remains an unverified placeholder even though the
-    // drone's physical specs below (battery, speed, camera FOV) are
-    // confirmed against DJI's official spec sheet. Treat every generated
-    // KMZ for this drone as untested until confirmed on real hardware (see
-    // GUIDE.md flight-test guidance before production use).
+    // Confirmed 2026-07-15 by inspecting a real DJI Pilot 2-exported
+    // template.kml/waylines.wpml from an actual RC Plus 2 + Matrice 4T
+    // (WPML namespace 1.0.6). The previous droneEnumValue/payloadEnumValue
+    // guess of 103/103 was wrong — DJI Pilot 2 read it back as drone "M400"
+    // with camera "Unknown". Real values below are taken directly from
+    // that export.
     label: "DJI Matrice 4T",
-    droneEnumValue: 103,
-    droneSubEnumValue: 0,
-    payloads: [{ label: "Matrice 4T Camera", payloadEnumValue: 103 }],
+    droneEnumValue: 99,
+    droneSubEnumValue: 1,
+    payloads: [
+      {
+        label: "Matrice 4T Camera",
+        payloadEnumValue: 89,
+        payloadSubEnumValue: 0,
+      },
+    ],
   },
 ];
 
@@ -308,6 +315,8 @@ export interface MissionConfig {
   droneEnumValue: number;
   droneSubEnumValue: number;
   payloadEnumValue: number;
+  /** Sub-variant of the payload (e.g. lens/sensor configuration). Omitted means 0. */
+  payloadSubEnumValue?: number;
   flyToWaylineMode: FlyToWaylineMode;
   finishAction: FinishAction;
   exitOnRCLost: "goContinue" | "executeLostAction";
@@ -421,9 +430,12 @@ export const DEFAULT_MISSION_CONFIG: MissionConfig = {
   // well under its rated 46-49 min max flight time (DJI spec sheet,
   // low-noise/standard propellers) to leave a safety margin for wind, cold,
   // and RTH reserve rather than warning right at the theoretical limit.
-  droneEnumValue: 103,
-  droneSubEnumValue: 0,
-  payloadEnumValue: 103,
+  // droneEnumValue/droneSubEnumValue/payloadEnumValue/payloadSubEnumValue
+  // confirmed 2026-07-15 against a real DJI Pilot 2 export — see DRONE_MODELS.
+  droneEnumValue: 99,
+  droneSubEnumValue: 1,
+  payloadEnumValue: 89,
+  payloadSubEnumValue: 0,
   flyToWaylineMode: "safely",
   finishAction: "goHome",
   exitOnRCLost: "executeLostAction",

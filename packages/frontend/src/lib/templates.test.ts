@@ -504,9 +504,8 @@ describe("recommendSolarSpacing", () => {
     expect(high.photoSpacingM).toBeGreaterThan(low.photoSpacingM);
   });
 
-  it("flags the Matrice 4T entry as experimental, matching its unconfirmed drone/payload identity in DRONE_MODELS", () => {
-    expect(THERMAL_CAMERA_FOV[103].experimental).toBe(true);
-    // Verified payloads must not carry the caveat.
+  it("no longer flags the Matrice 4T entry as experimental now that its drone/payload identity is confirmed against a real DJI Pilot 2 export", () => {
+    expect(THERMAL_CAMERA_FOV[89].experimental).toBeUndefined();
     expect(THERMAL_CAMERA_FOV[43].experimental).toBeUndefined();
     expect(THERMAL_CAMERA_FOV[53].experimental).toBeUndefined();
   });

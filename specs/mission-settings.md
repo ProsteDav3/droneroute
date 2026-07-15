@@ -30,4 +30,4 @@ Configure your drone model, camera, altitude reference, and safety options for t
 - Height reference affects how altitude values are interpreted by the drone — choose the one that matches your operational needs. The default is **above ground level**.
 - All height fields enforce a minimum of 1 meter.
 - You can set default values for all mission settings in the **Mission defaults** tab of the settings dialog. New missions will use those defaults instead of the factory defaults.
-- **Matrice 4T is the default drone for new missions**, with defaults (35 min max battery, 7 m/s flight speed) set from DJI's published specs. One caveat remains: DJI has not published an official WPML drone identifier for the Matrice 4 Enterprise Series, so this option's internal identifier is a placeholder. Test any Matrice 4T mission on a non-critical flight before relying on it operationally.
+- **Matrice 4T is the default drone for new missions**, with defaults (35 min max battery, 7 m/s flight speed) set from DJI's published specs. Its internal WPML drone/camera identifiers were confirmed by inspecting a real DJI Pilot 2 export from an RC Plus 2 + Matrice 4T.

@@ -203,3 +203,83 @@ export function recommendGridSpacing(
       Math.round(footprintHeightM * (1 - frontOverlapPct / 100) * 10) / 10,
   };
 }
+
+export interface FacadeGridRecommendation {
+  horizSpacingM: number;
+  vertSpacingM: number;
+}
+
+/**
+ * Recommended horizontal (along-wall) and vertical (row-to-row) spacing
+ * between adjacent Facade waypoints, given the standoff distance from the
+ * wall, the desired horizontal/vertical overlap percentages, and a known
+ * DJI thermal payload — for building-envelope thermography (heat-loss and
+ * insulation-defect inspection), where full frame-to-frame coverage
+ * matters the same way it does for `recommendSolarSpacing`'s nadir
+ * thermal survey, just shooting sideways at a wall instead of straight
+ * down. Unlike the wide/RGB cameras used by `recommendGridSpacing`,
+ * `THERMAL_CAMERA_FOV` already stores both horizontal and vertical FOV
+ * directly, so no aspect-ratio derivation is needed here. Returns `null`
+ * when the payload's thermal FOV isn't known, or when `distanceM` isn't a
+ * positive number (e.g. transiently 0 while the user is mid-edit of that
+ * field) — a zero/negative distance would otherwise produce a zero
+ * footprint, and callers dividing a wall length by that spacing to derive
+ * a row/column count would get `Infinity`/`NaN` instead of a real number.
+ */
+export function recommendFacadeGrid(
+  distanceM: number,
+  payloadEnumValue: number,
+  horizOverlapPct: number,
+  vertOverlapPct: number,
+): FacadeGridRecommendation | null {
+  const fov = THERMAL_CAMERA_FOV[payloadEnumValue];
+  if (!fov || !(distanceM > 0)) return null;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const footprintWidthM = 2 * distanceM * Math.tan(toRad(fov.hfovDeg) / 2);
+  const footprintHeightM = 2 * distanceM * Math.tan(toRad(fov.vfovDeg) / 2);
+  return {
+    horizSpacingM:
+      Math.round(footprintWidthM * (1 - horizOverlapPct / 100) * 10) / 10,
+    vertSpacingM:
+      Math.round(footprintHeightM * (1 - vertOverlapPct / 100) * 10) / 10,
+  };
+}
+
+export interface FacadeGridCounts {
+  numRows: number;
+  numColumns: number;
+}
+
+/**
+ * Converts a recommended horizontal/vertical spacing (from
+ * `recommendFacadeGrid`) into the row/column counts `generateFacade`
+ * actually takes, given the wall's real traced length and altitude range.
+ * `generateFacade` places `numColumns` points spread evenly across the
+ * whole wall length (`numColumns - 1` gaps) and `numRows` points the same
+ * way across the altitude range, so `ceil(length / spacing) + 1` is the
+ * smallest count whose actual delivered spacing is never coarser than
+ * requested — never delivers less overlap than asked for, only ever a bit
+ * more when the wall doesn't divide evenly. Floors both spacing inputs to
+ * a small positive epsilon so a caller passing a stale/zero spacing value
+ * (e.g. before `recommendFacadeGrid` returns `null` propagates through)
+ * can't produce `Infinity`/`NaN`.
+ */
+export function deriveFacadeGridCounts(
+  wallLengthM: number,
+  wallHeightM: number,
+  horizSpacingM: number,
+  vertSpacingM: number,
+): FacadeGridCounts {
+  const safeHorizSpacingM = Math.max(horizSpacingM, 0.1);
+  const safeVertSpacingM = Math.max(vertSpacingM, 0.1);
+  return {
+    numColumns: Math.max(
+      2,
+      Math.ceil(Math.max(wallLengthM, 0) / safeHorizSpacingM) + 1,
+    ),
+    numRows: Math.max(
+      1,
+      Math.ceil(Math.max(wallHeightM, 0) / safeVertSpacingM) + 1,
+    ),
+  };
+}

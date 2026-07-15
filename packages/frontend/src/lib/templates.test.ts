@@ -34,6 +34,8 @@ import type {
 import {
   recommendSolarSpacing,
   recommendGridSpacing,
+  recommendFacadeGrid,
+  deriveFacadeGridCounts,
   computeGsdCm,
   computeAltitudeForGsd,
   isMultispectralPayload,
@@ -575,6 +577,64 @@ describe("recommendGridSpacing", () => {
     const tightOverlap = recommendGridSpacing(80, M3E, 90, 90)!;
     expect(tightOverlap.lineSpacingM).toBeLessThan(looseOverlap.lineSpacingM);
     expect(tightOverlap.photoSpacingM).toBeLessThan(looseOverlap.photoSpacingM);
+  });
+});
+
+describe("recommendFacadeGrid", () => {
+  const M30T = 53;
+
+  it("returns null for a payload with no known thermal FOV", () => {
+    expect(recommendFacadeGrid(20, 999999, 20, 20)).toBeNull();
+  });
+
+  it("returns positive spacing below the raw (no-overlap) footprint", () => {
+    const rec = recommendFacadeGrid(20, M30T, 20, 20)!;
+    expect(rec).not.toBeNull();
+    expect(rec.horizSpacingM).toBeGreaterThan(0);
+    expect(rec.vertSpacingM).toBeGreaterThan(0);
+    const rawFootprintWidth = 2 * 20 * Math.tan((49.4 * Math.PI) / 180 / 2);
+    expect(rec.horizSpacingM).toBeLessThan(rawFootprintWidth);
+  });
+
+  it("higher overlap % recommends tighter spacing", () => {
+    const looseOverlap = recommendFacadeGrid(20, M30T, 10, 10)!;
+    const tightOverlap = recommendFacadeGrid(20, M30T, 60, 60)!;
+    expect(tightOverlap.horizSpacingM).toBeLessThan(looseOverlap.horizSpacingM);
+    expect(tightOverlap.vertSpacingM).toBeLessThan(looseOverlap.vertSpacingM);
+  });
+
+  it("recommends larger spacing at a greater standoff distance (wider footprint)", () => {
+    const close = recommendFacadeGrid(10, M30T, 20, 20)!;
+    const far = recommendFacadeGrid(30, M30T, 20, 20)!;
+    expect(far.horizSpacingM).toBeGreaterThan(close.horizSpacingM);
+    expect(far.vertSpacingM).toBeGreaterThan(close.vertSpacingM);
+  });
+
+  it("returns null for a zero or negative standoff distance instead of a zero/degenerate footprint (regression — avoids Infinity/NaN downstream)", () => {
+    expect(recommendFacadeGrid(0, M30T, 20, 20)).toBeNull();
+    expect(recommendFacadeGrid(-5, M30T, 20, 20)).toBeNull();
+  });
+});
+
+describe("deriveFacadeGridCounts", () => {
+  it("computes counts whose delivered spacing is never coarser than requested", () => {
+    const { numColumns, numRows } = deriveFacadeGridCounts(100, 20, 12, 8);
+    // numColumns-1 gaps must cover wallLengthM at <= the requested spacing.
+    expect(100 / (numColumns - 1)).toBeLessThanOrEqual(12);
+    expect(20 / (numRows - 1)).toBeLessThanOrEqual(8);
+  });
+
+  it("never returns fewer than the minimum sensible counts for a zero-size wall", () => {
+    expect(deriveFacadeGridCounts(0, 0, 5, 5)).toEqual({
+      numColumns: 2,
+      numRows: 1,
+    });
+  });
+
+  it("does not produce Infinity/NaN when spacing is zero (defends against a stale/degenerate recommendFacadeGrid result)", () => {
+    const { numColumns, numRows } = deriveFacadeGridCounts(50, 10, 0, 0);
+    expect(Number.isFinite(numColumns)).toBe(true);
+    expect(Number.isFinite(numRows)).toBe(true);
   });
 });
 

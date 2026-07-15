@@ -35,6 +35,7 @@ import {
   recommendSolarSpacing,
   recommendGridSpacing,
   recommendFacadeGrid,
+  deriveFacadeGridCounts,
   computeGsdCm,
   computeAltitudeForGsd,
   isMultispectralPayload,
@@ -607,6 +608,33 @@ describe("recommendFacadeGrid", () => {
     const far = recommendFacadeGrid(30, M30T, 20, 20)!;
     expect(far.horizSpacingM).toBeGreaterThan(close.horizSpacingM);
     expect(far.vertSpacingM).toBeGreaterThan(close.vertSpacingM);
+  });
+
+  it("returns null for a zero or negative standoff distance instead of a zero/degenerate footprint (regression — avoids Infinity/NaN downstream)", () => {
+    expect(recommendFacadeGrid(0, M30T, 20, 20)).toBeNull();
+    expect(recommendFacadeGrid(-5, M30T, 20, 20)).toBeNull();
+  });
+});
+
+describe("deriveFacadeGridCounts", () => {
+  it("computes counts whose delivered spacing is never coarser than requested", () => {
+    const { numColumns, numRows } = deriveFacadeGridCounts(100, 20, 12, 8);
+    // numColumns-1 gaps must cover wallLengthM at <= the requested spacing.
+    expect(100 / (numColumns - 1)).toBeLessThanOrEqual(12);
+    expect(20 / (numRows - 1)).toBeLessThanOrEqual(8);
+  });
+
+  it("never returns fewer than the minimum sensible counts for a zero-size wall", () => {
+    expect(deriveFacadeGridCounts(0, 0, 5, 5)).toEqual({
+      numColumns: 2,
+      numRows: 1,
+    });
+  });
+
+  it("does not produce Infinity/NaN when spacing is zero (defends against a stale/degenerate recommendFacadeGrid result)", () => {
+    const { numColumns, numRows } = deriveFacadeGridCounts(50, 10, 0, 0);
+    expect(Number.isFinite(numColumns)).toBe(true);
+    expect(Number.isFinite(numRows)).toBe(true);
   });
 });
 

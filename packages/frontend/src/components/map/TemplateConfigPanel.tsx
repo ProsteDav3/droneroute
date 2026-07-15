@@ -49,6 +49,7 @@ import {
   recommendSolarSpacing,
   recommendGridSpacing,
   recommendFacadeGrid,
+  deriveFacadeGridCounts,
   computeGsdCm,
   isMultispectralPayload,
   NDVI_RECOMMENDED_FRONT_OVERLAP_PCT,
@@ -1114,14 +1115,13 @@ export function TemplateConfigPanel({
             );
             const wallHeightM =
               facadeParams.maxAltitude - facadeParams.minAltitude;
-            const recNumColumns = Math.max(
-              2,
-              Math.ceil(wallLengthM / rec.horizSpacingM) + 1,
-            );
-            const recNumRows = Math.max(
-              1,
-              Math.ceil(wallHeightM / rec.vertSpacingM) + 1,
-            );
+            const { numColumns: recNumColumns, numRows: recNumRows } =
+              deriveFacadeGridCounts(
+                wallLengthM,
+                wallHeightM,
+                rec.horizSpacingM,
+                rec.vertSpacingM,
+              );
             const fov = THERMAL_CAMERA_FOV[payloadEnumValue];
             return (
               <div className="col-span-2 flex flex-col gap-1 text-[10px] text-muted-foreground bg-muted/20 rounded-md px-2 py-1">

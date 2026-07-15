@@ -1,5 +1,4 @@
 import { execFileSync } from "node:child_process";
-import { ADB_WAYPOINT_PATH } from "./constants.js";
 
 /** A single device entry parsed from `adb devices -l`. */
 export interface AdbDevice {
@@ -106,13 +105,14 @@ export function adbPush(
 }
 
 /**
- * Check whether the DJI waypoint directory exists on a device.
+ * Check whether a given directory exists on a device (e.g. one of the
+ * DJI Fly / DJI Pilot 2 mission paths from `constants.ts`).
  */
-export function hasWaypointDir(serial: string): boolean {
+export function hasRemoteDir(serial: string, remotePath: string): boolean {
   try {
     const result = adbShell(
       serial,
-      `[ -d "${ADB_WAYPOINT_PATH}" ] && echo yes || echo no`,
+      `[ -d "${remotePath}" ] && echo yes || echo no`,
     );
     return result === "yes";
   } catch {

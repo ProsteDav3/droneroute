@@ -87,11 +87,26 @@ program
       const result = uploadKmz(device, kmzPath);
 
       console.log(chalk.green("\n✓ Mission uploaded successfully"));
-      console.log(chalk.dim(`  Mission ID: ${result.uuid}`));
-      console.log(
-        chalk.dim("\nOpen DJI Fly on the controller and look for the new"),
-      );
-      console.log(chalk.dim("mission in the waypoint list."));
+      console.log(chalk.dim(`  Uploaded to: ${result.remotePath}`));
+
+      if (device.appKind === "pilot2") {
+        console.log(
+          chalk.dim(
+            "\nDJI Pilot 2 placement is best-effort (unconfirmed on real",
+          ),
+        );
+        console.log(
+          chalk.dim(
+            "hardware) — open Pilot 2's route/mission import screen and look",
+          ),
+        );
+        console.log(chalk.dim("for the file, or import it manually if not."));
+      } else {
+        console.log(
+          chalk.dim("\nOpen DJI Fly on the controller and look for the new"),
+        );
+        console.log(chalk.dim("mission in the waypoint list."));
+      }
     } catch (err: any) {
       console.error(chalk.red(`\nUpload failed: ${err.message}`));
       console.error(

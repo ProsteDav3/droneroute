@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import {
   MapPin,
@@ -16,8 +16,11 @@ import {
   Link2Off,
   Check,
   Copy,
+  Briefcase,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useMissionStore } from "@/store/missionStore";
 import { useAuthStore } from "@/store/authStore";
 import { useConfigStore } from "@/store/configStore";
@@ -35,6 +38,7 @@ import type {
 interface SavedMission {
   id: string;
   name: string;
+  client: string | null;
   created_at: string;
   updated_at: string;
   config: string;
@@ -67,6 +71,17 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
   const [missions, setMissions] = useState<SavedMission[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [clientFilter, setClientFilter] = useState("");
+
+  const filteredMissions = useMemo(() => {
+    const query = clientFilter.trim().toLowerCase();
+    if (!query) return missions;
+    return missions.filter((m) =>
+      (m.client ?? "").toLowerCase().includes(query),
+    );
+  }, [missions, clientFilter]);
+
+  const hasAnyClient = missions.some((m) => m.client);
 
   const fetchMissions = async () => {
     setLoading(true);
@@ -102,6 +117,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
       loadMission({
         id: mission.id,
         name: mission.name,
+        client: mission.client,
         config,
         waypoints,
         pois,
@@ -227,6 +243,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
         "/missions",
         {
           name: `${mission.name || "Trasa bez názvu"} (kopie)`,
+          client: mission.client,
           config,
           waypoints,
           pois,
@@ -300,6 +317,19 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
               Nová trasa
             </Button>
           </div>
+          {hasAnyClient && (
+            <div className="max-w-5xl mx-auto mt-3">
+              <div className="relative max-w-xs">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  value={clientFilter}
+                  onChange={(e) => setClientFilter(e.target.value)}
+                  placeholder="Filtrovat podle klienta/zakázky…"
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Content */}
@@ -354,9 +384,29 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
               </div>
             )}
 
-            {!loading && !error && token && missions.length > 0 && (
+            {!loading &&
+              !error &&
+              token &&
+              missions.length > 0 &&
+              filteredMissions.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                  <Search className="h-12 w-12 mb-4 opacity-30" />
+                  <p className="text-lg font-medium mb-1">
+                    Žádná trasa neodpovídá filtru
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setClientFilter("")}
+                  >
+                    Zrušit filtr
+                  </Button>
+                </div>
+              )}
+
+            {!loading && !error && token && filteredMissions.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {missions.map((mission) => {
+                {filteredMissions.map((mission) => {
                   const waypoints: Waypoint[] = (() => {
                     try {
                       return JSON.parse(mission.waypoints);
@@ -400,9 +450,19 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
 
                       <div className="p-4">
                         <div className="flex items-start justify-between mb-3">
-                          <h3 className="text-sm font-semibold text-foreground truncate flex-1 mr-2 group-hover:text-primary transition-colors">
-                            {mission.name || "Trasa bez názvu"}
-                          </h3>
+                          <div className="flex-1 mr-2 min-w-0">
+                            <h3 className="text-sm font-semibold text-foreground truncate group-hover:text-primary transition-colors">
+                              {mission.name || "Trasa bez názvu"}
+                            </h3>
+                            {mission.client && (
+                              <div className="flex items-center gap-1 text-[10px] text-amber-400 mt-0.5">
+                                <Briefcase className="h-2.5 w-2.5 shrink-0" />
+                                <span className="truncate">
+                                  {mission.client}
+                                </span>
+                              </div>
+                            )}
+                          </div>
                           <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                             {!selfHosted && (
                               <Button

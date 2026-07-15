@@ -244,6 +244,58 @@ describe("missionStore — template groups (edit-after-apply)", () => {
 
     expect(useMissionStore.getState().templateGroups).toEqual({});
   });
+
+  it("loadMission sets missionClient from the saved mission's client field", () => {
+    useMissionStore.getState().loadMission({
+      name: "Client mission",
+      client: "Acme s.r.o.",
+      config: useMissionStore.getState().config,
+      waypoints: [],
+    });
+
+    expect(useMissionStore.getState().missionClient).toBe("Acme s.r.o.");
+  });
+
+  it("loadMission defaults missionClient to an empty string when the mission has no client (null or omitted)", () => {
+    useMissionStore.getState().loadMission({
+      name: "No client",
+      client: null,
+      config: useMissionStore.getState().config,
+      waypoints: [],
+    });
+    expect(useMissionStore.getState().missionClient).toBe("");
+
+    useMissionStore.getState().loadMission({
+      name: "Also no client",
+      config: useMissionStore.getState().config,
+      waypoints: [],
+    });
+    expect(useMissionStore.getState().missionClient).toBe("");
+  });
+
+  it("clearMission resets missionClient to an empty string (regression: a stale client tag must not leak into the next mission)", () => {
+    useMissionStore.getState().loadMission({
+      name: "Client mission",
+      client: "Acme s.r.o.",
+      config: useMissionStore.getState().config,
+      waypoints: [],
+    });
+    expect(useMissionStore.getState().missionClient).toBe("Acme s.r.o.");
+
+    useMissionStore.getState().clearMission();
+
+    expect(useMissionStore.getState().missionClient).toBe("");
+  });
+
+  it("setMissionClient updates missionClient and marks the mission dirty", () => {
+    useMissionStore.getState().clearMission();
+    useMissionStore.getState().setDirty(false);
+
+    useMissionStore.getState().setMissionClient("New Client");
+
+    expect(useMissionStore.getState().missionClient).toBe("New Client");
+    expect(useMissionStore.getState().dirty).toBe(true);
+  });
 });
 
 describe("missionStore — buildings and POI-triggered orbit pre-fill", () => {

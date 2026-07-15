@@ -20,7 +20,7 @@ missionRoutes.get("/", authMiddleware, (req: AuthRequest, res) => {
   const db = getDb();
   const rows = db
     .prepare(
-      "SELECT id, name, config, waypoints, pois, obstacles, buildings, template_groups, share_token, created_at, updated_at FROM missions WHERE user_id = ? ORDER BY updated_at DESC",
+      "SELECT id, name, client, config, waypoints, pois, obstacles, buildings, template_groups, share_token, created_at, updated_at FROM missions WHERE user_id = ? ORDER BY updated_at DESC",
     )
     .all(req.userId!) as any[];
 
@@ -47,6 +47,7 @@ missionRoutes.get("/:id", authMiddleware, (req: AuthRequest, res) => {
   const mission: Mission = {
     id: row.id,
     name: row.name,
+    client: row.client ?? null,
     userId: row.user_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -65,6 +66,7 @@ missionRoutes.get("/:id", authMiddleware, (req: AuthRequest, res) => {
 missionRoutes.post("/", optionalAuth, (req: AuthRequest, res) => {
   const {
     name,
+    client,
     config,
     waypoints,
     pois,
@@ -88,10 +90,11 @@ missionRoutes.post("/", optionalAuth, (req: AuthRequest, res) => {
   const db = getDb();
   const id = uuidv4();
   db.prepare(
-    "INSERT INTO missions (id, name, user_id, config, waypoints, pois, obstacles, buildings, template_groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO missions (id, name, client, user_id, config, waypoints, pois, obstacles, buildings, template_groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).run(
     id,
     name,
+    client || null,
     req.userId || null,
     JSON.stringify(config),
     JSON.stringify(waypoints),
@@ -181,6 +184,7 @@ missionRoutes.post("/segments", authMiddleware, (req: AuthRequest, res) => {
 missionRoutes.put("/:id", authMiddleware, (req: AuthRequest, res) => {
   const {
     name,
+    client,
     config,
     waypoints,
     pois,
@@ -215,6 +219,10 @@ missionRoutes.put("/:id", authMiddleware, (req: AuthRequest, res) => {
   if (name !== undefined) {
     updates.push("name = ?");
     values.push(name);
+  }
+  if (client !== undefined) {
+    updates.push("client = ?");
+    values.push(client || null);
   }
   if (config !== undefined) {
     updates.push("config = ?");

@@ -28,6 +28,19 @@ describe("validateMissionCreate", () => {
     expect(validateMissionCreate(validCreate)).toBeNull();
   });
 
+  it("accepts a mission with no client field, or a well-formed one", () => {
+    expect(validateMissionCreate(validCreate)).toBeNull();
+    expect(
+      validateMissionCreate({ ...validCreate, client: "Acme s.r.o." }),
+    ).toBeNull();
+  });
+
+  it("rejects a non-string client field", () => {
+    expect(validateMissionCreate({ ...validCreate, client: 123 })).toBe(
+      "neplatný klient/zakázka",
+    );
+  });
+
   it("rejects a missing or blank name", () => {
     expect(validateMissionCreate({ ...validCreate, name: "" })).toBe(
       "neplatný název mise",
@@ -199,6 +212,21 @@ describe("validateMissionUpdate", () => {
     expect(validateMissionUpdate({ name: "" })).toBe("neplatný název mise");
     expect(validateMissionUpdate({ waypoints: "bad" })).toBe(
       "waypoints musí být pole",
+    );
+  });
+
+  it("accepts an omitted, empty, or well-formed client field", () => {
+    expect(validateMissionUpdate({ client: undefined })).toBeNull();
+    expect(validateMissionUpdate({ client: "" })).toBeNull();
+    expect(validateMissionUpdate({ client: "Acme s.r.o." })).toBeNull();
+  });
+
+  it("rejects a non-string client field", () => {
+    expect(validateMissionUpdate({ client: 123 })).toBe(
+      "neplatný klient/zakázka",
+    );
+    expect(validateMissionUpdate({ client: "a".repeat(201) })).toBe(
+      "neplatný klient/zakázka",
     );
   });
 });

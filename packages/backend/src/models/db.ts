@@ -98,6 +98,14 @@ export function initDb(): void {
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_missions_share_token ON missions(share_token) WHERE share_token IS NOT NULL`,
   );
 
+  // Migration: add client column if missing (for existing DBs) — free-text
+  // client/project name so missions can be organized per client or order.
+  try {
+    database.exec(`ALTER TABLE missions ADD COLUMN client TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+
   // Migration: add is_admin column if missing (for existing DBs)
   try {
     database.exec(

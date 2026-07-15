@@ -139,6 +139,48 @@ describe("provider-rlp", () => {
       expect(zones.map((z) => z.id)).toEqual(["rlp-110286"]);
     });
 
+    it("skips features with malformed geometry instead of letting them poison every future call", async () => {
+      const valid = gridCtrFeature("110286", "GND - 120 m AGL", [
+        [15.0, 49.8],
+        [15.02, 49.8],
+        [15.02, 49.82],
+        [15.0, 49.82],
+        [15.0, 49.8],
+      ]);
+      const nullGeometry = {
+        type: "Feature" as const,
+        geometry: null,
+        properties: { ident: "bad-1", vertical_limit: "GND - 100 m AGL" },
+      };
+      const emptyCoordinates = {
+        type: "Feature" as const,
+        geometry: { type: "Polygon" as const, coordinates: [] },
+        properties: { ident: "bad-2", vertical_limit: "GND - 100 m AGL" },
+      };
+      const wrongType = {
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [15.0, 49.8] },
+        properties: { ident: "bad-3", vertical_limit: "GND - 100 m AGL" },
+      };
+      (fetch as any)
+        .mockResolvedValueOnce(textResponse(INDEX_HTML))
+        .mockResolvedValueOnce(
+          jsonResponse({
+            features: [valid, nullGeometry, emptyCoordinates, wrongType],
+          }),
+        );
+
+      const bounds = { south: 49, west: 14, north: 50.5, east: 16 };
+
+      // First call: must not throw despite the malformed features being cached.
+      const first = await rlpProvider.fetchZones(bounds);
+      expect(first.map((z) => z.id)).toEqual(["rlp-110286"]);
+
+      // Second call (served from cache): must also not throw.
+      const second = await rlpProvider.fetchZones(bounds);
+      expect(second.map((z) => z.id)).toEqual(["rlp-110286"]);
+    });
+
     it("caches the downloaded dataset instead of re-fetching on every call", async () => {
       const feature = gridCtrFeature("110286", "GND - 120 m AGL", [
         [15.0, 49.8],

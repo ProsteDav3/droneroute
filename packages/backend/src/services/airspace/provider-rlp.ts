@@ -116,6 +116,44 @@ interface RlpFeature {
   };
 }
 
+/**
+ * Guards against malformed/unexpected upstream geometry (e.g. GeoJSON's
+ * legal `"geometry": null`, an unsupported geometry type, or empty/missing
+ * coordinate rings) ever entering the cache — `zoneIntersects` (used on
+ * every subsequent `fetchZones` call against the cached data, not just at
+ * download time) throws on exactly these shapes, and since it runs inside
+ * an `Array.prototype.filter`, a single bad zone would otherwise fail
+ * every request for up to the full cache TTL.
+ */
+function hasValidGeometry(geometry: unknown): geometry is {
+  type: "Polygon" | "MultiPolygon";
+  coordinates: number[][][] | number[][][][];
+} {
+  if (!geometry || typeof geometry !== "object") return false;
+  const geom = geometry as { type?: unknown; coordinates?: unknown };
+  if (geom.type === "Polygon") {
+    const coords = geom.coordinates as unknown;
+    return (
+      Array.isArray(coords) &&
+      coords.length > 0 &&
+      Array.isArray(coords[0]) &&
+      coords[0].length >= 3
+    );
+  }
+  if (geom.type === "MultiPolygon") {
+    const coords = geom.coordinates as unknown;
+    return (
+      Array.isArray(coords) &&
+      coords.length > 0 &&
+      coords.every(
+        (poly: unknown) =>
+          Array.isArray(poly) && Array.isArray(poly[0]) && poly[0].length >= 3,
+      )
+    );
+  }
+  return false;
+}
+
 async function downloadAndParse(): Promise<AirspaceZone[]> {
   const dataUrl = await discoverDataUrl();
   console.log(`RLP: downloading ${dataUrl}`);
@@ -126,15 +164,20 @@ async function downloadAndParse(): Promise<AirspaceZone[]> {
   }
 
   const doc = (await res.json()) as { features?: RlpFeature[] };
-  const features = doc.features ?? [];
-  console.log(`RLP: parsed ${features.length} grid cells`);
+  const rawFeatures = doc.features ?? [];
 
-  return features.map((f, i) => {
+  const zones: AirspaceZone[] = [];
+  let skipped = 0;
+  rawFeatures.forEach((f, i) => {
+    if (!hasValidGeometry(f.geometry)) {
+      skipped++;
+      return;
+    }
     const upper = parseVerticalLimitUpper(f.properties.vertical_limit);
-    return {
+    zones.push({
       id: `rlp-${f.properties.ident ?? i}`,
       name: f.properties.vertical_limit
-        ? `Řízená vzdušný prostor (${f.properties.vertical_limit})`
+        ? `Řízený vzdušný prostor (${f.properties.vertical_limit})`
         : "Řízený vzdušný prostor",
       severity: "restricted",
       geometry: f.geometry,
@@ -143,8 +186,14 @@ async function downloadAndParse(): Promise<AirspaceZone[]> {
       description: f.properties.data_source,
       category: "controlled-airspace",
       source: "rlp",
-    };
+    });
   });
+
+  console.log(
+    `RLP: parsed ${zones.length} grid cells${skipped > 0 ? ` (skipped ${skipped} with invalid geometry)` : ""}`,
+  );
+
+  return zones;
 }
 
 async function getCachedZones(): Promise<AirspaceZone[]> {

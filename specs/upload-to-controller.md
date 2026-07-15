@@ -24,10 +24,12 @@ Send a mission file directly to a DJI controller connected to your computer.
 - This is a command-line tool — you run it from the terminal, not from the web app.
 - The tool can detect controllers connected via USB storage mode or via ADB (Android Debug Bridge).
 - If multiple controllers are connected, you'll be asked to choose one.
-- On Windows, most DJI controllers connect via MTP, which doesn't get a
-  drive letter — ADB detection (requires installing Android platform-tools
-  and enabling USB debugging on the controller) is usually the reliable
-  path there.
+- On Windows and macOS, most DJI controllers connect via MTP, not USB mass
+  storage — Windows shows the device but without a drive letter, and macOS
+  doesn't natively support MTP at all (nothing shows up in Finder). On
+  both platforms, ADB detection (installing Android platform-tools and
+  enabling USB debugging on the controller) is the reliable path — treat
+  it as required, not just a fallback for edge cases.
 - DJI Pilot 2 support is best-effort: the mission-import folder location
   was found by directly inspecting a real controller rather than from
   published DJI documentation, so it isn't guaranteed to match every

@@ -10,6 +10,7 @@ Save your missions to your account and share them with others via a link.
   inspection (e.g. a monthly FVE thermography flight or a periodic facade
   check) where you want to reuse the exact same flight plan for the next
   visit while keeping the original as its own separate record.
+- **Organize by client/project**: tag a mission with a client or project name, and filter your saved missions by it on the routes page — useful once you're managing flights for several different clients or orders.
 - **Delete** missions you no longer need.
 - **Share** a mission by generating a read-only link that anyone can open — no account required.
 - **Revoke** a shared link at any time, immediately making it inaccessible.
@@ -34,10 +35,16 @@ Save your missions to your account and share them with others via a link.
    is created immediately, named "\<original name\> (kopie)", with the exact
    same waypoints, POIs, obstacles, buildings, and settings — the original is
    left untouched.
+6. To organize by client/project, type a client or project name into the
+   "Klient / zakázka" field under the mission name in the editor, then save.
+   The routes page shows this on each mission's card, and a filter box
+   appears above the mission grid (once at least one saved mission has a
+   client set) to narrow the list down to a specific client.
 
 ## Good to know
 
 - You need an account to save missions. Without one, you can still plan flights but they won't persist.
 - Shared links are read-only — viewers cannot modify your original mission.
-- Duplicating never carries over the original's share link — the copy starts unshared, even if the original is currently shared.
+- Duplicating never carries over the original's share link — the copy starts unshared, even if the original is currently shared. Duplicating does carry over the original's client/project tag.
+- The client/project field is entirely free text — there's no fixed list of clients to choose from, and the filter matches any part of what you type.
 - Sharing is available in cloud mode. Self-hosted installations may not include this feature.

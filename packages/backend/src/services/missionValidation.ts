@@ -168,6 +168,7 @@ function validateTemplateGroups(value: unknown): string | null {
 
 export interface MissionPayload {
   name?: unknown;
+  client?: unknown;
   config?: unknown;
   waypoints?: unknown;
   pois?: unknown;
@@ -179,6 +180,7 @@ export interface MissionPayload {
 /** Validate a full mission-create payload. Returns an error message or null. */
 export function validateMissionCreate(body: MissionPayload): string | null {
   if (!isValidName(body.name)) return "neplatný název mise";
+  if (!isOptionalName(body.client)) return "neplatný klient/zakázka";
   if (!isPlainObject(body.config)) return "neplatná konfigurace mise";
   return (
     validateWaypoints(body.waypoints) ??
@@ -196,6 +198,9 @@ export function validateMissionCreate(body: MissionPayload): string | null {
 export function validateMissionUpdate(body: MissionPayload): string | null {
   if (body.name !== undefined && !isValidName(body.name)) {
     return "neplatný název mise";
+  }
+  if (body.client !== undefined && !isOptionalName(body.client)) {
+    return "neplatný klient/zakázka";
   }
   if (body.config !== undefined && !isPlainObject(body.config)) {
     return "neplatná konfigurace mise";

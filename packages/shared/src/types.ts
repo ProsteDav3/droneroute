@@ -336,6 +336,8 @@ export interface MissionConfig {
 export interface Mission {
   id: string;
   name: string;
+  /** Free-text client/project name, for organizing missions across a drone service business's clients. Null/absent when unset. */
+  client?: string | null;
   createdAt: string;
   updatedAt: string;
   userId?: string;

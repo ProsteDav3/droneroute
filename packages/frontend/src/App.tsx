@@ -79,6 +79,8 @@ export default function App() {
   const {
     missionName,
     setMissionName,
+    missionClient,
+    setMissionClient,
     missionId,
     setMissionId,
     config,
@@ -441,6 +443,7 @@ export default function App() {
       if (missionId) {
         await api.put(`/missions/${missionId}`, {
           name: missionName,
+          client: missionClient,
           config,
           waypoints,
           pois,
@@ -451,6 +454,7 @@ export default function App() {
       } else {
         const result = await api.post<{ id: string }>("/missions", {
           name: missionName,
+          client: missionClient,
           config,
           waypoints,
           pois,
@@ -711,6 +715,13 @@ export default function App() {
             className="h-8 text-xs font-medium border-[#00c2ff]/30 bg-[#00c2ff]/5 focus-visible:ring-[#00c2ff]/40"
             placeholder="Název mise"
             title="Pojmenujte misi pro snadnou identifikaci"
+          />
+          <Input
+            value={missionClient}
+            onChange={(e) => setMissionClient(e.target.value)}
+            className="h-7 text-xs mt-1.5"
+            placeholder="Klient / zakázka (volitelné)"
+            title="Přiřaďte misi ke klientovi nebo zakázce pro snadné třídění v Mých trasách"
           />
         </div>
 

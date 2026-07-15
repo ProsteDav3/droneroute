@@ -137,6 +137,62 @@ describe("templateGroups persistence", () => {
   });
 });
 
+describe("client (organize missions by client/project) persistence", () => {
+  it("round-trips client through create, get, list, and update", async () => {
+    const create = await request(app)
+      .post("/api/missions")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...validBody, client: "Acme s.r.o." });
+    expect(create.status).toBe(201);
+
+    const get = await request(app)
+      .get(`/api/missions/${create.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(get.status).toBe(200);
+    expect(get.body.client).toBe("Acme s.r.o.");
+
+    const list = await request(app)
+      .get("/api/missions")
+      .set("Authorization", `Bearer ${token}`);
+    expect(list.status).toBe(200);
+    const listed = list.body.find((m: any) => m.id === create.body.id);
+    expect(listed.client).toBe("Acme s.r.o.");
+
+    const update = await request(app)
+      .put(`/api/missions/${create.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ client: "Different Client" });
+    expect(update.status).toBe(200);
+
+    const getAfterUpdate = await request(app)
+      .get(`/api/missions/${create.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(getAfterUpdate.body.client).toBe("Different Client");
+  });
+
+  it("defaults to null when client is omitted", async () => {
+    const create = await request(app)
+      .post("/api/missions")
+      .set("Authorization", `Bearer ${token}`)
+      .send(validBody);
+    expect(create.status).toBe(201);
+
+    const get = await request(app)
+      .get(`/api/missions/${create.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(get.body.client).toBeNull();
+  });
+
+  it("rejects a non-string client with 400", async () => {
+    const res = await request(app)
+      .post("/api/missions")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...validBody, client: 12345 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("neplatný klient/zakázka");
+  });
+});
+
 describe("POST /api/missions/segments", () => {
   it("rejects the request without a token with 401", async () => {
     const res = await request(app)

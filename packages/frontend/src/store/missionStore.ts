@@ -33,6 +33,8 @@ interface MissionState {
   // Mission metadata
   missionId: string | null;
   missionName: string;
+  /** Free-text client/project name, for organizing saved missions across a drone service business's clients. Empty string means unset. */
+  missionClient: string;
   dirty: boolean;
   /** Bumped whenever the current mission is replaced wholesale (new/clear/load) — lets an in-flight async task (e.g. auto-naming) detect it's now stale even when missionId itself is null on both sides. */
   missionGeneration: number;
@@ -89,6 +91,7 @@ interface MissionState {
 
   // Waypoint actions
   setMissionName: (name: string) => void;
+  setMissionClient: (client: string) => void;
   setMissionId: (id: string | null) => void;
   setConfig: (config: Partial<MissionConfig>) => void;
   addWaypoint: (lat: number, lng: number) => void;
@@ -178,6 +181,7 @@ interface MissionState {
   loadMission: (data: {
     id?: string;
     name: string;
+    client?: string | null;
     config: MissionConfig;
     waypoints: Waypoint[];
     pois?: PointOfInterest[];
@@ -193,6 +197,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   missionId: null,
   missionGeneration: 0,
   missionName: DEFAULT_MISSION_NAME,
+  missionClient: "",
   dirty: false,
   config: { ...DEFAULT_MISSION_CONFIG },
   waypoints: [],
@@ -238,6 +243,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   setShareToken: (token) => set({ shareToken: token }),
 
   setMissionName: (name) => set({ missionName: name, dirty: true }),
+  setMissionClient: (client) => set({ missionClient: client, dirty: true }),
   setMissionId: (id) => set({ missionId: id }),
 
   setConfig: (updates) =>
@@ -856,6 +862,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       missionId: data.id || null,
       missionGeneration: state.missionGeneration + 1,
       missionName: data.name,
+      missionClient: data.client || "",
       config: data.config,
       waypoints: data.waypoints,
       pois: data.pois || [],
@@ -883,6 +890,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       missionId: null,
       missionGeneration: state.missionGeneration + 1,
       missionName: DEFAULT_MISSION_NAME,
+      missionClient: "",
       config: { ...DEFAULT_MISSION_CONFIG, ...prefs.missionDefaults },
       waypoints: [],
       pois: [],

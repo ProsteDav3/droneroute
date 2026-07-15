@@ -71,12 +71,14 @@ const ASSUMED_ACCEL_MPS2 = 2; // conservative ascent/cruise accel for M300/M350/
 const STOP_TURN_STABILIZE_S = 1; // brief pause to settle + rotate at a full-stop waypoint
 const SHARP_TURN_ANGLE_DEG = 60; // turns sharper than this get a slowdown even without an explicit stop
 const SHARP_TURN_DAMPING_THRESHOLD_M = 5; // below this damping distance, a sharp turn can't be taken at full cruise speed
+const FALLBACK_SPEED_MPS = 7; // used when a speed is missing/invalid, so covering real distance is never silently counted as taking zero time
 
 function effectiveSpeed(
   wp: FlightStatsWaypoint,
   globalSpeedMps: number,
 ): number {
-  return wp.useGlobalSpeed ? globalSpeedMps : wp.speed;
+  const speed = wp.useGlobalSpeed ? globalSpeedMps : wp.speed;
+  return speed > 0 ? speed : FALLBACK_SPEED_MPS;
 }
 
 /**
@@ -105,14 +107,22 @@ export function estimateFlightStats(
     );
     const speed = effectiveSpeed(curr, globalSpeedMps);
     distanceM += segDist;
-    timeS += speed > 0 ? segDist / speed : 0;
+    timeS += segDist / speed;
   }
 
   for (const wp of waypoints) {
     for (const action of wp.actions ?? []) {
       if (action.actionType === "hover") {
-        const params = action.params as { hoverTime?: number };
-        timeS += params.hoverTime ?? 0;
+        // Actions authored fresh in the app's own ActionEditor store
+        // `hoverTime` as a plain number, but a mission imported from KMZ
+        // carries the raw parsed-XML shape instead ("wpml:hoverTime", as a
+        // string) — check both so imported hover actions aren't silently
+        // counted as 0s.
+        const params = action.params as Record<string, unknown>;
+        const raw = params.hoverTime ?? params["wpml:hoverTime"];
+        const hoverTime = typeof raw === "string" ? parseFloat(raw) : raw;
+        timeS +=
+          typeof hoverTime === "number" && !isNaN(hoverTime) ? hoverTime : 0;
       }
     }
   }
@@ -131,7 +141,6 @@ export function estimateFlightStats(
     const wp = waypoints[i];
     const nextWp = waypoints[i + 1];
     const speed = effectiveSpeed(wp, globalSpeedMps);
-    if (speed <= 0) continue;
 
     const incomingBearing = bearing(
       prevWp.latitude,

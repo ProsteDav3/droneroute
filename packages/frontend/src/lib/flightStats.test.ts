@@ -66,6 +66,38 @@ describe("estimateFlightStats", () => {
     expect(withHover.timeS).toBeCloseTo(withoutHover.timeS + 8, 5);
   });
 
+  it("also counts hover time on a KMZ-imported action (raw 'wpml:hoverTime' string key)", () => {
+    const withoutHover = estimateFlightStats([wp(50, 14), wp(50.001, 14)], 5);
+    const withImportedHover = estimateFlightStats(
+      [
+        wp(50, 14),
+        {
+          ...wp(50.001, 14),
+          actions: [{ actionType: "hover", params: { "wpml:hoverTime": "8" } }],
+        },
+      ],
+      5,
+    );
+
+    expect(withImportedHover.timeS).toBeCloseTo(withoutHover.timeS + 8, 5);
+  });
+
+  it("falls back to a sane default speed instead of counting real distance as taking zero time", () => {
+    const withZeroSpeed = estimateFlightStats(
+      [wp(50, 14), wp(50.001, 14, { useGlobalSpeed: false, speed: 0 })],
+      5,
+    );
+    // The documented fallback is 7 m/s — a waypoint with an invalid speed
+    // of 0 should behave identically to one explicitly set to the fallback.
+    const withFallbackSpeed = estimateFlightStats(
+      [wp(50, 14), wp(50.001, 14, { useGlobalSpeed: false, speed: 7 })],
+      5,
+    );
+
+    expect(withZeroSpeed.timeS).toBeGreaterThan(0);
+    expect(withZeroSpeed.timeS).toBeCloseTo(withFallbackSpeed.timeS, 5);
+  });
+
   it("adds a large overhead at a waypoint whose turn mode forces a full stop", () => {
     // A sharp 90° turn at the middle waypoint.
     const straight = estimateFlightStats(

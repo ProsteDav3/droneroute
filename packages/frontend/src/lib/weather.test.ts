@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { groupForecastByDay, symbolLabel, symbolIconKey } from "./weather";
+import {
+  groupForecastByDay,
+  symbolLabel,
+  symbolIconKey,
+  assessFlightConditions,
+  type DailyForecast,
+} from "./weather";
 import type { WeatherForecastEntry } from "@droneroute/shared";
 
 function entry(
@@ -126,5 +132,81 @@ describe("symbolIconKey", () => {
     expect(symbolIconKey("fair_night")).toBe("sun");
     expect(symbolIconKey("cloudy")).toBe("cloud");
     expect(symbolIconKey(null)).toBe("cloud");
+  });
+});
+
+function day(overrides: Partial<DailyForecast> = {}): DailyForecast {
+  return {
+    date: "2026-07-15",
+    minTempC: 15,
+    maxTempC: 22,
+    maxWindSpeedMs: 3,
+    totalPrecipitationMm: 0,
+    symbolCode: "clearsky_day",
+    ...overrides,
+  };
+}
+
+describe("assessFlightConditions", () => {
+  it("returns 'go' with no reasons for calm, dry, mild conditions", () => {
+    expect(assessFlightConditions(day())).toEqual({
+      verdict: "go",
+      reasons: [],
+    });
+  });
+
+  it("returns 'no-go' for a thunderstorm regardless of otherwise-calm conditions", () => {
+    const result = assessFlightConditions(
+      day({ symbolCode: "rainandthunder" }),
+    );
+    expect(result.verdict).toBe("no-go");
+    expect(result.reasons).toContain("Bouřka");
+  });
+
+  it("returns 'no-go' for wind above the no-go threshold", () => {
+    const result = assessFlightConditions(day({ maxWindSpeedMs: 15 }));
+    expect(result.verdict).toBe("no-go");
+    expect(result.reasons.length).toBeGreaterThan(0);
+  });
+
+  it("returns 'caution' (not 'no-go') for moderately strong wind", () => {
+    const result = assessFlightConditions(day({ maxWindSpeedMs: 9 }));
+    expect(result.verdict).toBe("caution");
+  });
+
+  it("returns 'no-go' for extreme cold or heat", () => {
+    expect(assessFlightConditions(day({ minTempC: -20 })).verdict).toBe(
+      "no-go",
+    );
+    expect(assessFlightConditions(day({ maxTempC: 45 })).verdict).toBe("no-go");
+  });
+
+  it("returns 'no-go' for heavy precipitation and 'caution' for light precipitation", () => {
+    expect(
+      assessFlightConditions(day({ totalPrecipitationMm: 5 })).verdict,
+    ).toBe("no-go");
+    expect(
+      assessFlightConditions(day({ totalPrecipitationMm: 1 })).verdict,
+    ).toBe("caution");
+  });
+
+  it("a no-go reason is never downgraded by an additional caution-level factor", () => {
+    const result = assessFlightConditions(
+      day({ maxWindSpeedMs: 15, totalPrecipitationMm: 1 }),
+    );
+    expect(result.verdict).toBe("no-go");
+  });
+
+  it("treats null forecast fields as unknown, not as a reason to flag", () => {
+    const result = assessFlightConditions(
+      day({
+        maxWindSpeedMs: null,
+        minTempC: null,
+        maxTempC: null,
+        totalPrecipitationMm: null,
+        symbolCode: null,
+      }),
+    );
+    expect(result).toEqual({ verdict: "go", reasons: [] });
   });
 });

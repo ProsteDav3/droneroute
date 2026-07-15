@@ -7,11 +7,20 @@ import {
   CloudFog,
   Wind,
   Droplets,
+  CircleCheck,
+  TriangleAlert,
+  CircleX,
 } from "lucide-react";
 import { useMissionStore } from "@/store/missionStore";
 import { useWeatherStore } from "@/store/weatherStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
-import { groupForecastByDay, symbolLabel, symbolIconKey } from "@/lib/weather";
+import {
+  groupForecastByDay,
+  symbolLabel,
+  symbolIconKey,
+  assessFlightConditions,
+  type FlightVerdict,
+} from "@/lib/weather";
 import {
   toDisplaySpeed,
   speedLabel,
@@ -31,6 +40,19 @@ const ICONS = {
 const CAUTION_WIND_MS = 8;
 
 const MAX_DAYS_SHOWN = 5;
+
+const VERDICT_STYLE: Record<
+  FlightVerdict,
+  { icon: typeof CircleCheck; color: string; label: string }
+> = {
+  go: { icon: CircleCheck, color: "text-emerald-400", label: "Vhodné" },
+  caution: {
+    icon: TriangleAlert,
+    color: "text-amber-500",
+    label: "Opatrnost",
+  },
+  "no-go": { icon: CircleX, color: "text-red-400", label: "Nevhodné" },
+};
 
 // Formatted manually (rather than via toLocaleDateString) so the label is
 // always Czech regardless of the browser's locale, and reads as the
@@ -89,12 +111,33 @@ export function WeatherForecast() {
     );
   }
 
+  const todayAssessment = assessFlightConditions(days[0]);
+  const TodayIcon = VERDICT_STYLE[todayAssessment.verdict].icon;
+
   return (
     <div className="flex flex-col gap-1 p-2">
+      <div
+        className={`flex items-center gap-1.5 text-xs font-medium px-2 py-1.5 rounded-md bg-muted/20 ${VERDICT_STYLE[todayAssessment.verdict].color}`}
+        title={
+          todayAssessment.reasons.length > 0
+            ? todayAssessment.reasons.join(", ")
+            : undefined
+        }
+      >
+        <TodayIcon className="h-4 w-4 shrink-0" />
+        <span>{VERDICT_STYLE[todayAssessment.verdict].label} k letu dnes</span>
+        {todayAssessment.reasons.length > 0 && (
+          <span className="text-[10px] font-normal opacity-80">
+            ({todayAssessment.reasons.join(", ")})
+          </span>
+        )}
+      </div>
       {days.map((day) => {
         const Icon = ICONS[symbolIconKey(day.symbolCode)];
         const windMs = day.maxWindSpeedMs;
         const isWindy = windMs !== null && windMs >= CAUTION_WIND_MS;
+        const assessment = assessFlightConditions(day);
+        const VerdictIcon = VERDICT_STYLE[assessment.verdict].icon;
 
         return (
           <div
@@ -131,6 +174,17 @@ export function WeatherForecast() {
                 ? `${day.totalPrecipitationMm}mm`
                 : "—"}
             </div>
+            <span
+              title={
+                assessment.reasons.length > 0
+                  ? assessment.reasons.join(", ")
+                  : VERDICT_STYLE[assessment.verdict].label
+              }
+            >
+              <VerdictIcon
+                className={`h-3.5 w-3.5 shrink-0 ${VERDICT_STYLE[assessment.verdict].color}`}
+              />
+            </span>
           </div>
         );
       })}

@@ -92,6 +92,11 @@ export const adminApi = {
       `/admin/users?${query.toString()}`,
     );
   },
+  createUser: (email: string, password: string) =>
+    api.post<{ id: string; email: string }>("/admin/users", {
+      email,
+      password,
+    }),
   banUser: (id: string) =>
     api.post<{ message: string }>(`/admin/users/${id}/ban`),
   unbanUser: (id: string) =>

@@ -1,16 +1,13 @@
 import { Router, type Response, type NextFunction } from "express";
+import { v4 as uuidv4 } from "uuid";
 import { getDb } from "../models/db.js";
+import { hashPassword } from "../services/authService.js";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 
 export const adminRoutes = Router();
 
 // Admin guard — reads env at request time to avoid module initialization issues
 function adminGuard(req: AuthRequest, res: Response, next: NextFunction): void {
-  if ((process.env.SELF_HOSTED ?? "true") === "true") {
-    res.status(404).json({ error: "Not found" });
-    return;
-  }
-
   if (!req.userId) {
     res.status(401).json({ error: "Authentication required" });
     return;
@@ -31,6 +28,37 @@ function adminGuard(req: AuthRequest, res: Response, next: NextFunction): void {
 
 // All admin routes require auth + admin
 adminRoutes.use(authMiddleware, adminGuard);
+
+// POST /api/admin/users — admin creates an account directly (public
+// self-registration is closed after the first/founder account).
+adminRoutes.post("/users", (req: AuthRequest, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) {
+    res.status(400).json({ error: "Email and password are required" });
+    return;
+  }
+  if (password.length < 6) {
+    res.status(400).json({ error: "Password must be at least 6 characters" });
+    return;
+  }
+
+  const db = getDb();
+  const existing = db
+    .prepare("SELECT id FROM users WHERE email = ?")
+    .get(email);
+  if (existing) {
+    res.status(409).json({ error: "Email already registered" });
+    return;
+  }
+
+  const id = uuidv4();
+  const passwordHash = hashPassword(password);
+  db.prepare(
+    "INSERT INTO users (id, email, password_hash, email_verified) VALUES (?, ?, ?, 1)",
+  ).run(id, email, passwordHash);
+
+  res.status(201).json({ id, email });
+});
 
 // GET /api/admin/users?page=1&perPage=10&search=&status=&sortBy=created_at&sortOrder=desc
 adminRoutes.get("/users", (req: AuthRequest, res) => {

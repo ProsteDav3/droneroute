@@ -9,9 +9,14 @@ interface AuthState {
   isAdmin: boolean;
   isLoading: boolean;
   needsVerification: boolean;
+  hasRestored: boolean;
 
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  register: (
+    email: string,
+    password: string,
+    bootstrapToken?: string,
+  ) => Promise<void>;
   googleLogin: (credential: string) => Promise<void>;
   logout: () => void;
   restore: () => void;
@@ -25,6 +30,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAdmin: false,
   isLoading: false,
   needsVerification: false,
+  hasRestored: false,
 
   login: async (email, password) => {
     set({ isLoading: true });
@@ -52,7 +58,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
 
-  register: async (email, password) => {
+  register: async (email, password, bootstrapToken) => {
     set({ isLoading: true });
     try {
       const res = await api.post<{
@@ -60,7 +66,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         userId: string;
         email: string;
         isAdmin: boolean;
-      }>("/auth/register", { email, password });
+      }>("/auth/register", { email, password, bootstrapToken });
       localStorage.setItem("droneroute_token", res.token);
       localStorage.setItem("droneroute_email", res.email);
       localStorage.setItem("droneroute_is_admin", String(res.isAdmin));
@@ -123,7 +129,9 @@ export const useAuthStore = create<AuthState>((set) => ({
     const email = localStorage.getItem("droneroute_email");
     const isAdmin = localStorage.getItem("droneroute_is_admin") === "true";
     if (token && email) {
-      set({ token, email, isAdmin });
+      set({ token, email, isAdmin, hasRestored: true });
+    } else {
+      set({ hasRestored: true });
     }
   },
 

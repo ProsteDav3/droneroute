@@ -1,7 +1,9 @@
 import express from "express";
 import request from "supertest";
 import { describe, it, expect, beforeAll } from "vitest";
-import { initDb } from "../models/db.js";
+import { v4 as uuidv4 } from "uuid";
+import { initDb, getDb } from "../models/db.js";
+import { hashPassword, generateToken } from "../services/authService.js";
 import { authRoutes } from "./auth.js";
 import { templatePresetRoutes } from "./templatePresets.js";
 
@@ -26,10 +28,15 @@ beforeAll(async () => {
     .send({ email: "presets@test.dev", password: "secret123" });
   token = res.body.token;
 
-  const otherRes = await request(app)
-    .post("/api/auth/register")
-    .send({ email: "presets-other@test.dev", password: "secret123" });
-  otherToken = otherRes.body.token;
+  // Registration is a one-time bootstrap (closed after the first account),
+  // so the second test user is inserted directly rather than via /register.
+  const otherId = uuidv4();
+  getDb()
+    .prepare(
+      "INSERT INTO users (id, email, password_hash, email_verified) VALUES (?, ?, ?, 1)",
+    )
+    .run(otherId, "presets-other@test.dev", hashPassword("secret123"));
+  otherToken = generateToken(otherId, false);
 });
 
 describe("template presets — auth", () => {

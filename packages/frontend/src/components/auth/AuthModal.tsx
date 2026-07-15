@@ -12,9 +12,8 @@ interface AuthModalProps {
 }
 
 export function AuthModal({ onClose }: AuthModalProps) {
-  const { login, register, googleLogin, isLoading } = useAuthStore();
+  const { login, googleLogin, isLoading } = useAuthStore();
   const { selfHosted } = useConfigStore();
-  const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -23,11 +22,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
     e.preventDefault();
     setError(null);
     try {
-      if (mode === "login") {
-        await login(email, password);
-      } else {
-        await register(email, password);
-      }
+      await login(email, password);
       onClose();
     } catch (err: any) {
       setError(err.message || "Something went wrong");
@@ -56,11 +51,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold">
-            {selfHosted
-              ? mode === "login"
-                ? "Sign in"
-                : "Create account"
-              : "Sign in with Google"}
+            {selfHosted ? "Sign in" : "Sign in with Google"}
           </h2>
           <button
             onClick={onClose}
@@ -99,10 +90,8 @@ export function AuthModal({ onClose }: AuthModalProps) {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder={mode === "register" ? "Min 6 characters" : ""}
                     className="h-9 text-sm"
                     required
-                    minLength={mode === "register" ? 6 : undefined}
                   />
                 </div>
 
@@ -113,29 +102,9 @@ export function AuthModal({ onClose }: AuthModalProps) {
                   className="w-full h-9 text-sm"
                   disabled={isLoading}
                 >
-                  {isLoading
-                    ? "..."
-                    : mode === "login"
-                      ? "Sign in"
-                      : "Create account"}
+                  {isLoading ? "..." : "Sign in"}
                 </Button>
               </form>
-
-              {/* Toggle mode */}
-              <div className="text-center">
-                <button
-                  type="button"
-                  className="text-xs text-muted-foreground hover:text-primary transition-colors"
-                  onClick={() => {
-                    setMode(mode === "login" ? "register" : "login");
-                    setError(null);
-                  }}
-                >
-                  {mode === "login"
-                    ? "Don't have an account? Sign up"
-                    : "Already have an account? Sign in"}
-                </button>
-              </div>
             </>
           ) : (
             <>

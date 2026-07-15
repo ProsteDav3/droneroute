@@ -13,9 +13,11 @@ import {
   Users,
   Loader2,
   Search,
+  UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -46,6 +48,12 @@ export function AdminPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [sortBy, setSortBy] = useState<SortField>("created_at");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   const perPage = 10;
   const totalPages = Math.ceil(total / perPage);
@@ -105,6 +113,24 @@ export function AdminPage() {
   const confirmAction = (message: string, action: () => Promise<any>) => {
     if (!window.confirm(message)) return;
     handleAction(action);
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreateError(null);
+    setCreating(true);
+    try {
+      await adminApi.createUser(newEmail, newPassword);
+      setNewEmail("");
+      setNewPassword("");
+      setShowCreateForm(false);
+      await loadUsers();
+      toast.success(`Account created for ${newEmail}`);
+    } catch (err: any) {
+      setCreateError(err.message || "Something went wrong");
+    } finally {
+      setCreating(false);
+    }
   };
 
   const handleAction = async (action: () => Promise<any>) => {
@@ -210,7 +236,65 @@ export function AdminPage() {
                   <SelectItem value="banned">Banned</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-sm ml-auto"
+                onClick={() => setShowCreateForm((v) => !v)}
+              >
+                <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                Add user
+              </Button>
             </div>
+
+            {showCreateForm && (
+              <form
+                onSubmit={handleCreateUser}
+                className="border border-border rounded-lg p-4 mb-4 flex items-end gap-3"
+              >
+                <div className="space-y-1.5">
+                  <Label htmlFor="new-user-email" className="text-xs">
+                    Email
+                  </Label>
+                  <Input
+                    id="new-user-email"
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="person@example.com"
+                    className="h-8 text-sm w-56"
+                    required
+                    autoFocus
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="new-user-password" className="text-xs">
+                    Password
+                  </Label>
+                  <Input
+                    id="new-user-password"
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Min 6 characters"
+                    className="h-8 text-sm w-48"
+                    required
+                    minLength={6}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="h-8 text-sm"
+                  disabled={creating}
+                >
+                  {creating ? "..." : "Create"}
+                </Button>
+                {createError && (
+                  <p className="text-xs text-destructive">{createError}</p>
+                )}
+              </form>
+            )}
 
             {loading && (
               <div className="flex flex-col items-center justify-center py-20">

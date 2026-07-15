@@ -39,6 +39,11 @@ export const AIRSPACE_PROVIDERS: AirspaceProviderInfo[] = [
     name: "Velká Británie (NATS)",
     description: "Zóny s omezením letu kolem letišť",
   },
+  {
+    id: "rlp",
+    name: "Česká republika (ŘLP ČR)",
+    description: "Řízený vzdušný prostor s výškovým omezením letu",
+  },
 ];
 
 interface AirspaceState {

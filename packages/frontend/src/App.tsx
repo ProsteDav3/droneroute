@@ -555,6 +555,11 @@ export default function App() {
           e.preventDefault();
           setTemplateMode(templateMode === "solar" ? null : "solar");
           break;
+        case "l":
+          if (e.metaKey || e.ctrlKey) return;
+          e.preventDefault();
+          setTemplateMode(templateMode === "corridor" ? null : "corridor");
+          break;
         case "b":
           if (e.metaKey || e.ctrlKey) return;
           e.preventDefault();

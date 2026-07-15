@@ -729,7 +729,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     }),
 
   appendWaypoints: (newWps, newPois, templateGroup) => {
-    // Templates (Orbit/Grid/Facade/Solar/Pencil) are the other way a brand
+    // Templates (Orbit/Grid/Facade/Solar/Pencil/Corridor) are the other way a brand
     // new mission gets its first content, alongside the manual
     // addWaypoint/addPoi clicks — auto-naming only wired up for those two
     // missed every template-created mission entirely.

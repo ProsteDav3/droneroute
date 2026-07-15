@@ -14,6 +14,33 @@ export const authRoutes = Router();
 
 const isSelfHosted = () => (process.env.SELF_HOSTED ?? "true") === "true";
 
+// Registration is a one-time bootstrap: the first account ever created
+// becomes the admin, and every account after that must be created by an
+// admin via /api/admin/users. This keeps the deployment private by default
+// instead of publicly self-service.
+const isRegistrationOpen = () =>
+  (getDb().prepare("SELECT COUNT(*) as count FROM users").get() as any)
+    .count === 0;
+
+// Optional extra gate on the bootstrap window itself: with no secret
+// involved, whoever's request reaches a freshly-deployed instance first
+// becomes admin, which is a real risk if the instance is reachable before
+// the operator has a chance to sign in. Setting BOOTSTRAP_TOKEN closes that
+// window — only the operator (who knows the token) can complete the first
+// registration.
+const bootstrapToken = () => process.env.BOOTSTRAP_TOKEN || null;
+
+// Rely on the app-wide globalLimiter here rather than authLimiter: this
+// route always returns 200, and authLimiter's skipSuccessfulRequests would
+// make it exempt from any real limiting.
+authRoutes.get("/status", (_req, res) => {
+  const open = isSelfHosted() && isRegistrationOpen();
+  res.json({
+    registrationOpen: open,
+    requiresBootstrapToken: open && !!bootstrapToken(),
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Google OAuth sign-in (cloud mode only)
 // ---------------------------------------------------------------------------
@@ -133,7 +160,7 @@ authRoutes.post("/register", authLimiter, (req, res) => {
     return;
   }
 
-  const { email, password } = req.body;
+  const { email, password, bootstrapToken: providedToken } = req.body;
   if (!email || !password) {
     res.status(400).json({ error: "Email and password are required" });
     return;
@@ -143,23 +170,40 @@ authRoutes.post("/register", authLimiter, (req, res) => {
     return;
   }
 
-  const db = getDb();
-  const existing = db
-    .prepare("SELECT id FROM users WHERE email = ?")
-    .get(email);
-  if (existing) {
-    res.status(409).json({ error: "Email already registered" });
+  const requiredToken = bootstrapToken();
+  if (requiredToken && providedToken !== requiredToken) {
+    res.status(403).json({ error: "Invalid bootstrap token" });
     return;
   }
 
+  const db = getDb();
   const id = uuidv4();
   const passwordHash = hashPassword(password);
-  db.prepare(
-    "INSERT INTO users (id, email, password_hash, email_verified) VALUES (?, ?, ?, 1)",
-  ).run(id, email, passwordHash);
 
-  const token = generateToken(id, false);
-  res.status(201).json({ token, userId: id, email, isAdmin: false });
+  // Wrap the open-check and the insert in an IMMEDIATE transaction, which
+  // takes SQLite's write lock up front. That closes a cross-process race
+  // (two machines both seeing an empty table and both inserting a
+  // "founder" admin) that a plain check-then-insert would leave open if
+  // this is ever scaled beyond a single process sharing one DB file.
+  const registerFounder = db.transaction((): boolean => {
+    if (!isRegistrationOpen()) {
+      return false;
+    }
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, email_verified, is_admin) VALUES (?, ?, ?, 1, 1)",
+    ).run(id, email, passwordHash);
+    return true;
+  });
+
+  if (!registerFounder.immediate()) {
+    res.status(403).json({
+      error: "Registration is closed. Ask the site owner for an account.",
+    });
+    return;
+  }
+
+  const token = generateToken(id, true);
+  res.status(201).json({ token, userId: id, email, isAdmin: true });
 });
 
 authRoutes.post("/login", authLimiter, (req, res) => {
@@ -197,6 +241,20 @@ authRoutes.post("/login", authLimiter, (req, res) => {
       .status(403)
       .json({ error: "Your account has been suspended", banned: true });
     return;
+  }
+
+  // Recovery path for self-hosted installs that already have users but no
+  // admin (e.g. upgraded from before is_admin existed, or the founder
+  // account was lost) — ADMIN_EMAIL grants admin on login, mirroring the
+  // same mechanism already used for cloud-mode Google sign-in.
+  const adminEmail = process.env.ADMIN_EMAIL || "";
+  if (
+    adminEmail &&
+    !user.is_admin &&
+    user.email.toLowerCase() === adminEmail.toLowerCase()
+  ) {
+    db.prepare("UPDATE users SET is_admin = 1 WHERE id = ?").run(user.id);
+    user.is_admin = 1;
   }
 
   db.prepare(

@@ -1,7 +1,9 @@
 import express from "express";
 import request from "supertest";
 import { describe, it, expect, beforeAll } from "vitest";
+import { v4 as uuidv4 } from "uuid";
 import { initDb, getDb } from "../models/db.js";
+import { hashPassword } from "../services/authService.js";
 import { authRoutes } from "./auth.js";
 
 const app = express();
@@ -12,7 +14,16 @@ beforeAll(() => {
   initDb();
 });
 
-describe("POST /api/auth/register — failure paths", () => {
+describe("GET /api/auth/status — before bootstrap", () => {
+  it("reports registrationOpen: true when no accounts exist yet", async () => {
+    const res = await request(app).get("/api/auth/status");
+    expect(res.status).toBe(200);
+    expect(res.body.registrationOpen).toBe(true);
+    expect(res.body.requiresBootstrapToken).toBe(false);
+  });
+});
+
+describe("POST /api/auth/register — founder bootstrap and closing", () => {
   it("rejects missing email or password with 400", async () => {
     const res = await request(app).post("/api/auth/register").send({});
     expect(res.status).toBe(400);
@@ -25,31 +36,38 @@ describe("POST /api/auth/register — failure paths", () => {
     expect(res.status).toBe(400);
   });
 
-  it("registers a new account and returns a token", async () => {
+  it("registers the first account as the admin (bootstrap) and returns a token", async () => {
     const res = await request(app)
       .post("/api/auth/register")
-      .send({ email: "new@test.dev", password: "secret123" });
+      .send({ email: "founder@test.dev", password: "secret123" });
     expect(res.status).toBe(201);
     expect(res.body.token).toBeTruthy();
+    expect(res.body.isAdmin).toBe(true);
     expect(res.body).not.toHaveProperty("password_hash");
   });
 
-  it("rejects signup with an already-registered email", async () => {
-    await request(app)
-      .post("/api/auth/register")
-      .send({ email: "dupe@test.dev", password: "secret123" });
+  it("closes registration once an account already exists", async () => {
     const res = await request(app)
       .post("/api/auth/register")
-      .send({ email: "dupe@test.dev", password: "secret123" });
-    expect(res.status).toBe(409);
+      .send({ email: "second@test.dev", password: "secret123" });
+    expect(res.status).toBe(403);
+  });
+});
+
+describe("GET /api/auth/status — after bootstrap", () => {
+  it("reports registrationOpen: false once an account exists", async () => {
+    const res = await request(app).get("/api/auth/status");
+    expect(res.status).toBe(200);
+    expect(res.body.registrationOpen).toBe(false);
   });
 });
 
 describe("POST /api/auth/login — failure paths", () => {
-  beforeAll(async () => {
-    await request(app)
-      .post("/api/auth/register")
-      .send({ email: "login@test.dev", password: "secret123" });
+  beforeAll(() => {
+    const db = getDb();
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, email_verified) VALUES (?, ?, ?, 1)",
+    ).run(uuidv4(), "login@test.dev", hashPassword("secret123"));
   });
 
   it("rejects missing credentials with 400", async () => {
@@ -77,12 +95,13 @@ describe("POST /api/auth/login — failure paths", () => {
   });
 
   it("blocks a banned account with 403", async () => {
-    await request(app)
-      .post("/api/auth/register")
-      .send({ email: "banned@test.dev", password: "secret123" });
-    getDb()
-      .prepare("UPDATE users SET is_banned = 1 WHERE email = ?")
-      .run("banned@test.dev");
+    const db = getDb();
+    const id = uuidv4();
+    db.prepare(
+      "INSERT INTO users (id, email, password_hash, email_verified) VALUES (?, ?, ?, 1)",
+    ).run(id, "banned@test.dev", hashPassword("secret123"));
+    db.prepare("UPDATE users SET is_banned = 1 WHERE id = ?").run(id);
+
     const res = await request(app)
       .post("/api/auth/login")
       .send({ email: "banned@test.dev", password: "secret123" });

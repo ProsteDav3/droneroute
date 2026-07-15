@@ -45,6 +45,7 @@ import { ElevationGraph } from "@/components/mission/ElevationGraph";
 import { WarningsPanel } from "@/components/mission/WarningsPanel";
 import type { Warning } from "@/components/mission/WarningsPanel";
 import { AuthModal } from "@/components/auth/AuthModal";
+import { LoginGate } from "@/components/auth/LoginGate";
 import { AccountModal } from "@/components/auth/AccountModal";
 import { AboutDialog } from "@/components/AboutDialog";
 import { WelcomeDialog } from "@/components/WelcomeDialog";
@@ -106,7 +107,14 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { token, email: userEmail, logout, restore, isAdmin } = useAuthStore();
+  const {
+    token,
+    email: userEmail,
+    logout,
+    restore,
+    isAdmin,
+    hasRestored,
+  } = useAuthStore();
   const { selfHosted } = useConfigStore();
   const [gravatarUrl, setGravatarUrl] = useState<string | null>(null);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
@@ -499,6 +507,17 @@ export default function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, []);
+
+  // The shared-mission page is intentionally public (that's the whole point
+  // of a share link); everything else requires signing in. Wait for
+  // hasRestored so a returning, already-logged-in user doesn't flash the
+  // login screen before the stored token is read back from localStorage.
+  if (hasRestored && !token && currentPage !== "shared") {
+    return <LoginGate />;
+  }
+  if (!hasRestored && currentPage !== "shared") {
+    return null;
+  }
 
   // Show admin page
   if (currentPage === "admin") {

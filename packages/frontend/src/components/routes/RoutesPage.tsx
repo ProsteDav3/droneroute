@@ -15,6 +15,7 @@ import {
   Link,
   Link2Off,
   Check,
+  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useMissionStore } from "@/store/missionStore";
@@ -127,6 +128,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
   const [exportingId, setExportingId] = useState<string | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
 
   const handleShare = async (mission: SavedMission) => {
     setSharingId(mission.id);
@@ -206,6 +208,39 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
       toast.error(`Export selhal: ${err.message}`);
     } finally {
       setExportingId(null);
+    }
+  };
+
+  const handleDuplicate = async (mission: SavedMission) => {
+    setDuplicatingId(mission.id);
+    try {
+      const waypoints = JSON.parse(mission.waypoints);
+      const config = JSON.parse(mission.config);
+      const pois = mission.pois ? JSON.parse(mission.pois) : [];
+      const obstacles = mission.obstacles ? JSON.parse(mission.obstacles) : [];
+      const buildings = mission.buildings ? JSON.parse(mission.buildings) : [];
+      const templateGroups = mission.template_groups
+        ? JSON.parse(mission.template_groups)
+        : {};
+
+      const created = await api.post<{ id: string; name: string }>(
+        "/missions",
+        {
+          name: `${mission.name || "Trasa bez názvu"} (kopie)`,
+          config,
+          waypoints,
+          pois,
+          obstacles,
+          buildings,
+          templateGroups,
+        },
+      );
+      toast.success(`Trasa zduplikována jako „${created.name}“`);
+      await fetchMissions();
+    } catch (err: any) {
+      toast.error(`Duplikace se nezdařila: ${err.message}`);
+    } finally {
+      setDuplicatingId(null);
     }
   };
 
@@ -410,6 +445,19 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
                                 <Link2Off className="h-3.5 w-3.5" />
                               </Button>
                             )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              disabled={duplicatingId === mission.id}
+                              title="Duplikovat trasu (např. pro příští návštěvu)"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDuplicate(mission);
+                              }}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="icon"

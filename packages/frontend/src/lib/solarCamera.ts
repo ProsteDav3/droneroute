@@ -170,6 +170,20 @@ export function isMultispectralPayload(payloadEnumValue: number): boolean {
 export const NDVI_RECOMMENDED_FRONT_OVERLAP_PCT = 80;
 export const NDVI_RECOMMENDED_SIDE_OVERLAP_PCT = 75;
 
+/**
+ * Minimum front/side overlap (%) recommended for volumetric surveys
+ * (stockpiles, quarries, landfills) — higher than `recommendGridSpacing`'s
+ * 70-80%/60-70% baseline because volume calculations are sensitive to
+ * reconstruction gaps/noise on steep pile slopes, which show up as real
+ * errors in the resulting cubic-meter figure rather than just a cosmetic
+ * gap in an orthomosaic. This app doesn't compute volume itself (that's
+ * done by dedicated photogrammetry software downstream) — this is only a
+ * quick sanity check that the planned overlap is in the right ballpark
+ * before flying.
+ */
+export const VOLUMETRIC_RECOMMENDED_FRONT_OVERLAP_PCT = 80;
+export const VOLUMETRIC_RECOMMENDED_SIDE_OVERLAP_PCT = 70;
+
 export interface GridSpacingRecommendation {
   lineSpacingM: number;
   photoSpacingM: number;

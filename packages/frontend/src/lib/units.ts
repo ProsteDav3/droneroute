@@ -1,4 +1,4 @@
-import type { UnitSystem } from "@droneroute/shared";
+import type { UnitSystem, HeightMode } from "@droneroute/shared";
 
 // ── Conversion constants ────────────────────────────────
 
@@ -150,4 +150,20 @@ export function speedRange(unitSystem: UnitSystem = "metric"): {
     return { min: 2, max: 34, step: 1 };
   }
   return { min: 1, max: 15, step: 0.5 };
+}
+
+// ── Height mode label ────────────────────────────────────
+
+/** Human-readable Czech label for the mission's configured height reference. */
+export function heightModeLabel(mode: HeightMode): string {
+  switch (mode) {
+    case "relativeToStartPoint":
+      return "relativně od vzletového bodu";
+    case "aboveGroundLevel":
+      return "nad terénem";
+    case "EGM96":
+      return "nad mořem (EGM96)";
+    default:
+      return mode;
+  }
 }

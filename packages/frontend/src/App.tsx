@@ -28,6 +28,7 @@ import {
   CloudSun,
   BatteryFull,
   FileText,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,7 +57,7 @@ import { useMissionStore } from "@/store/missionStore";
 import { useAuthStore } from "@/store/authStore";
 import { useConfigStore } from "@/store/configStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
-import { formatDistance } from "@/lib/units";
+import { formatDistance, heightModeLabel } from "@/lib/units";
 import { useAirspaceStore } from "@/store/airspaceStore";
 import { api } from "@/lib/api";
 import { getObstacleWarnings, getAirspaceWarnings } from "@/lib/geo";
@@ -65,6 +66,10 @@ import {
   formatFlightDuration,
   countCaptureActions,
 } from "@/lib/flightStats";
+import {
+  buildPhotogrammetryExportRows,
+  generatePhotogrammetryCsv,
+} from "@/lib/photogrammetryExport";
 
 type SidebarSection =
   | "waypoints"
@@ -391,6 +396,32 @@ export default function App() {
     } finally {
       setGeneratingReport(false);
     }
+  };
+
+  const handleExportPhotogrammetryCsv = () => {
+    if (waypoints.length < 2) {
+      toast.warning("Pro export je potřeba alespoň 2 body trasy");
+      return;
+    }
+    const rows = buildPhotogrammetryExportRows(waypoints);
+    if (rows.length === 0) {
+      toast.warning(
+        "Mise neobsahuje žádné akce fotografování (takePhoto) — export by byl prázdný. Nastavte šablony na režim Foto, ne Video.",
+      );
+      return;
+    }
+    const csv = generatePhotogrammetryCsv(waypoints);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${missionName.replace(/[^a-zA-Z0-9_-]/g, "_")}-pix4d-metashape.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.info(
+      `Sloupec Altitude(m) je výška ${heightModeLabel(config.heightMode)}, ne nadmořská výška — než použijete export pro georeferencování, ověřte, že to odpovídá očekávání Pix4D/Metashape.`,
+      { duration: 8000 },
+    );
   };
 
   const handleSaveSegments = async () => {
@@ -786,6 +817,21 @@ export default function App() {
           >
             <FileText className="h-3 w-3" />
             {generatingReport ? "..." : "Stáhnout PDF report"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportPhotogrammetryCsv}
+            disabled={waypoints.length < 2}
+            className="w-full text-xs h-7 border-[#00c2ff]/30 bg-[#00c2ff]/5 hover:bg-[#00c2ff]/15 hover:text-[#33cfff]"
+            title={
+              waypoints.length < 2
+                ? "Pro export přidejte alespoň 2 body trasy"
+                : "Stáhnout CSV se souřadnicemi plánovaných fotobodů pro import do Pix4D nebo Metashape"
+            }
+          >
+            <FileSpreadsheet className="h-3 w-3" />
+            Export pro Pix4D/Metashape (.csv)
           </Button>
           <Button
             variant="outline"

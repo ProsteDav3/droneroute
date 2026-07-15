@@ -29,6 +29,7 @@ import {
   toDisplayDistance,
   fromDisplayDistance,
   speedRange,
+  heightModeLabel,
 } from "@/lib/units";
 import {
   computeGimbalPitch,
@@ -58,20 +59,7 @@ import {
   WIDE_CAMERA_FOV,
 } from "@/lib/solarCamera";
 import { haversineDistance } from "@/lib/geo";
-import type { PointOfInterest, HeightMode } from "@droneroute/shared";
-
-function heightModeLabel(mode: HeightMode): string {
-  switch (mode) {
-    case "relativeToStartPoint":
-      return "relativně od vzletového bodu";
-    case "aboveGroundLevel":
-      return "nad terénem";
-    case "EGM96":
-      return "nad mořem (EGM96)";
-    default:
-      return mode;
-  }
-}
+import type { PointOfInterest } from "@droneroute/shared";
 
 /** Photo (a shot at every waypoint) vs. video (record continuously start-to-finish) capture-mode picker, shared by all five templates. */
 function CaptureModeToggle({

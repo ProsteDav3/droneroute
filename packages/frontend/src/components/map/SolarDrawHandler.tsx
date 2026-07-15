@@ -1,7 +1,6 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { Source, Layer, Marker, useMap } from "react-map-gl/mapbox";
 import { useMissionStore } from "@/store/missionStore";
-import { usePreferencesStore } from "@/store/preferencesStore";
 import { TemplateConfigPanel } from "./TemplateConfigPanel";
 import { TemplatePreview } from "./TemplatePreview";
 import type { SolarParams } from "@/lib/templates";
@@ -10,54 +9,7 @@ import {
   DEFAULT_SOLAR_PARAMS,
   bearing,
 } from "@/lib/templates";
-import { haversineDistance } from "@/lib/geo";
-import { toDisplayDistance, distanceLabel } from "@/lib/units";
-
-/** Small map label showing the distance between two points, at their midpoint. */
-function EdgeLengthLabel({
-  a,
-  b,
-}: {
-  a: [number, number];
-  b: [number, number];
-}) {
-  const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
-  const distM = haversineDistance(a[0], a[1], b[0], b[1]);
-  const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-  return (
-    <Marker longitude={mid[1]} latitude={mid[0]} anchor="center">
-      <div className="pointer-events-none px-1 py-0.5 rounded bg-yellow-950/70 border border-yellow-400/50 text-[10px] font-mono text-yellow-200 whitespace-nowrap">
-        {Math.round(toDisplayDistance(distM, unitSystem))}
-        {distanceLabel(unitSystem)}
-      </div>
-    </Marker>
-  );
-}
-
-/** Edge-length labels for every side of a (possibly still-open) traced polygon. */
-function EdgeLengthLabels({
-  vertices,
-  closed,
-}: {
-  vertices: [number, number][];
-  closed: boolean;
-}) {
-  if (vertices.length < 2) return null;
-  const edges: [[number, number], [number, number]][] = [];
-  for (let i = 0; i + 1 < vertices.length; i++) {
-    edges.push([vertices[i], vertices[i + 1]]);
-  }
-  if (closed && vertices.length >= 3) {
-    edges.push([vertices[vertices.length - 1], vertices[0]]);
-  }
-  return (
-    <>
-      {edges.map(([a, b], i) => (
-        <EdgeLengthLabel key={`edge-${i}`} a={a} b={b} />
-      ))}
-    </>
-  );
-}
+import { EdgeLengthLabels } from "./EdgeLengthLabels";
 
 /**
  * Draws the boundary of a solar panel array to survey: click to place

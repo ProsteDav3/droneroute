@@ -344,6 +344,8 @@ export function TemplateConfigPanel({
           className="flex items-center gap-2 cursor-grab active:cursor-grabbing select-none"
           style={{ touchAction: "none" }}
           title="Přetažením přesunete panel"
+          draggable={false}
+          onDragStart={(e) => e.preventDefault()}
         >
           <GripHorizontal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <span className="text-xs font-semibold uppercase tracking-wider text-purple-400">

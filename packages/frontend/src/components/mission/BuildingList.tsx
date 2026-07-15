@@ -7,6 +7,7 @@ import { useMissionStore } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { polygonArea, formatArea } from "@/lib/geo";
 import { orbitParamsForBuilding } from "@/lib/templates";
+import { WIDE_CAMERA_FOV } from "@/lib/solarCamera";
 import { heightLabel, toDisplayHeight, fromDisplayHeight } from "@/lib/units";
 
 export function BuildingList() {
@@ -19,6 +20,7 @@ export function BuildingList() {
     setPendingOrbitParams,
   } = useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
+  const payloadEnumValue = useMissionStore((s) => s.config.payloadEnumValue);
   const [editingName, setEditingName] = useState<string | null>(null);
   const [expandedEditor, setExpandedEditor] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -108,7 +110,12 @@ export function BuildingList() {
                 className="h-5 w-5 shrink-0 text-muted-foreground hover:text-blue-400"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setPendingOrbitParams(orbitParamsForBuilding(building));
+                  setPendingOrbitParams(
+                    orbitParamsForBuilding(
+                      building,
+                      WIDE_CAMERA_FOV[payloadEnumValue]?.vfovDeg,
+                    ),
+                  );
                 }}
                 title="Vytvořit orbit kolem této budovy s předvyplněným radiusem, výškou a náklonem gimbalu"
               >

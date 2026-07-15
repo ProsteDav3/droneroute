@@ -33,6 +33,52 @@ export const THERMAL_CAMERA_FOV: Record<number, ThermalCameraFov> = {
   },
 };
 
+export interface WideCameraFov {
+  label: string;
+  vfovDeg: number;
+  experimental?: boolean;
+}
+
+/**
+ * Vertical FOV of each drone's primary wide/RGB photo camera — distinct from
+ * `THERMAL_CAMERA_FOV` above (thermal-only, used for solar-panel spacing).
+ * Used to keep a whole object (e.g. a building) framed when orbiting it.
+ * Derived from each camera's published diagonal FOV (DJI spec sheets) via
+ * the same DFOV -> HFOV/VFOV trigonometry as `THERMAL_CAMERA_FOV`, using
+ * each sensor's real 4:3 photo aspect ratio (confirmed via each product's
+ * stated max photo resolution). Keyed by `payloadEnumValue`.
+ *
+ * H20N/H20T, M30T, M3T/M3M/M3D/M3TD, and H30T reuse the wide-camera module
+ * of their base/non-thermal sibling (DJI ships the same RGB sensor across
+ * those variants) — not independently spec-fetched, only the base model's
+ * DFOV was. PSDK (65534) is a generic third-party payload mount with no
+ * fixed camera and is intentionally omitted; callers must handle a missing
+ * entry as "FOV unknown" rather than guessing.
+ */
+export const WIDE_CAMERA_FOV: Record<number, WideCameraFov> = {
+  42: { label: "H20", vfovDeg: 55.7 }, // DFOV 82.9° (DJI spec)
+  61: { label: "H20N", vfovDeg: 55.7 }, // same wide module as H20
+  43: { label: "H20T", vfovDeg: 55.7 }, // same wide module as H20
+  52: { label: "M30 Camera", vfovDeg: 56.8 }, // DFOV 84° (DJI spec)
+  53: { label: "M30T Camera", vfovDeg: 56.8 }, // same wide module as M30
+  66: { label: "M3E Camera", vfovDeg: 56.8 }, // DFOV 84° (DJI spec)
+  67: { label: "M3T Camera", vfovDeg: 56.8 }, // DFOV 84° (DJI spec)
+  68: { label: "M3M Camera", vfovDeg: 56.8 }, // same wide module as M3E
+  80: { label: "M3D Camera", vfovDeg: 56.8 }, // same wide module as M3E
+  81: { label: "M3TD Camera", vfovDeg: 56.8 }, // same wide module as M3T
+  82: { label: "H30", vfovDeg: 55.1 }, // DFOV 82.1° (DJI spec)
+  83: { label: "H30T", vfovDeg: 55.1 }, // same wide module as H30
+  100: { label: "Mini 4 Pro Camera", vfovDeg: 55.1 }, // DFOV 82.1° (DJI spec)
+  103: {
+    label: "Matrice 4T Camera",
+    vfovDeg: 55.0, // DFOV 82° (DJI spec)
+    // Same unverified-identity caveat as THERMAL_CAMERA_FOV[103] — the FOV
+    // number itself is confirmed against DJI's spec sheet, but the drone's
+    // WPML enum identity is not (see DRONE_MODELS).
+    experimental: true,
+  },
+};
+
 const DEFAULT_SOLAR_OVERLAP = 0.2;
 
 export interface SolarSpacingRecommendation {

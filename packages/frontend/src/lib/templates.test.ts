@@ -4,6 +4,8 @@ import {
   DEFAULT_ORBIT_PARAMS,
   computeGimbalPitch,
   computeAltitudeForPitch,
+  computeFramedForRadius,
+  computeFramedForAltitude,
   computeOrbitSeedForBuilding,
   orbitParamsForBuilding,
   generateSolarSurvey,
@@ -79,6 +81,68 @@ describe("generateOrbit", () => {
     );
     expect(Math.abs(firstBearing - 45)).toBeLessThan(1);
   });
+
+  it("with poiCenter undefined, output is unchanged (byte-identical) from the original flat-pitch/center-heading behavior (regression guard)", () => {
+    const withoutPoiCenter = generateOrbit({
+      ...DEFAULT_ORBIT_PARAMS,
+      center: CENTER,
+      radiusM: 70,
+      numPoints: 8,
+      altitudeGimbalLinked: false,
+      // An arbitrary stored pitch that does NOT equal computeGimbalPitch's
+      // output — this must still be used as-is when poiCenter is absent.
+      gimbalPitchDeg: -12,
+    } satisfies OrbitParams);
+
+    expect(
+      withoutPoiCenter.waypoints.every((wp) => wp.gimbalPitchAngle === -12),
+    ).toBe(true);
+    withoutPoiCenter.waypoints.forEach((wp) => {
+      const expectedHeading = bearing(
+        wp.latitude,
+        wp.longitude,
+        CENTER[0],
+        CENTER[1],
+      );
+      const normalized =
+        expectedHeading > 180 ? expectedHeading - 360 : expectedHeading;
+      expect(wp.headingAngle).toBe(Math.round(normalized));
+    });
+  });
+
+  it("with poiCenter set to an offset point, heading points at poiCenter (not center) and gimbal pitch varies per waypoint", () => {
+    const poiCenter = destinationPoint(CENTER[0], CENTER[1], 40, 0);
+    const result = generateOrbit({
+      ...DEFAULT_ORBIT_PARAMS,
+      center: CENTER,
+      radiusM: 70,
+      numPoints: 8,
+      poiHeight: 20,
+      altitude: 60,
+      poiCenter,
+    } satisfies OrbitParams);
+
+    const pitches = new Set(result.waypoints.map((wp) => wp.gimbalPitchAngle));
+    // An off-center orbit has varying distance to the fixed aim point, so
+    // pitch should not be flat across every waypoint.
+    expect(pitches.size).toBeGreaterThan(1);
+
+    result.waypoints.forEach((wp) => {
+      const expectedHeading = bearing(
+        wp.latitude,
+        wp.longitude,
+        poiCenter[0],
+        poiCenter[1],
+      );
+      const normalized =
+        expectedHeading > 180 ? expectedHeading - 360 : expectedHeading;
+      expect(wp.headingAngle).toBe(Math.round(normalized));
+    });
+
+    // The POI marker should sit at the aim point, not the circle's center.
+    expect(result.pois[0].latitude).toBeCloseTo(poiCenter[0], 6);
+    expect(result.pois[0].longitude).toBeCloseTo(poiCenter[1], 6);
+  });
 });
 
 describe("computeGimbalPitch / computeAltitudeForPitch", () => {
@@ -121,6 +185,71 @@ describe("computeGimbalPitch / computeAltitudeForPitch", () => {
 
     expect(nextAltitude).toBe(altitude);
     expect(nextPitch).toBe(pitch);
+  });
+});
+
+/** Vertical angular span (degrees) of a ground-to-poiHeight object as seen from radiusM/altitude. */
+function verticalSpanDeg(
+  altitude: number,
+  poiHeight: number,
+  radiusM: number,
+): number {
+  const angleBottom = Math.atan2(altitude, radiusM);
+  const angleTop = Math.atan2(altitude - poiHeight, radiusM);
+  return ((angleBottom - angleTop) * 180) / Math.PI;
+}
+
+describe("computeFramedForRadius / computeFramedForAltitude", () => {
+  const VFOV = 56.8;
+  const SAFETY_MARGIN = 0.5;
+
+  it("computeFramedForRadius: resulting altitude frames the object within the target FOV span", () => {
+    const result = computeFramedForRadius(40, 25, VFOV);
+    expect(result).not.toBeNull();
+    const span = verticalSpanDeg(result!.altitude, 25, 40);
+    expect(span).toBeLessThanOrEqual(VFOV * SAFETY_MARGIN + 0.5);
+    expect(span).toBeGreaterThan(VFOV * SAFETY_MARGIN - 0.5);
+  });
+
+  it("computeFramedForAltitude: resulting radius frames the object within the target FOV span", () => {
+    // prevRadius=40 steers root selection to the larger, realistic root —
+    // the smaller root here (~3.5m) is an unrealistically close orbit that
+    // gets pulled off-target by the MIN_RADIUS_M clamp.
+    const result = computeFramedForAltitude(30, 25, VFOV, 40);
+    expect(result).not.toBeNull();
+    const span = verticalSpanDeg(30, 25, result!.radiusM);
+    expect(span).toBeLessThanOrEqual(VFOV * SAFETY_MARGIN + 0.5);
+    expect(span).toBeGreaterThan(VFOV * SAFETY_MARGIN - 0.5);
+  });
+
+  it("gimbal pitch centers the vertical span (equal angle to top and bottom of the object)", () => {
+    const result = computeFramedForRadius(40, 25, VFOV);
+    expect(result).not.toBeNull();
+    const { altitude, gimbalPitchDeg } = result!;
+    const angleBottom = (Math.atan2(altitude, 40) * 180) / Math.PI;
+    const angleTop = (Math.atan2(altitude - 25, 40) * 180) / Math.PI;
+    const midAngle = (angleBottom + angleTop) / 2;
+    expect(gimbalPitchDeg).toBeCloseTo(-midAngle, 0);
+  });
+
+  it("returns null when poiHeight is 0 (no vertical extent to frame)", () => {
+    expect(computeFramedForRadius(40, 0, VFOV)).toBeNull();
+    expect(computeFramedForAltitude(60, 0, VFOV)).toBeNull();
+  });
+
+  it("returns null when the radius is too large for the object to ever fit the target span", () => {
+    expect(computeFramedForRadius(5000, 10, VFOV)).toBeNull();
+  });
+
+  it("picks the root closest to a given previous value instead of jumping", () => {
+    // radiusM=48 (with poiHeight=25) sits in the narrow band where both
+    // quadratic roots for altitude are positive (~4m and ~21m) — a good case
+    // to confirm prevAltitude actually steers which one gets picked.
+    const near = computeFramedForRadius(48, 25, VFOV, 5);
+    const far = computeFramedForRadius(48, 25, VFOV, 20);
+    expect(near).not.toBeNull();
+    expect(far).not.toBeNull();
+    expect(near!.altitude).not.toBe(far!.altitude);
   });
 });
 
@@ -405,5 +534,26 @@ describe("orbitParamsForBuilding", () => {
     const params = orbitParamsForBuilding({ vertices, height: 25 });
     const result = generateOrbit(params);
     expect(result.waypoints.length).toBe(params.numPoints);
+  });
+
+  it("with a known camera vfovDeg, derives altitude/gimbal pitch so the whole building fits in frame instead of the fixed -45° heuristic", () => {
+    const vertices = squareFootprint(40);
+    const seed = computeOrbitSeedForBuilding(vertices);
+    const vfovDeg = 56.8;
+    const params = orbitParamsForBuilding({ vertices, height: 25 }, vfovDeg);
+
+    expect(params.center).toEqual(seed.center);
+    expect(params.radiusM).toBe(seed.radiusM);
+    expect(params.poiHeight).toBe(25);
+    // Should differ from the no-FOV fallback's fixed -45°.
+    expect(params.gimbalPitchDeg).not.toBe(-45);
+    const span = verticalSpanDeg(params.altitude, 25, seed.radiusM);
+    expect(span).toBeLessThanOrEqual(vfovDeg * 0.5 + 0.5);
+  });
+
+  it("falls back to the fixed -45°/computeAltitudeForPitch heuristic when vfovDeg is omitted", () => {
+    const vertices = squareFootprint(40);
+    const params = orbitParamsForBuilding({ vertices, height: 25 });
+    expect(params.gimbalPitchDeg).toBe(-45);
   });
 });

@@ -105,6 +105,16 @@ export interface OrbitParams {
    * pair and edit either one independently without the other jumping.
    */
   altitudeGimbalLinked: boolean;
+  /**
+   * Independent camera aim point, decoupled from `center`. When undefined
+   * (default), the camera aims at `center` itself — the flight circle and
+   * the POI are the same point, exactly as before this field existed. When
+   * set, the flight circle can be moved/resized independently while the
+   * camera keeps aiming at this fixed point (distance-to-target then varies
+   * per waypoint, so gimbal pitch is recomputed per waypoint instead of
+   * flat).
+   */
+  poiCenter?: [number, number];
 }
 
 export interface GridParams {
@@ -254,6 +264,146 @@ export function computeAltitudeForPitch(
   return Math.max(1, Math.min(MAX_DERIVED_ALTITUDE_M, Math.round(altitude)));
 }
 
+// ── FOV-aware object framing ──────────────────────────────
+
+/**
+ * Target fraction of the camera's true vertical FOV the framed object should
+ * occupy. Deliberately moderate (not close to 1): the achievable span for a
+ * FIXED radius is capped at 2*atan(poiHeight/(2*radiusM)) (maximized at
+ * altitude=poiHeight/2), which shrinks fast as radius grows — a target much
+ * above ~0.5 would make most realistic (radius comparable to or larger than
+ * building height) orbit distances unsolvable, forcing the graceful
+ * computeGimbalPitch fallback far more often than intended. 0.5 stays
+ * comfortably framed (not tiny) while remaining solvable across the radius
+ * range this app's orbit-on-building seeding actually produces.
+ */
+const FOV_SAFETY_MARGIN = 0.5;
+
+/** Sane radius bounds for values derived from a framing solve. */
+const MIN_RADIUS_M = 5;
+const MAX_RADIUS_M = 2000;
+
+/** Real roots of ax^2+bx+c=0, ascending, or null if none (negative discriminant). */
+function solveQuadratic(
+  a: number,
+  b: number,
+  c: number,
+): [number, number] | null {
+  const discriminant = b * b - 4 * a * c;
+  if (discriminant < 0) return null;
+  const sqrtD = Math.sqrt(discriminant);
+  const r1 = (-b - sqrtD) / (2 * a);
+  const r2 = (-b + sqrtD) / (2 * a);
+  return r1 <= r2 ? [r1, r2] : [r2, r1];
+}
+
+/** Picks whichever positive root is closest to `prev`, or (absent a previous value) the smaller/larger one per `preferLarger`. Null when neither root is positive. */
+function pickPositiveRoot(
+  roots: [number, number],
+  prev: number | undefined,
+  preferLarger: boolean,
+): number | null {
+  const positive = roots.filter((r) => r > 0);
+  if (positive.length === 0) return null;
+  if (positive.length === 1) return positive[0];
+  if (prev !== undefined) {
+    return Math.abs(positive[0] - prev) <= Math.abs(positive[1] - prev)
+      ? positive[0]
+      : positive[1];
+  }
+  return preferLarger ? positive[1] : positive[0];
+}
+
+/** Gimbal pitch (degrees) that vertically centers the view between ground level and poiHeight, from radiusM away, flying at altitude — unlike computeGimbalPitch, this aims at the object's midpoint, not its top. */
+function computeFramingPitch(
+  altitude: number,
+  poiHeight: number,
+  radiusM: number,
+): number {
+  const angleBottom = Math.atan2(altitude, radiusM);
+  const angleTop = Math.atan2(altitude - poiHeight, radiusM);
+  const midAngle = (angleBottom + angleTop) / 2;
+  return Math.round(-midAngle * (180 / Math.PI));
+}
+
+/**
+ * Altitude (and centering gimbal pitch) needed so an object spanning ground
+ * level (0m) to `poiHeight` fits inside `vfovDeg` (minus `FOV_SAFETY_MARGIN`
+ * headroom), viewed from `radiusM` away horizontally. Two altitudes can
+ * produce the same angular span (a steep-close vs. a flat-far viewing
+ * geometry) — `prevAltitude`, when given, picks whichever is closer to avoid
+ * a visual jump on edit; otherwise the higher (looking-down) altitude is
+ * preferred, matching this app's usual -45°-ish orbit convention. Returns
+ * `null` when `poiHeight`/`radiusM` aren't positive, or no altitude can fit
+ * the object in frame at all (e.g. radius too large for the target span) —
+ * callers must fall back to `computeGimbalPitch`-based linking in that case.
+ */
+export function computeFramedForRadius(
+  radiusM: number,
+  poiHeight: number,
+  vfovDeg: number,
+  prevAltitude?: number,
+): { altitude: number; gimbalPitchDeg: number } | null {
+  if (poiHeight <= 0 || radiusM <= 0) return null;
+  const targetSpanRad = (vfovDeg * FOV_SAFETY_MARGIN * Math.PI) / 180;
+  const T = Math.tan(targetSpanRad);
+  if (!(T > 0)) return null;
+  // T*a^2 - T*poiHeight*a + (T*radiusM^2 - poiHeight*radiusM) = 0
+  const roots = solveQuadratic(
+    T,
+    -T * poiHeight,
+    T * radiusM * radiusM - poiHeight * radiusM,
+  );
+  if (!roots) return null;
+  const altitude = pickPositiveRoot(roots, prevAltitude, true);
+  if (altitude === null) return null;
+  const clampedAltitude = Math.max(
+    1,
+    Math.min(MAX_DERIVED_ALTITUDE_M, Math.round(altitude)),
+  );
+  return {
+    altitude: clampedAltitude,
+    gimbalPitchDeg: computeFramingPitch(clampedAltitude, poiHeight, radiusM),
+  };
+}
+
+/**
+ * Inverse of `computeFramedForRadius`: radius (and centering gimbal pitch)
+ * needed so the same ground-to-poiHeight object fits inside `vfovDeg` while
+ * flying at a fixed `altitude`. See `computeFramedForRadius` for the
+ * root-selection and null-return rules; `prevRadius` absent defaults to the
+ * smaller (closer) radius root, since callers editing altitude virtually
+ * always already have a current radius to pass as `prevRadius` instead.
+ */
+export function computeFramedForAltitude(
+  altitude: number,
+  poiHeight: number,
+  vfovDeg: number,
+  prevRadius?: number,
+): { radiusM: number; gimbalPitchDeg: number } | null {
+  if (poiHeight <= 0 || altitude <= 0) return null;
+  const targetSpanRad = (vfovDeg * FOV_SAFETY_MARGIN * Math.PI) / 180;
+  const T = Math.tan(targetSpanRad);
+  if (!(T > 0)) return null;
+  // T*r^2 - poiHeight*r + T*altitude*(altitude-poiHeight) = 0
+  const roots = solveQuadratic(
+    T,
+    -poiHeight,
+    T * altitude * (altitude - poiHeight),
+  );
+  if (!roots) return null;
+  const radiusM = pickPositiveRoot(roots, prevRadius, false);
+  if (radiusM === null) return null;
+  const clampedRadius = Math.max(
+    MIN_RADIUS_M,
+    Math.min(MAX_RADIUS_M, Math.round(radiusM)),
+  );
+  return {
+    radiusM: clampedRadius,
+    gimbalPitchDeg: computeFramingPitch(altitude, poiHeight, clampedRadius),
+  };
+}
+
 // ── Building-derived orbit seed ──────────────────────────
 
 /** Extra clearance (meters) beyond a building's footprint so an orbit around it clears every corner. */
@@ -290,16 +440,36 @@ export function computeOrbitSeedForBuilding(
 /**
  * Full OrbitParams recommended for orbiting a building: center/radius from
  * `computeOrbitSeedForBuilding`, POI height set to the building's real
- * height, and altitude/gimbal pitch linked from that radius+height via the
- * same trig already used for manual POI-height linking. Shared by the
- * "place a POI on a building" flow and any direct "create orbit around
- * this building" action so both compute the recommendation identically.
+ * height. When `vfovDeg` is given (the selected drone/payload's known wide
+ * camera vertical FOV), altitude/gimbal pitch are derived so the whole
+ * building fits in frame via `computeFramedForRadius`. Otherwise (unknown
+ * FOV) falls back to the previous fixed -45°/`computeAltitudeForPitch`
+ * heuristic. Shared by the "place a POI on a building" flow and any direct
+ * "create orbit around this building" action so both compute the
+ * recommendation identically.
  */
-export function orbitParamsForBuilding(building: {
-  vertices: [number, number][];
-  height: number;
-}): OrbitParams {
+export function orbitParamsForBuilding(
+  building: {
+    vertices: [number, number][];
+    height: number;
+  },
+  vfovDeg?: number,
+): OrbitParams {
   const seed = computeOrbitSeedForBuilding(building.vertices);
+  const framed =
+    vfovDeg !== undefined
+      ? computeFramedForRadius(seed.radiusM, building.height, vfovDeg)
+      : null;
+  if (framed) {
+    return {
+      ...DEFAULT_ORBIT_PARAMS,
+      center: seed.center,
+      radiusM: seed.radiusM,
+      poiHeight: building.height,
+      gimbalPitchDeg: framed.gimbalPitchDeg,
+      altitude: framed.altitude,
+    };
+  }
   const gimbalPitchDeg = DEFAULT_ORBIT_PARAMS.gimbalPitchDeg;
   return {
     ...DEFAULT_ORBIT_PARAMS,
@@ -329,21 +499,26 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     endAngleDeg,
     poiHeight,
     gimbalPitchDeg,
+    poiCenter,
   } = params;
   const [cLat, cLng] = center;
+  // Independent camera aim point (see OrbitParams.poiCenter). Falls back to
+  // the circle's own center when not set, so undefined always means "the
+  // POI and the flight circle are the same point" — the original behavior.
+  const [aimLat, aimLng] = poiCenter ?? center;
 
   const waypoints: TemplateResult["waypoints"] = [];
   const pois: TemplateResult["pois"] = [];
 
-  // Optionally create a POI at the center, at the real height the camera
+  // Optionally create a POI at the aim point, at the real height the camera
   // should look at (not always ground level).
-  const poiName = "Střed orbitu";
+  const poiName = poiCenter ? "Cíl kamery" : "Střed orbitu";
 
   if (createPoi) {
     pois.push({
       name: poiName,
-      latitude: cLat,
-      longitude: cLng,
+      latitude: aimLat,
+      longitude: aimLng,
       height: poiHeight,
     });
   }
@@ -374,11 +549,26 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     const angleDeg = startAngleDeg + fraction * signedSweep;
     const [lat, lng] = destinationPoint(cLat, cLng, radiusM, angleDeg);
 
-    // Calculate heading angle toward center
-    const headingAngle = bearing(lat, lng, cLat, cLng);
+    // Calculate heading angle toward the aim point (== center unless
+    // poiCenter decouples them), and — only when decoupled — the gimbal
+    // pitch needed to keep looking at poiHeight from this waypoint's actual
+    // (now-varying) distance to that point. When poiCenter is undefined,
+    // this must stay byte-identical to the original flat-pitch behavior:
+    // every waypoint on a circle is equidistant from its own center, so
+    // recomputing per-waypoint here would be redundant, not wrong — but
+    // gimbalPitchDeg itself is NOT guaranteed to equal computeGimbalPitch's
+    // output when altitudeGimbalLinked is false, so it must be used as-is.
+    const headingAngle = bearing(lat, lng, aimLat, aimLng);
     // Normalize to -180..180 range expected by DJI
     const normalizedHeading =
       headingAngle > 180 ? headingAngle - 360 : headingAngle;
+    const gimbalPitchAngle = poiCenter
+      ? computeGimbalPitch(
+          altitude,
+          poiHeight,
+          haversine(lat, lng, aimLat, aimLng),
+        )
+      : gimbalPitchDeg;
 
     waypoints.push({
       ...DEFAULT_WAYPOINT,
@@ -390,7 +580,7 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
       useGlobalHeadingParam: false,
       headingMode: "fixed",
       headingAngle: Math.round(normalizedHeading),
-      gimbalPitchAngle: gimbalPitchDeg,
+      gimbalPitchAngle,
       turnMode: "toPointAndPassWithContinuityCurvature",
       useGlobalTurnParam: false,
       actions: [],

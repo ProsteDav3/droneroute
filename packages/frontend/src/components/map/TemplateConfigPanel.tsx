@@ -33,6 +33,8 @@ import {
 import {
   computeGimbalPitch,
   computeAltitudeForPitch,
+  computeFramedForRadius,
+  computeFramedForAltitude,
   type TemplateType,
   type OrbitParams,
   type GridParams,
@@ -40,7 +42,11 @@ import {
   type PencilParams,
   type SolarParams,
 } from "@/lib/templates";
-import { recommendSolarSpacing, THERMAL_CAMERA_FOV } from "@/lib/solarCamera";
+import {
+  recommendSolarSpacing,
+  THERMAL_CAMERA_FOV,
+  WIDE_CAMERA_FOV,
+} from "@/lib/solarCamera";
 import type { PointOfInterest, HeightMode } from "@droneroute/shared";
 
 function heightModeLabel(mode: HeightMode): string {
@@ -95,6 +101,7 @@ export function TemplateConfigPanel({
   const setFlyToTarget = useMissionStore((s) => s.setFlyToTarget);
   const heightMode = useMissionStore((s) => s.config.heightMode);
   const payloadEnumValue = useMissionStore((s) => s.config.payloadEnumValue);
+  const wideFov = WIDE_CAMERA_FOV[payloadEnumValue];
   const heightModeText = heightModeLabel(heightMode);
   const title =
     type === "orbit"
@@ -239,15 +246,32 @@ export function TemplateConfigPanel({
               onChange={(v) => {
                 const radiusM = fromDisplayDistance(v, unitSystem);
                 if (orbitParams.altitudeGimbalLinked) {
-                  onOrbitChange({
-                    ...orbitParams,
-                    radiusM,
-                    gimbalPitchDeg: computeGimbalPitch(
-                      orbitParams.altitude,
-                      orbitParams.poiHeight,
-                      radiusM,
-                    ),
-                  });
+                  const framed = wideFov
+                    ? computeFramedForRadius(
+                        radiusM,
+                        orbitParams.poiHeight,
+                        wideFov.vfovDeg,
+                        orbitParams.altitude,
+                      )
+                    : null;
+                  onOrbitChange(
+                    framed
+                      ? {
+                          ...orbitParams,
+                          radiusM,
+                          altitude: framed.altitude,
+                          gimbalPitchDeg: framed.gimbalPitchDeg,
+                        }
+                      : {
+                          ...orbitParams,
+                          radiusM,
+                          gimbalPitchDeg: computeGimbalPitch(
+                            orbitParams.altitude,
+                            orbitParams.poiHeight,
+                            radiusM,
+                          ),
+                        },
+                  );
                 } else {
                   onOrbitChange({ ...orbitParams, radiusM });
                 }
@@ -281,15 +305,32 @@ export function TemplateConfigPanel({
               onChange={(v) => {
                 const altitude = fromDisplayHeight(v, unitSystem);
                 if (orbitParams.altitudeGimbalLinked) {
-                  onOrbitChange({
-                    ...orbitParams,
-                    altitude,
-                    gimbalPitchDeg: computeGimbalPitch(
-                      altitude,
-                      orbitParams.poiHeight,
-                      orbitParams.radiusM,
-                    ),
-                  });
+                  const framed = wideFov
+                    ? computeFramedForAltitude(
+                        altitude,
+                        orbitParams.poiHeight,
+                        wideFov.vfovDeg,
+                        orbitParams.radiusM,
+                      )
+                    : null;
+                  onOrbitChange(
+                    framed
+                      ? {
+                          ...orbitParams,
+                          altitude,
+                          radiusM: framed.radiusM,
+                          gimbalPitchDeg: framed.gimbalPitchDeg,
+                        }
+                      : {
+                          ...orbitParams,
+                          altitude,
+                          gimbalPitchDeg: computeGimbalPitch(
+                            altitude,
+                            orbitParams.poiHeight,
+                            orbitParams.radiusM,
+                          ),
+                        },
+                  );
                 } else {
                   onOrbitChange({ ...orbitParams, altitude });
                 }
@@ -312,15 +353,32 @@ export function TemplateConfigPanel({
               onChange={(v) => {
                 const poiHeight = fromDisplayHeight(v, unitSystem);
                 if (orbitParams.altitudeGimbalLinked) {
-                  onOrbitChange({
-                    ...orbitParams,
-                    poiHeight,
-                    gimbalPitchDeg: computeGimbalPitch(
-                      orbitParams.altitude,
-                      poiHeight,
-                      orbitParams.radiusM,
-                    ),
-                  });
+                  const framed = wideFov
+                    ? computeFramedForRadius(
+                        orbitParams.radiusM,
+                        poiHeight,
+                        wideFov.vfovDeg,
+                        orbitParams.altitude,
+                      )
+                    : null;
+                  onOrbitChange(
+                    framed
+                      ? {
+                          ...orbitParams,
+                          poiHeight,
+                          altitude: framed.altitude,
+                          gimbalPitchDeg: framed.gimbalPitchDeg,
+                        }
+                      : {
+                          ...orbitParams,
+                          poiHeight,
+                          gimbalPitchDeg: computeGimbalPitch(
+                            orbitParams.altitude,
+                            poiHeight,
+                            orbitParams.radiusM,
+                          ),
+                        },
+                  );
                 } else {
                   onOrbitChange({ ...orbitParams, poiHeight });
                 }
@@ -394,7 +452,9 @@ export function TemplateConfigPanel({
             />
             <div className="text-[10px] text-muted-foreground mt-0.5">
               {orbitParams.altitudeGimbalLinked
-                ? "Propojeno s výškou — změna kteréhokoliv přepočítá druhý z radiusu a výšky POI."
+                ? wideFov
+                  ? "Propojeno — úprava radiusu, výšky letu nebo výšky POI přepočítá zbylé hodnoty tak, aby byl celý objekt v záběru vybrané kamery."
+                  : "Propojeno s výškou — změna kteréhokoliv přepočítá druhý z radiusu a výšky POI. FOV vybrané kamery není známé, přesné zarovnání na celý objekt není k dispozici."
                 : "Uzamčeno — výška a náklon gimbalu se už vzájemně automaticky neaktualizují."}
             </div>
           </div>
@@ -450,6 +510,25 @@ export function TemplateConfigPanel({
                 className="rounded"
               />
               Středový POI
+            </label>
+            <label
+              className="flex items-center gap-1.5 text-xs cursor-pointer"
+              title="Zafixuje cíl kamery na aktuálním středu — přesun nebo změna radiusu orbitu pak s ním nehne, náklon gimbalu se dopočítá zvlášť pro každý bod trasy."
+            >
+              <input
+                type="checkbox"
+                checked={!!orbitParams.poiCenter}
+                onChange={(e) =>
+                  onOrbitChange({
+                    ...orbitParams,
+                    poiCenter: e.target.checked
+                      ? orbitParams.center
+                      : undefined,
+                  })
+                }
+                className="rounded"
+              />
+              Uzamknout POI
             </label>
           </div>
         </div>

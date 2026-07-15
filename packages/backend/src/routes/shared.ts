@@ -22,12 +22,12 @@ sharedRoutes.post(
       .get(req.params.id) as any;
 
     if (!mission) {
-      res.status(404).json({ error: "Mission not found" });
+      res.status(404).json({ error: "Mise nebyla nalezena" });
       return;
     }
 
     if (mission.user_id !== req.userId) {
-      res.status(403).json({ error: "Not authorized" });
+      res.status(403).json({ error: "Nemáte oprávnění" });
       return;
     }
 
@@ -61,12 +61,12 @@ sharedRoutes.delete(
       .get(req.params.id) as any;
 
     if (!mission) {
-      res.status(404).json({ error: "Mission not found" });
+      res.status(404).json({ error: "Mise nebyla nalezena" });
       return;
     }
 
     if (mission.user_id !== req.userId) {
-      res.status(403).json({ error: "Not authorized" });
+      res.status(403).json({ error: "Nemáte oprávnění" });
       return;
     }
 
@@ -90,7 +90,7 @@ sharedRoutes.get("/shared/:token", (req, res) => {
     .get(req.params.token) as any;
 
   if (!row) {
-    res.status(404).json({ error: "Shared mission not found" });
+    res.status(404).json({ error: "Sdílená mise nebyla nalezena" });
     return;
   }
 
@@ -123,12 +123,12 @@ sharedRoutes.post(
       .get(req.params.token) as any;
 
     if (!row) {
-      res.status(404).json({ error: "Shared mission not found" });
+      res.status(404).json({ error: "Sdílená mise nebyla nalezena" });
       return;
     }
 
     const id = uuidv4();
-    const name = `${row.name} (copy)`;
+    const name = `${row.name} (kopie)`;
 
     db.prepare(
       "INSERT INTO missions (id, name, user_id, config, waypoints, pois, obstacles) VALUES (?, ?, ?, ?, ?, ?, ?)",

@@ -30,34 +30,34 @@ describe("validateMissionCreate", () => {
 
   it("rejects a missing or blank name", () => {
     expect(validateMissionCreate({ ...validCreate, name: "" })).toBe(
-      "invalid mission name",
+      "neplatný název mise",
     );
     expect(validateMissionCreate({ ...validCreate, name: "   " })).toBe(
-      "invalid mission name",
+      "neplatný název mise",
     );
     expect(validateMissionCreate({ ...validCreate, name: 123 })).toBe(
-      "invalid mission name",
+      "neplatný název mise",
     );
   });
 
   it("rejects an over-long name", () => {
     expect(
       validateMissionCreate({ ...validCreate, name: "x".repeat(201) }),
-    ).toBe("invalid mission name");
+    ).toBe("neplatný název mise");
   });
 
   it("rejects a non-object config", () => {
     expect(validateMissionCreate({ ...validCreate, config: "nope" })).toBe(
-      "invalid mission config",
+      "neplatná konfigurace mise",
     );
     expect(validateMissionCreate({ ...validCreate, config: [1, 2] })).toBe(
-      "invalid mission config",
+      "neplatná konfigurace mise",
     );
   });
 
   it("rejects waypoints that are not an array", () => {
     expect(validateMissionCreate({ ...validCreate, waypoints: {} })).toBe(
-      "waypoints must be an array",
+      "waypoints musí být pole",
     );
   });
 
@@ -67,13 +67,13 @@ describe("validateMissionCreate", () => {
         ...validCreate,
         waypoints: [{ ...validWaypoint, latitude: 91 }],
       }),
-    ).toBe("waypoint coordinates out of range");
+    ).toBe("souřadnice bodu trasy mimo rozsah");
     expect(
       validateMissionCreate({
         ...validCreate,
         waypoints: [{ ...validWaypoint, longitude: 200 }],
       }),
-    ).toBe("waypoint coordinates out of range");
+    ).toBe("souřadnice bodu trasy mimo rozsah");
   });
 
   it("rejects non-finite coordinates (NaN / Infinity)", () => {
@@ -82,13 +82,13 @@ describe("validateMissionCreate", () => {
         ...validCreate,
         waypoints: [{ ...validWaypoint, latitude: Number.NaN }],
       }),
-    ).toBe("waypoint coordinates out of range");
+    ).toBe("souřadnice bodu trasy mimo rozsah");
     expect(
       validateMissionCreate({
         ...validCreate,
         waypoints: [{ ...validWaypoint, height: Number.POSITIVE_INFINITY }],
       }),
-    ).toBe("invalid waypoint height");
+    ).toBe("neplatná výška bodu trasy");
   });
 
   it("rejects too many waypoints (DoS guard)", () => {
@@ -97,7 +97,7 @@ describe("validateMissionCreate", () => {
       index: i,
     }));
     expect(validateMissionCreate({ ...validCreate, waypoints })).toBe(
-      "too many waypoints",
+      "příliš mnoho bodů trasy",
     );
   });
 
@@ -107,19 +107,19 @@ describe("validateMissionCreate", () => {
         ...validCreate,
         pois: [{ name: "P", latitude: 200, longitude: 0, height: 1 }],
       }),
-    ).toBe("POI coordinates out of range");
+    ).toBe("souřadnice POI mimo rozsah");
     expect(
       validateMissionCreate({
         ...validCreate,
         obstacles: [{ name: "O", vertices: [[91, 0]] }],
       }),
-    ).toBe("obstacle vertex out of range");
+    ).toBe("vrchol překážky mimo rozsah");
     expect(
       validateMissionCreate({
         ...validCreate,
         obstacles: [{ name: "O", vertices: [[41, 0, 5]] }],
       }),
-    ).toBe("obstacle vertex out of range");
+    ).toBe("vrchol překážky mimo rozsah");
   });
 
   it("validates buildings", () => {
@@ -128,7 +128,7 @@ describe("validateMissionCreate", () => {
         ...validCreate,
         buildings: [{ name: "B", height: 20, vertices: [[91, 0]] }],
       }),
-    ).toBe("building vertex out of range");
+    ).toBe("vrchol budovy mimo rozsah");
     expect(
       validateMissionCreate({
         ...validCreate,
@@ -144,7 +144,7 @@ describe("validateMissionCreate", () => {
           },
         ],
       }),
-    ).toBe("invalid building height");
+    ).toBe("neplatná výška budovy");
   });
 
   it("validates templateGroups", () => {
@@ -153,21 +153,21 @@ describe("validateMissionCreate", () => {
         ...validCreate,
         templateGroups: "not an object",
       }),
-    ).toBe("templateGroups must be an object");
+    ).toBe("templateGroups musí být objekt");
 
     expect(
       validateMissionCreate({
         ...validCreate,
         templateGroups: { g1: { type: "not-a-real-type", params: {} } },
       }),
-    ).toBe("invalid template group type");
+    ).toBe("neplatný typ skupiny šablony");
 
     expect(
       validateMissionCreate({
         ...validCreate,
         templateGroups: { g1: { type: "orbit", params: "not an object" } },
       }),
-    ).toBe("invalid template group params");
+    ).toBe("neplatné parametry skupiny šablony");
 
     expect(
       validateMissionCreate({
@@ -176,7 +176,7 @@ describe("validateMissionCreate", () => {
           g1: { type: "orbit", params: { blob: "x".repeat(30000) } },
         },
       }),
-    ).toBe("template group params too large");
+    ).toBe("parametry skupiny šablony jsou příliš velké");
 
     expect(
       validateMissionCreate({
@@ -196,9 +196,9 @@ describe("validateMissionUpdate", () => {
 
   it("only validates fields that are present", () => {
     expect(validateMissionUpdate({ name: "New name" })).toBeNull();
-    expect(validateMissionUpdate({ name: "" })).toBe("invalid mission name");
+    expect(validateMissionUpdate({ name: "" })).toBe("neplatný název mise");
     expect(validateMissionUpdate({ waypoints: "bad" })).toBe(
-      "waypoints must be an array",
+      "waypoints musí být pole",
     );
   });
 });
@@ -215,6 +215,6 @@ describe("validateMissionGeometry", () => {
       validateMissionGeometry({
         waypoints: [{ ...validWaypoint, latitude: 999 }],
       }),
-    ).toBe("waypoint coordinates out of range");
+    ).toBe("souřadnice bodu trasy mimo rozsah");
   });
 });

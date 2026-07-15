@@ -24,9 +24,9 @@ export function PoiList() {
     return (
       <div className="flex flex-col items-center justify-center p-6 text-center text-muted-foreground">
         <Crosshair className="h-8 w-8 mb-2 opacity-50" />
-        <p className="text-sm">No POIs yet</p>
+        <p className="text-sm">Zatím žádné body zájmu</p>
         <p className="text-xs mt-1">
-          Use the "Add POI" button to place points of interest
+          Použijte tlačítko "Přidat POI" pro umístění bodu zájmu
         </p>
       </div>
     );
@@ -88,7 +88,7 @@ export function PoiList() {
                   <div
                     className="text-xs font-medium truncate cursor-text hover:text-amber-300 transition-colors"
                     onDoubleClick={(e) => startRename(poi.id, e)}
-                    title="Double-click to rename"
+                    title="Přejmenujte dvojklikem"
                   >
                     {poi.name}
                   </div>
@@ -107,7 +107,7 @@ export function PoiList() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
                 onClick={(e) => toggleEditor(poi.id, e)}
-                title="Edit POI settings"
+                title="Upravit nastavení POI"
               >
                 <Settings className="h-3 w-3" />
               </Button>
@@ -119,7 +119,7 @@ export function PoiList() {
                   e.stopPropagation();
                   removePoi(poi.id);
                 }}
-                title="Remove POI"
+                title="Odebrat POI"
               >
                 <X className="h-3 w-3" />
               </Button>
@@ -130,7 +130,7 @@ export function PoiList() {
               <div className="ml-4 mr-1 mt-1 mb-2 border-l-2 border-amber-400/30 bg-amber-500/5 rounded-r-md p-3 space-y-2">
                 <div>
                   <Label className="text-xs">
-                    Move to address or coordinates
+                    Přesunout na adresu nebo souřadnice
                   </Label>
                   <LocationSearch
                     onLocationFound={(lat, lng) => {
@@ -140,7 +140,7 @@ export function PoiList() {
                   />
                 </div>
                 <div>
-                  <Label className="text-xs">Height (m)</Label>
+                  <Label className="text-xs">Výška (m)</Label>
                   <Input
                     type="number"
                     value={poi.height}

@@ -31,37 +31,41 @@ const ACTION_OPTIONS: {
 }[] = [
   {
     value: "takePhoto",
-    label: "Take photo",
+    label: "Vyfotit",
     icon: <Camera className="h-3 w-3" />,
   },
   {
     value: "startRecord",
-    label: "Start recording",
+    label: "Spustit nahrávání",
     icon: <Video className="h-3 w-3" />,
   },
   {
     value: "stopRecord",
-    label: "Stop recording",
+    label: "Zastavit nahrávání",
     icon: <VideoOff className="h-3 w-3" />,
   },
   {
     value: "gimbalRotate",
-    label: "Gimbal rotate",
+    label: "Otočit gimbal",
     icon: <RotateCcw className="h-3 w-3" />,
   },
   {
     value: "gimbalEvenlyRotate",
-    label: "Gimbal smooth",
+    label: "Plynulé otočení gimbalu",
     icon: <MoveDown className="h-3 w-3" />,
   },
   {
     value: "rotateYaw",
-    label: "Rotate yaw",
+    label: "Otočit natočení",
     icon: <Compass className="h-3 w-3" />,
   },
-  { value: "hover", label: "Hover", icon: <Clock className="h-3 w-3" /> },
+  { value: "hover", label: "Viset", icon: <Clock className="h-3 w-3" /> },
   { value: "zoom", label: "Zoom", icon: <ZoomIn className="h-3 w-3" /> },
-  { value: "focus", label: "Focus", icon: <Focus className="h-3 w-3" /> },
+  {
+    value: "focus",
+    label: "Zaostřit",
+    icon: <Focus className="h-3 w-3" />,
+  },
 ];
 
 function getDefaultParams(actionType: ActionType): any {
@@ -130,7 +134,7 @@ export function ActionEditor({ waypointIndex }: ActionEditorProps) {
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <Label className="text-xs font-semibold">
-          Actions ({wp.actions.length})
+          Akce ({wp.actions.length})
         </Label>
       </div>
 
@@ -150,7 +154,7 @@ export function ActionEditor({ waypointIndex }: ActionEditorProps) {
         <SelectTrigger className="h-8 text-xs">
           <div className="flex items-center gap-1">
             <Plus className="h-3 w-3" />
-            <span>Add action</span>
+            <span>Přidat akci</span>
           </div>
         </SelectTrigger>
         <SelectContent>
@@ -205,7 +209,7 @@ function ActionItem({
 
       {action.actionType === "hover" && (
         <div>
-          <Label className="text-[10px]">Duration (s)</Label>
+          <Label className="text-[10px]">Doba trvání (s)</Label>
           <Input
             type="number"
             value={params.hoverTime ?? 5}
@@ -222,7 +226,7 @@ function ActionItem({
       {action.actionType === "gimbalRotate" && (
         <div className="grid grid-cols-2 gap-1.5">
           <div>
-            <Label className="text-[10px]">Pitch (&deg;)</Label>
+            <Label className="text-[10px]">Náklon (&deg;)</Label>
             <Input
               type="number"
               value={params.gimbalPitchRotateAngle ?? 0}
@@ -238,7 +242,7 @@ function ActionItem({
             />
           </div>
           <div>
-            <Label className="text-[10px]">Yaw (&deg;)</Label>
+            <Label className="text-[10px]">Natočení (&deg;)</Label>
             <Input
               type="number"
               value={params.gimbalYawRotateAngle ?? 0}
@@ -258,7 +262,7 @@ function ActionItem({
 
       {action.actionType === "gimbalEvenlyRotate" && (
         <div>
-          <Label className="text-[10px]">Target pitch (&deg;)</Label>
+          <Label className="text-[10px]">Cílový náklon (&deg;)</Label>
           <Input
             type="number"
             value={params.gimbalPitchRotateAngle ?? -45}
@@ -273,7 +277,7 @@ function ActionItem({
             className="h-7 text-xs"
           />
           <div className="text-[10px] text-muted-foreground mt-0.5">
-            Smoothly interpolates pitch between waypoints
+            Plynule interpoluje náklon mezi body trasy
           </div>
         </div>
       )}
@@ -281,7 +285,7 @@ function ActionItem({
       {action.actionType === "rotateYaw" && (
         <div className="grid grid-cols-2 gap-1.5">
           <div>
-            <Label className="text-[10px]">Heading (&deg;)</Label>
+            <Label className="text-[10px]">Kurz (&deg;)</Label>
             <Input
               type="number"
               value={params.aircraftHeading ?? 0}
@@ -294,7 +298,7 @@ function ActionItem({
             />
           </div>
           <div>
-            <Label className="text-[10px]">Direction</Label>
+            <Label className="text-[10px]">Směr</Label>
             <Select
               value={params.aircraftPathMode || "clockwise"}
               onValueChange={(v) => updateParam("aircraftPathMode", v)}
@@ -313,7 +317,7 @@ function ActionItem({
 
       {action.actionType === "zoom" && (
         <div>
-          <Label className="text-[10px]">Focal length (mm)</Label>
+          <Label className="text-[10px]">Ohnisková vzdálenost (mm)</Label>
           <Input
             type="number"
             value={params.focalLength ?? 24}

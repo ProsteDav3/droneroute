@@ -332,7 +332,7 @@ export function SharedMissionPage({
         const data = await api.get<SharedMissionData>(`/shared/${shareToken}`);
         setMission(data);
       } catch (e: any) {
-        setError(e.message || "Mission not found");
+        setError(e.message || "Mise nebyla nalezena");
       } finally {
         setLoading(false);
       }
@@ -375,7 +375,9 @@ export function SharedMissionPage({
       window.history.pushState({}, "", "/");
       setCurrentPage("editor");
     } catch (e: any) {
-      toast.error("Clone failed: " + (e.message || "Unknown error"));
+      toast.error(
+        "Vytvoření kopie se nezdařilo: " + (e.message || "Neznámá chyba"),
+      );
     } finally {
       setCloning(false);
     }
@@ -397,7 +399,7 @@ export function SharedMissionPage({
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      toast.error(`Export failed: ${err.message}`);
+      toast.error(`Export selhal: ${err.message}`);
     }
   };
 
@@ -438,10 +440,10 @@ export function SharedMissionPage({
               <div>
                 <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
                   <Route className="h-5 w-5 text-primary" />
-                  Shared route
+                  Sdílená trasa
                 </h1>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Someone shared a drone mission with you
+                  Někdo s vámi sdílel misi dronu
                 </p>
               </div>
             </div>
@@ -455,7 +457,7 @@ export function SharedMissionPage({
               <div className="flex items-center justify-center py-20 text-muted-foreground">
                 <div className="text-center">
                   <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-3" />
-                  <p className="text-sm">Loading shared route...</p>
+                  <p className="text-sm">Načítání sdílené trasy...</p>
                 </div>
               </div>
             )}
@@ -463,9 +465,9 @@ export function SharedMissionPage({
             {!loading && error && (
               <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                 <Route className="h-12 w-12 mb-4 opacity-30" />
-                <p className="text-lg font-medium mb-1">Route not found</p>
+                <p className="text-lg font-medium mb-1">Trasa nenalezena</p>
                 <p className="text-sm mb-4">
-                  This shared link may have expired or been revoked
+                  Tento sdílený odkaz mohl vypršet nebo být zrušen
                 </p>
                 <Button
                   variant="outline"
@@ -475,7 +477,7 @@ export function SharedMissionPage({
                     setCurrentPage("editor");
                   }}
                 >
-                  Go to editor
+                  Přejít do editoru
                 </Button>
               </div>
             )}
@@ -500,7 +502,7 @@ export function SharedMissionPage({
                     <div className="p-6">
                       {/* Mission name */}
                       <h2 className="text-2xl font-bold text-foreground mb-2">
-                        {mission.name || "Untitled route"}
+                        {mission.name || "Trasa bez názvu"}
                       </h2>
 
                       {/* Owner + date */}
@@ -523,7 +525,7 @@ export function SharedMissionPage({
                           <div className="bg-background rounded-lg p-3 border border-border">
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                               <Plane className="h-3 w-3 text-purple-400" />
-                              Drone
+                              Dron
                             </div>
                             <div className="text-sm font-medium text-foreground">
                               {droneLabel}
@@ -533,7 +535,7 @@ export function SharedMissionPage({
                         <div className="bg-background rounded-lg p-3 border border-border">
                           <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                             <MapPin className="h-3 w-3 text-blue-400" />
-                            Waypoints
+                            Body trasy
                           </div>
                           <div className="text-sm font-medium text-foreground">
                             {mission.waypoints.length}
@@ -548,7 +550,7 @@ export function SharedMissionPage({
                           <div className="bg-background rounded-lg p-3 border border-border">
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                               <Route className="h-3 w-3 text-emerald-400" />
-                              Distance
+                              Vzdálenost
                             </div>
                             <div className="text-sm font-medium text-foreground">
                               {formatDistance(dist)}
@@ -559,7 +561,7 @@ export function SharedMissionPage({
                           <div className="bg-background rounded-lg p-3 border border-border">
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                               <ArrowUp className="h-3 w-3 text-sky-400" />
-                              Max altitude
+                              Max. výška
                             </div>
                             <div className="text-sm font-medium text-foreground">
                               {maxAlt} m
@@ -570,7 +572,7 @@ export function SharedMissionPage({
                           <div className="bg-background rounded-lg p-3 border border-border">
                             <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
                               <Crosshair className="h-3 w-3 text-orange-400" />
-                              Est. time
+                              Odhad. čas
                             </div>
                             <div className="text-sm font-medium text-foreground">
                               {formatFlightTime(flightTime)}
@@ -594,7 +596,7 @@ export function SharedMissionPage({
                       <div className="flex flex-wrap gap-3">
                         <Button onClick={handleLoadReadOnly} className="gap-2">
                           <Route className="h-4 w-4" />
-                          Open in editor
+                          Otevřít v editoru
                         </Button>
                         <Button
                           variant="outline"
@@ -604,10 +606,10 @@ export function SharedMissionPage({
                         >
                           <Copy className="h-4 w-4" />
                           {cloning
-                            ? "Cloning..."
+                            ? "Vytváření kopie..."
                             : token
-                              ? "Clone to my routes"
-                              : "Sign in to clone"}
+                              ? "Uložit do mých tras"
+                              : "Přihlaste se pro vytvoření kopie"}
                         </Button>
                         {mission.waypoints.length >= 2 && (
                           <Button

@@ -9,7 +9,7 @@ export const adminRoutes = Router();
 // Admin guard — reads env at request time to avoid module initialization issues
 function adminGuard(req: AuthRequest, res: Response, next: NextFunction): void {
   if (!req.userId) {
-    res.status(401).json({ error: "Authentication required" });
+    res.status(401).json({ error: "Vyžadováno přihlášení" });
     return;
   }
 
@@ -19,7 +19,7 @@ function adminGuard(req: AuthRequest, res: Response, next: NextFunction): void {
     .get(req.userId) as any;
 
   if (!user || !user.is_admin) {
-    res.status(403).json({ error: "Admin access required" });
+    res.status(403).json({ error: "Vyžadován administrátorský přístup" });
     return;
   }
 
@@ -34,11 +34,11 @@ adminRoutes.use(authMiddleware, adminGuard);
 adminRoutes.post("/users", (req: AuthRequest, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
-    res.status(400).json({ error: "Email and password are required" });
+    res.status(400).json({ error: "E-mail a heslo jsou povinné" });
     return;
   }
   if (password.length < 6) {
-    res.status(400).json({ error: "Password must be at least 6 characters" });
+    res.status(400).json({ error: "Heslo musí mít alespoň 6 znaků" });
     return;
   }
 
@@ -47,7 +47,7 @@ adminRoutes.post("/users", (req: AuthRequest, res) => {
     .prepare("SELECT id FROM users WHERE email = ?")
     .get(email);
   if (existing) {
-    res.status(409).json({ error: "Email already registered" });
+    res.status(409).json({ error: "E-mail je již zaregistrovaný" });
     return;
   }
 
@@ -143,7 +143,7 @@ adminRoutes.get("/users", (req: AuthRequest, res) => {
 // POST /api/admin/users/:id/ban
 adminRoutes.post("/users/:id/ban", (req: AuthRequest, res) => {
   if (req.params.id === req.userId) {
-    res.status(400).json({ error: "Cannot ban yourself" });
+    res.status(400).json({ error: "Nelze zablokovat sám sebe" });
     return;
   }
 
@@ -152,16 +152,16 @@ adminRoutes.post("/users/:id/ban", (req: AuthRequest, res) => {
     .prepare("UPDATE users SET is_banned = 1 WHERE id = ?")
     .run(req.params.id);
   if (result.changes === 0) {
-    res.status(404).json({ error: "User not found" });
+    res.status(404).json({ error: "Uživatel nenalezen" });
     return;
   }
-  res.json({ message: "User banned" });
+  res.json({ message: "Uživatel zablokován" });
 });
 
 // POST /api/admin/users/:id/unban
 adminRoutes.post("/users/:id/unban", (req: AuthRequest, res) => {
   if (req.params.id === req.userId) {
-    res.status(400).json({ error: "Cannot unban yourself" });
+    res.status(400).json({ error: "Nelze odblokovat sám sebe" });
     return;
   }
 
@@ -170,16 +170,16 @@ adminRoutes.post("/users/:id/unban", (req: AuthRequest, res) => {
     .prepare("UPDATE users SET is_banned = 0 WHERE id = ?")
     .run(req.params.id);
   if (result.changes === 0) {
-    res.status(404).json({ error: "User not found" });
+    res.status(404).json({ error: "Uživatel nenalezen" });
     return;
   }
-  res.json({ message: "User unbanned" });
+  res.json({ message: "Uživatel odblokován" });
 });
 
 // POST /api/admin/users/:id/promote
 adminRoutes.post("/users/:id/promote", (req: AuthRequest, res) => {
   if (req.params.id === req.userId) {
-    res.status(400).json({ error: "Cannot promote yourself" });
+    res.status(400).json({ error: "Nelze povýšit sám sebe" });
     return;
   }
 
@@ -188,16 +188,16 @@ adminRoutes.post("/users/:id/promote", (req: AuthRequest, res) => {
     .prepare("UPDATE users SET is_admin = 1 WHERE id = ?")
     .run(req.params.id);
   if (result.changes === 0) {
-    res.status(404).json({ error: "User not found" });
+    res.status(404).json({ error: "Uživatel nenalezen" });
     return;
   }
-  res.json({ message: "User promoted to admin" });
+  res.json({ message: "Uživatel povýšen na administrátora" });
 });
 
 // POST /api/admin/users/:id/demote
 adminRoutes.post("/users/:id/demote", (req: AuthRequest, res) => {
   if (req.params.id === req.userId) {
-    res.status(400).json({ error: "Cannot demote yourself" });
+    res.status(400).json({ error: "Nelze odebrat práva sám sobě" });
     return;
   }
 
@@ -206,8 +206,8 @@ adminRoutes.post("/users/:id/demote", (req: AuthRequest, res) => {
     .prepare("UPDATE users SET is_admin = 0 WHERE id = ?")
     .run(req.params.id);
   if (result.changes === 0) {
-    res.status(404).json({ error: "User not found" });
+    res.status(404).json({ error: "Uživatel nenalezen" });
     return;
   }
-  res.json({ message: "User demoted" });
+  res.json({ message: "Administrátorská práva odebrána" });
 });

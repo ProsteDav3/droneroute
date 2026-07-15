@@ -64,34 +64,34 @@ export function groupForecastByDay(
 
 /** Human-readable label for MET Norway's symbol_code values (common ones — falls back to the raw code for anything exotic). */
 const SYMBOL_LABELS: Record<string, string> = {
-  clearsky: "Clear sky",
-  fair: "Fair",
-  partlycloudy: "Partly cloudy",
-  cloudy: "Cloudy",
-  fog: "Fog",
-  rain: "Rain",
-  lightrain: "Light rain",
-  heavyrain: "Heavy rain",
-  rainshowers: "Rain showers",
-  lightrainshowers: "Light rain showers",
-  heavyrainshowers: "Heavy rain showers",
-  sleet: "Sleet",
-  lightsleet: "Light sleet",
-  heavysleet: "Heavy sleet",
-  sleetshowers: "Sleet showers",
-  snow: "Snow",
-  lightsnow: "Light snow",
-  heavysnow: "Heavy snow",
-  snowshowers: "Snow showers",
-  lightsnowshowers: "Light snow showers",
-  heavysnowshowers: "Heavy snow showers",
-  rainandthunder: "Rain and thunder",
-  rainshowersandthunder: "Rain showers and thunder",
-  snowandthunder: "Snow and thunder",
+  clearsky: "Jasno",
+  fair: "Skoro jasno",
+  partlycloudy: "Polojasno",
+  cloudy: "Zataženo",
+  fog: "Mlha",
+  rain: "Déšť",
+  lightrain: "Slabý déšť",
+  heavyrain: "Silný déšť",
+  rainshowers: "Přeháňky",
+  lightrainshowers: "Slabé přeháňky",
+  heavyrainshowers: "Silné přeháňky",
+  sleet: "Déšť se sněhem",
+  lightsleet: "Slabý déšť se sněhem",
+  heavysleet: "Silný déšť se sněhem",
+  sleetshowers: "Přeháňky se sněhem",
+  snow: "Sníh",
+  lightsnow: "Slabé sněžení",
+  heavysnow: "Silné sněžení",
+  snowshowers: "Sněhové přeháňky",
+  lightsnowshowers: "Slabé sněhové přeháňky",
+  heavysnowshowers: "Silné sněhové přeháňky",
+  rainandthunder: "Déšť s bouřkou",
+  rainshowersandthunder: "Přeháňky s bouřkou",
+  snowandthunder: "Sněžení s bouřkou",
 };
 
 export function symbolLabel(symbolCode: string | null): string {
-  if (!symbolCode) return "Unknown";
+  if (!symbolCode) return "Neznámé";
   const base = symbolCode.replace(/_(day|night|polartwilight)$/, "");
   return SYMBOL_LABELS[base] ?? base;
 }

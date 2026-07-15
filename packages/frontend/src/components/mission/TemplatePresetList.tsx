@@ -7,10 +7,10 @@ import type { TemplateType, TemplateParams } from "@/lib/templates";
 
 const TYPE_LABELS: Record<string, string> = {
   orbit: "Orbit",
-  grid: "Grid survey",
-  facade: "Facade scan",
-  pencil: "Pencil path",
-  solar: "Solar panel survey",
+  grid: "Mřížkový průzkum",
+  facade: "Sken fasády",
+  pencil: "Volná křivka",
+  solar: "Solární panelový průzkum",
 };
 
 export function TemplatePresetList() {
@@ -23,9 +23,10 @@ export function TemplatePresetList() {
     return (
       <div className="flex flex-col items-center justify-center p-6 text-center text-muted-foreground">
         <Bookmark className="h-8 w-8 mb-2 opacity-50" />
-        <p className="text-sm">No saved presets yet</p>
+        <p className="text-sm">Zatím žádné uložené šablony</p>
         <p className="text-xs mt-1">
-          Configure a template and click "Save as preset" to reuse it later
+          Nastavte šablonu a klikněte na "Uložit jako šablonu" pro pozdější
+          použití
         </p>
       </div>
     );
@@ -59,7 +60,7 @@ export function TemplatePresetList() {
                 params: preset.params as unknown as TemplateParams,
               })
             }
-            title="Click to load this preset"
+            title="Kliknutím načtete tuto šablonu"
           >
             <Bookmark className="h-3 w-3 text-indigo-400 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -81,7 +82,7 @@ export function TemplatePresetList() {
                 <div
                   className="text-xs font-medium truncate cursor-text hover:text-indigo-300 transition-colors"
                   onDoubleClick={(e) => startRename(preset.id, e)}
-                  title="Double-click to rename"
+                  title="Přejmenujte dvojklikem"
                 >
                   {preset.name}
                 </div>
@@ -101,7 +102,7 @@ export function TemplatePresetList() {
                   params: preset.params as unknown as TemplateParams,
                 });
               }}
-              title="Load this preset"
+              title="Načíst tuto šablonu"
             >
               <FolderOpen className="h-3 w-3" />
             </Button>
@@ -113,7 +114,7 @@ export function TemplatePresetList() {
                 e.stopPropagation();
                 removePreset(preset.id);
               }}
-              title="Delete preset"
+              title="Smazat šablonu"
             >
               <X className="h-3 w-3" />
             </Button>

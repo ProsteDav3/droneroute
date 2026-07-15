@@ -101,8 +101,8 @@ describe("groupForecastByDay", () => {
 
 describe("symbolLabel", () => {
   it("returns a known human-readable label for a common symbol code", () => {
-    expect(symbolLabel("lightrainshowers_day")).toBe("Light rain showers");
-    expect(symbolLabel("clearsky_night")).toBe("Clear sky");
+    expect(symbolLabel("lightrainshowers_day")).toBe("Slabé přeháňky");
+    expect(symbolLabel("clearsky_night")).toBe("Jasno");
   });
 
   it("falls back to the raw (suffix-stripped) code for an unmapped symbol", () => {
@@ -111,8 +111,8 @@ describe("symbolLabel", () => {
     );
   });
 
-  it("returns 'Unknown' for null", () => {
-    expect(symbolLabel(null)).toBe("Unknown");
+  it("returns 'Neznámé' for null", () => {
+    expect(symbolLabel(null)).toBe("Neznámé");
   });
 });
 

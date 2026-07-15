@@ -51,5 +51,5 @@ preferencesRoutes.put("/", authMiddleware, (req: AuthRequest, res) => {
      ON CONFLICT(user_id) DO UPDATE SET preferences = ?, updated_at = datetime('now')`,
   ).run(req.userId!, preferences, preferences);
 
-  res.json({ message: "Preferences saved" });
+  res.json({ message: "Předvolby uloženy" });
 });

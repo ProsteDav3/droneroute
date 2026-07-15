@@ -61,9 +61,9 @@ export function WeatherForecast() {
     return (
       <div className="flex flex-col items-center justify-center p-6 text-center text-muted-foreground">
         <Cloud className="h-8 w-8 mb-2 opacity-50" />
-        <p className="text-sm">No forecast yet</p>
+        <p className="text-sm">Zatím žádná předpověď</p>
         <p className="text-xs mt-1">
-          Place a waypoint to see the forecast for that location
+          Umístěte bod trasy pro zobrazení předpovědi pro dané místo
         </p>
       </div>
     );
@@ -72,7 +72,7 @@ export function WeatherForecast() {
   if (isLoading && forecast.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-muted-foreground">
-        Loading forecast…
+        Načítání předpovědi…
       </div>
     );
   }
@@ -82,7 +82,7 @@ export function WeatherForecast() {
   if (days.length === 0) {
     return (
       <div className="p-4 text-center text-xs text-muted-foreground">
-        Forecast unavailable right now.
+        Předpověď momentálně není dostupná.
       </div>
     );
   }
@@ -113,7 +113,7 @@ export function WeatherForecast() {
               className={`flex items-center gap-1 text-[10px] shrink-0 ${
                 isWindy ? "text-amber-500" : "text-muted-foreground"
               }`}
-              title="Max wind speed"
+              title="Maximální rychlost větru"
             >
               <Wind className="h-3 w-3" />
               {windMs !== null
@@ -122,7 +122,7 @@ export function WeatherForecast() {
             </div>
             <div
               className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0"
-              title="Total precipitation"
+              title="Celkové srážky"
             >
               <Droplets className="h-3 w-3" />
               {day.totalPrecipitationMm !== null
@@ -133,7 +133,7 @@ export function WeatherForecast() {
         );
       })}
       <div className="text-[10px] text-muted-foreground px-2 pt-1">
-        Forecast for the first waypoint's location, via MET Norway.
+        Předpověď pro místo prvního bodu trasy, přes MET Norway.
       </div>
     </div>
   );

@@ -184,7 +184,7 @@ interface MissionState {
 
 export const useMissionStore = create<MissionState>((set, get) => ({
   missionId: null,
-  missionName: "New Mission",
+  missionName: "Nová mise",
   dirty: false,
   config: { ...DEFAULT_MISSION_CONFIG },
   waypoints: [],
@@ -244,7 +244,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       const newWaypoint: Waypoint = {
         ...DEFAULT_WAYPOINT,
         index,
-        name: `Waypoint ${index + 1}`,
+        name: `Bod trasy ${index + 1}`,
         latitude: lat,
         longitude: lng,
         actions: [],
@@ -711,7 +711,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       const fullWaypoints: Waypoint[] = newWps.map((wp, i) => ({
         ...wp,
         index: startIndex + i,
-        name: `Waypoint ${startIndex + i + 1}`,
+        name: `Bod trasy ${startIndex + i + 1}`,
         ...(groupId ? { templateGroupId: groupId } : {}),
       }));
 
@@ -766,7 +766,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       const fullWaypoints: Waypoint[] = newWps.map((wp, i) => ({
         ...wp,
         index: startIndex + i,
-        name: `Waypoint ${startIndex + i + 1}`,
+        name: `Bod trasy ${startIndex + i + 1}`,
         templateGroupId: groupId,
       }));
 
@@ -833,7 +833,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     const prefs = usePreferencesStore.getState().preferences;
     set({
       missionId: null,
-      missionName: "New Mission",
+      missionName: "Nová mise",
       config: { ...DEFAULT_MISSION_CONFIG, ...prefs.missionDefaults },
       waypoints: [],
       pois: [],

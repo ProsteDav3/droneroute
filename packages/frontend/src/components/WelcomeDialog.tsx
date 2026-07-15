@@ -43,7 +43,7 @@ export function WelcomeDialog() {
         <div className="flex items-center justify-between px-5 pt-5 pb-0">
           <div className="flex items-center gap-2.5">
             <img src="/droneroute.png" alt="DroneRoute" className="h-7 w-7" />
-            <h2 className="text-base font-bold">Welcome to DroneRoute</h2>
+            <h2 className="text-base font-bold">Vítejte v DroneRoute</h2>
           </div>
           <button
             onClick={dismiss}
@@ -56,51 +56,51 @@ export function WelcomeDialog() {
         {/* Body */}
         <div className="px-5 pt-4 pb-2 space-y-4">
           <p className="text-sm text-muted-foreground leading-relaxed">
-            A free, open-source mission planner for DJI drones. Place waypoints
-            on the map, configure flight parameters, and export KMZ files ready
-            to fly.
+            Plánovač misí pro drony DJI. Umísťujte body trasy na mapě,
+            nastavujte parametry letu a exportujte soubory KMZ připravené k
+            letu.
           </p>
 
           <div className="space-y-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Quick start
+              Rychlý start
             </h3>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
               <span className="flex items-center gap-2">
                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-muted rounded border border-border">
                   W
                 </kbd>
-                Add waypoint
+                Přidat bod trasy
               </span>
               <span className="flex items-center gap-2">
                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-muted rounded border border-border">
                   P
                 </kbd>
-                Add POI
+                Přidat POI
               </span>
               <span className="flex items-center gap-2">
                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-muted rounded border border-border">
                   O
                 </kbd>
-                Orbit template
+                Šablona orbitu
               </span>
               <span className="flex items-center gap-2">
                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-muted rounded border border-border">
                   G
                 </kbd>
-                Grid survey
+                Mřížkový průzkum
               </span>
               <span className="flex items-center gap-2">
                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-muted rounded border border-border">
                   Esc
                 </kbd>
-                Cancel / deselect
+                Zrušit / odznačit
               </span>
               <span className="flex items-center gap-2">
                 <kbd className="px-1.5 py-0.5 text-[10px] font-mono bg-muted rounded border border-border">
                   Del
                 </kbd>
-                Remove selected
+                Odebrat vybrané
               </span>
             </div>
           </div>
@@ -109,7 +109,7 @@ export function WelcomeDialog() {
         {/* Footer */}
         <div className="px-5 py-4">
           <Button onClick={dismiss} className="w-full h-9 text-sm">
-            Get started
+            Začít
           </Button>
         </div>
       </div>

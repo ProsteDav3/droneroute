@@ -6,7 +6,7 @@ export const globalLimiter = rateLimit({
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many requests, please try again later" },
+  message: { error: "Příliš mnoho požadavků, zkuste to prosím znovu později" },
 });
 
 /** Strict rate limiter for expensive endpoints — 10 requests per minute per IP. */
@@ -15,7 +15,7 @@ export const strictLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many requests, please try again later" },
+  message: { error: "Příliš mnoho požadavků, zkuste to prosím znovu později" },
 });
 
 /**
@@ -29,7 +29,7 @@ export const airspaceLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many requests, please try again later" },
+  message: { error: "Příliš mnoho požadavků, zkuste to prosím znovu později" },
 });
 
 /**
@@ -43,7 +43,7 @@ export const weatherLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many requests, please try again later" },
+  message: { error: "Příliš mnoho požadavků, zkuste to prosím znovu později" },
 });
 
 /**
@@ -57,5 +57,5 @@ export const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
-  message: { error: "Too many attempts, please try again later" },
+  message: { error: "Příliš mnoho pokusů, zkuste to prosím znovu později" },
 });

@@ -71,7 +71,7 @@ export function WaypointEditorInline({
   return (
     <div className="p-3 space-y-3">
       <div>
-        <Label className="text-xs">Move to address or coordinates</Label>
+        <Label className="text-xs">Přesunout na adresu nebo souřadnice</Label>
         <LocationSearch
           onLocationFound={(lat, lng) => {
             update({ latitude: lat, longitude: lng });
@@ -82,9 +82,7 @@ export function WaypointEditorInline({
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <Label className="text-xs">
-            Altitude ({heightLabel(unitSystem)})
-          </Label>
+          <Label className="text-xs">Výška ({heightLabel(unitSystem)})</Label>
           <Input
             type="number"
             value={toDisplayHeight(wp.height, unitSystem)}
@@ -105,7 +103,7 @@ export function WaypointEditorInline({
           />
         </div>
         <div>
-          <Label className="text-xs">Speed ({speedLabel(unitSystem)})</Label>
+          <Label className="text-xs">Rychlost ({speedLabel(unitSystem)})</Label>
           <Input
             type="number"
             value={toDisplaySpeed(wp.speed, unitSystem)}
@@ -128,7 +126,7 @@ export function WaypointEditorInline({
 
       <div>
         <div className="flex items-center gap-1">
-          <Label className="text-xs">Gimbal Pitch (&deg;)</Label>
+          <Label className="text-xs">Náklon gimbalu (&deg;)</Label>
           {(() => {
             const targetPoi =
               !wp.useGlobalHeadingParam &&
@@ -146,11 +144,11 @@ export function WaypointEditorInline({
             const distLabel = formatDistance(distance, unitSystem);
             const heightDesc =
               heightDiff > 0
-                ? `${formatHeight(heightDiff, unitSystem)} above`
+                ? `${formatHeight(heightDiff, unitSystem)} nad`
                 : heightDiff < 0
-                  ? `${formatHeight(Math.abs(heightDiff), unitSystem)} below`
-                  : "level with";
-            const tooltip = `Point your camera right at ${targetPoi.name} — the perfect angle for the shot.\n\n${distLabel} away, ${heightDesc}. Click to apply ${suggested}°.`;
+                  ? `${formatHeight(Math.abs(heightDiff), unitSystem)} pod`
+                  : "ve stejné úrovni jako";
+            const tooltip = `Namiřte kameru přímo na ${targetPoi.name} — ideální úhel pro záběr.\n\n${distLabel} daleko, ${heightDesc}. Kliknutím použijete ${suggested}°.`;
             return (
               <button
                 type="button"
@@ -165,7 +163,7 @@ export function WaypointEditorInline({
                     : "text-green-400/60 hover:text-green-400 cursor-pointer"
                 }`}
               >
-                Perfect pitch: {suggested}&deg;
+                Ideální náklon: {suggested}&deg;
               </button>
             );
           })()}
@@ -182,12 +180,12 @@ export function WaypointEditorInline({
           className="h-8 text-xs"
         />
         <div className="text-[10px] text-muted-foreground mt-0.5">
-          -90&deg; = straight down, 0&deg; = horizon
+          -90&deg; = přímo dolů, 0&deg; = horizont
         </div>
       </div>
 
       <div>
-        <Label className="text-xs">Heading mode</Label>
+        <Label className="text-xs">Režim natočení</Label>
         <Select
           value={
             wp.useGlobalHeadingParam
@@ -221,13 +219,13 @@ export function WaypointEditorInline({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="global">
-              Use global ({config.globalHeadingMode})
+              Použít globální ({config.globalHeadingMode})
             </SelectItem>
-            <SelectItem value="followWayline">Follow wayline</SelectItem>
-            <SelectItem value="manually">Manual</SelectItem>
-            <SelectItem value="fixed">Fixed</SelectItem>
-            <SelectItem value="smoothTransition">Smooth transition</SelectItem>
-            <SelectItem value="towardPOI">Toward POI</SelectItem>
+            <SelectItem value="followWayline">Podle trasy</SelectItem>
+            <SelectItem value="manually">Ruční</SelectItem>
+            <SelectItem value="fixed">Pevné</SelectItem>
+            <SelectItem value="smoothTransition">Plynulý přechod</SelectItem>
+            <SelectItem value="towardPOI">Směrem k POI</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -237,7 +235,7 @@ export function WaypointEditorInline({
           wp.headingMode === "fixed" ||
           wp.headingMode === "smoothTransition") && (
           <div>
-            <Label className="text-xs">Heading angle (&deg;)</Label>
+            <Label className="text-xs">Úhel natočení (&deg;)</Label>
             <Input
               type="number"
               value={wp.headingAngle ?? 0}
@@ -249,14 +247,14 @@ export function WaypointEditorInline({
               className="h-8 text-xs"
             />
             <div className="text-[10px] text-muted-foreground mt-0.5">
-              0&deg; = North, 90&deg; = East, -90&deg; = West
+              0&deg; = sever, 90&deg; = východ, -90&deg; = západ
             </div>
           </div>
         )}
 
       {!wp.useGlobalHeadingParam && wp.headingMode === "towardPOI" && (
         <div>
-          <Label className="text-xs">Target POI</Label>
+          <Label className="text-xs">Cílový POI</Label>
           <Select
             value={wp.poiId || "none"}
             onValueChange={(v) =>
@@ -264,10 +262,10 @@ export function WaypointEditorInline({
             }
           >
             <SelectTrigger className="h-8 text-xs">
-              <SelectValue placeholder="Select POI..." />
+              <SelectValue placeholder="Vyberte POI..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">None</SelectItem>
+              <SelectItem value="none">Žádný</SelectItem>
               {pois.map((poi) => (
                 <SelectItem key={poi.id} value={poi.id}>
                   {poi.name}
@@ -277,14 +275,14 @@ export function WaypointEditorInline({
           </Select>
           {pois.length === 0 && (
             <div className="text-[10px] text-muted-foreground mt-0.5">
-              Add POIs on the map first
+              Nejdřív přidejte POI na mapu
             </div>
           )}
         </div>
       )}
 
       <div>
-        <Label className="text-xs">Turn mode</Label>
+        <Label className="text-xs">Režim zatáčení</Label>
         <Select
           value={
             wp.useGlobalTurnParam
@@ -303,16 +301,16 @@ export function WaypointEditorInline({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="global">Use global</SelectItem>
-            <SelectItem value="coordinateTurn">Coordinated turn</SelectItem>
+            <SelectItem value="global">Použít globální</SelectItem>
+            <SelectItem value="coordinateTurn">Koordinovaná zatáčka</SelectItem>
             <SelectItem value="toPointAndStopWithDiscontinuityCurvature">
-              Stop at point (sharp)
+              Zastavit v bodě (ostré)
             </SelectItem>
             <SelectItem value="toPointAndStopWithContinuityCurvature">
-              Stop at point (curve)
+              Zastavit v bodě (plynulé)
             </SelectItem>
             <SelectItem value="toPointAndPassWithContinuityCurvature">
-              Pass point (curve)
+              Projet bodem (plynulé)
             </SelectItem>
           </SelectContent>
         </Select>

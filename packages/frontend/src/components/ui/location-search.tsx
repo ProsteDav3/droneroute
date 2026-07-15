@@ -30,7 +30,7 @@ function parseCoordinates(input: string): [number, number] | null {
  */
 export function LocationSearch({
   onLocationFound,
-  placeholder = "Address or lat, lng",
+  placeholder = "Adresa nebo lat, lng",
   className = "",
 }: LocationSearchProps) {
   const mapboxToken = useConfigStore((s) => s.mapboxToken);
@@ -50,7 +50,7 @@ export function LocationSearch({
     }
 
     if (!mapboxToken) {
-      setError("Mapbox token not configured");
+      setError("Mapbox token není nastaven");
       return;
     }
 
@@ -65,13 +65,15 @@ export function LocationSearch({
       const data = await res.json();
       const feature = data.features?.[0];
       if (!feature) {
-        setError("Address not found");
+        setError("Adresa nebyla nalezena");
         return;
       }
       const [lng, lat] = feature.center as [number, number];
       onLocationFound(lat, lng);
     } catch {
-      setError("Search failed — try again or enter coordinates directly");
+      setError(
+        "Vyhledávání selhalo — zkuste to znovu nebo zadejte souřadnice přímo",
+      );
     } finally {
       setLoading(false);
     }
@@ -99,7 +101,7 @@ export function LocationSearch({
           className="h-7 w-7 shrink-0"
           onClick={handleSearch}
           disabled={loading || !query.trim()}
-          title="Search"
+          title="Hledat"
         >
           {loading ? (
             <Loader2 className="h-3 w-3 animate-spin" />

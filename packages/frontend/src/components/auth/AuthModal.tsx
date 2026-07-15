@@ -25,7 +25,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
       await login(email, password);
       onClose();
     } catch (err: any) {
-      setError(err.message || "Something went wrong");
+      setError(err.message || "Něco se pokazilo");
     }
   };
 
@@ -35,7 +35,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
       await googleLogin(credentialResponse.credential);
       onClose();
     } catch (err: any) {
-      setError(err.message || "Google sign-in failed");
+      setError(err.message || "Přihlášení přes Google se nezdařilo");
     }
   };
 
@@ -51,7 +51,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold">
-            {selfHosted ? "Sign in" : "Sign in with Google"}
+            {selfHosted ? "Přihlásit se" : "Přihlásit se přes Google"}
           </h2>
           <button
             onClick={onClose}
@@ -68,7 +68,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="email" className="text-xs">
-                    Email
+                    E-mail
                   </Label>
                   <Input
                     id="email"
@@ -83,7 +83,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="password" className="text-xs">
-                    Password
+                    Heslo
                   </Label>
                   <Input
                     id="password"
@@ -102,7 +102,7 @@ export function AuthModal({ onClose }: AuthModalProps) {
                   className="w-full h-9 text-sm"
                   disabled={isLoading}
                 >
-                  {isLoading ? "..." : "Sign in"}
+                  {isLoading ? "..." : "Přihlásit se"}
                 </Button>
               </form>
             </>
@@ -110,12 +110,14 @@ export function AuthModal({ onClose }: AuthModalProps) {
             <>
               {/* Cloud: Google OAuth only */}
               <p className="text-xs text-muted-foreground text-center">
-                Sign in or create an account using your Google account.
+                Přihlaste se nebo si vytvořte účet pomocí účtu Google.
               </p>
               <div className="flex justify-center">
                 <GoogleLogin
                   onSuccess={handleGoogleSuccess}
-                  onError={() => setError("Google sign-in failed")}
+                  onError={() =>
+                    setError("Přihlášení přes Google se nezdařilo")
+                  }
                   theme="filled_black"
                   size="large"
                   width="320"

@@ -34,12 +34,12 @@ missionRoutes.get("/:id", authMiddleware, (req: AuthRequest, res) => {
     .get(req.params.id) as any;
 
   if (!row) {
-    res.status(404).json({ error: "Mission not found" });
+    res.status(404).json({ error: "Mise nebyla nalezena" });
     return;
   }
 
   if (row.user_id !== req.userId) {
-    res.status(403).json({ error: "Not authorized" });
+    res.status(403).json({ error: "Nemáte oprávnění" });
     return;
   }
 
@@ -72,7 +72,9 @@ missionRoutes.post("/", optionalAuth, (req: AuthRequest, res) => {
     templateGroups,
   } = req.body;
   if (!name || !config || !waypoints) {
-    res.status(400).json({ error: "name, config, and waypoints are required" });
+    res
+      .status(400)
+      .json({ error: "Pole name, config a waypoints jsou povinná" });
     return;
   }
 
@@ -118,12 +120,12 @@ missionRoutes.put("/:id", authMiddleware, (req: AuthRequest, res) => {
     .prepare("SELECT user_id FROM missions WHERE id = ?")
     .get(req.params.id) as any;
   if (!existing) {
-    res.status(404).json({ error: "Mission not found" });
+    res.status(404).json({ error: "Mise nebyla nalezena" });
     return;
   }
 
   if (existing.user_id !== req.userId) {
-    res.status(403).json({ error: "Not authorized" });
+    res.status(403).json({ error: "Nemáte oprávnění" });
     return;
   }
 
@@ -182,11 +184,11 @@ missionRoutes.delete("/:id", authMiddleware, (req: AuthRequest, res) => {
     .prepare("SELECT user_id FROM missions WHERE id = ?")
     .get(req.params.id) as any;
   if (!existing) {
-    res.status(404).json({ error: "Mission not found" });
+    res.status(404).json({ error: "Mise nebyla nalezena" });
     return;
   }
   if (existing.user_id !== req.userId) {
-    res.status(403).json({ error: "Not authorized" });
+    res.status(403).json({ error: "Nemáte oprávnění" });
     return;
   }
 

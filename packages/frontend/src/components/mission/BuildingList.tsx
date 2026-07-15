@@ -27,9 +27,9 @@ export function BuildingList() {
     return (
       <div className="flex flex-col items-center justify-center p-6 text-center text-muted-foreground">
         <Warehouse className="h-8 w-8 mb-2 opacity-50" />
-        <p className="text-sm">No buildings yet</p>
+        <p className="text-sm">Zatím žádné budovy</p>
         <p className="text-xs mt-1">
-          Use the "Building" button to draw a footprint
+          Použijte tlačítko "Budova" pro nakreslení půdorysu
         </p>
       </div>
     );
@@ -91,13 +91,13 @@ export function BuildingList() {
                   <div
                     className="text-xs font-medium truncate cursor-text hover:text-blue-300 transition-colors"
                     onDoubleClick={(e) => startRename(building.id, e)}
-                    title="Double-click to rename"
+                    title="Přejmenujte dvojklikem"
                   >
                     {building.name}
                   </div>
                 )}
                 <div className="text-[10px] text-muted-foreground">
-                  H: {toDisplayHeight(building.height, unitSystem)}
+                  V: {toDisplayHeight(building.height, unitSystem)}
                   {heightLabel(unitSystem)} &middot;{" "}
                   {formatArea(polygonArea(building.vertices), unitSystem)}
                 </div>
@@ -110,7 +110,7 @@ export function BuildingList() {
                   e.stopPropagation();
                   setPendingOrbitParams(orbitParamsForBuilding(building));
                 }}
-                title="Create an orbit around this building, with radius, altitude, and gimbal pitch pre-filled"
+                title="Vytvořit orbit kolem této budovy s předvyplněným radiusem, výškou a náklonem gimbalu"
               >
                 <Orbit className="h-3 w-3" />
               </Button>
@@ -123,7 +123,7 @@ export function BuildingList() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
                 onClick={(e) => toggleEditor(building.id, e)}
-                title="Edit building settings"
+                title="Upravit nastavení budovy"
               >
                 <Settings className="h-3 w-3" />
               </Button>
@@ -135,7 +135,7 @@ export function BuildingList() {
                   e.stopPropagation();
                   removeBuilding(building.id);
                 }}
-                title="Remove building"
+                title="Odebrat budovu"
               >
                 <X className="h-3 w-3" />
               </Button>
@@ -146,9 +146,9 @@ export function BuildingList() {
                 <div>
                   <Label
                     className="text-xs"
-                    title="Real height of the building, above ground — used to recommend an orbit altitude, radius, and gimbal pitch when a POI is placed on it."
+                    title="Skutečná výška budovy nad terénem — používá se pro doporučení výšky orbitu, radiusu a náklonu gimbalu při umístění POI na budovu."
                   >
-                    Height ({heightLabel(unitSystem)})
+                    Výška ({heightLabel(unitSystem)})
                   </Label>
                   <NumericInput
                     value={toDisplayHeight(building.height, unitSystem)}
@@ -164,8 +164,14 @@ export function BuildingList() {
                   />
                 </div>
                 <div className="text-[10px] text-muted-foreground">
-                  {building.vertices.length} vertices &middot; Right-click a
-                  vertex on the map to remove it
+                  {building.vertices.length}{" "}
+                  {building.vertices.length === 1
+                    ? "vrchol"
+                    : building.vertices.length >= 2 &&
+                        building.vertices.length <= 4
+                      ? "vrcholy"
+                      : "vrcholů"}{" "}
+                  &middot; Pravým tlačítkem na vrchol na mapě jej odeberete
                 </div>
               </div>
             )}

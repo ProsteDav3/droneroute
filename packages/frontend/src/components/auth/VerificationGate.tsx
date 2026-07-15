@@ -13,9 +13,11 @@ export function VerificationGate() {
       await googleLogin(credentialResponse.credential);
     } catch (err: any) {
       if (err.message?.includes("email")) {
-        setError(`Please sign in with the Google account matching ${email}`);
+        setError(
+          `Přihlaste se prosím pomocí účtu Google odpovídajícího ${email}`,
+        );
       } else {
-        setError(err.message || "Google sign-in failed");
+        setError(err.message || "Přihlášení přes Google se nezdařilo");
       }
     }
   };
@@ -27,14 +29,14 @@ export function VerificationGate() {
           <Shield className="h-12 w-12 text-primary" />
         </div>
         <div className="space-y-2">
-          <h2 className="text-lg font-semibold">Verify your account</h2>
+          <h2 className="text-lg font-semibold">Ověřte svůj účet</h2>
           <p className="text-sm text-muted-foreground">
-            To continue using DroneRoute, please verify your email by signing in
-            with Google.
+            Pro pokračování v používání DroneRoute prosím ověřte svůj e-mail
+            přihlášením přes Google.
           </p>
           {email && (
             <p className="text-xs text-muted-foreground">
-              Use the Google account matching{" "}
+              Použijte účet Google odpovídající{" "}
               <span className="font-medium text-foreground">{email}</span>
             </p>
           )}
@@ -43,7 +45,7 @@ export function VerificationGate() {
         <div className="flex justify-center">
           <GoogleLogin
             onSuccess={handleGoogleSuccess}
-            onError={() => setError("Google sign-in failed")}
+            onError={() => setError("Přihlášení přes Google se nezdařilo")}
             theme="filled_black"
             size="large"
             width="320"
@@ -57,7 +59,7 @@ export function VerificationGate() {
           className="text-xs text-muted-foreground hover:text-primary transition-colors"
           onClick={logout}
         >
-          Sign out instead
+          Místo toho se odhlásit
         </button>
       </div>
     </div>

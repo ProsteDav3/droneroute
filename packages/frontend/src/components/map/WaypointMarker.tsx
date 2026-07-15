@@ -162,7 +162,7 @@ export function WaypointMarker({ waypoint, is3D }: WaypointMarkerProps) {
     >
       <div
         onClick={handleClick}
-        title={`${waypoint.name}\nAlt: ${formatHeight(waypoint.height, unitSystem)} | Speed: ${formatSpeed(waypoint.speed, unitSystem)}\nGimbal: ${waypoint.gimbalPitchAngle}°\n${waypoint.latitude.toFixed(6)}, ${waypoint.longitude.toFixed(6)}`}
+        title={`${waypoint.name}\nVýška: ${formatHeight(waypoint.height, unitSystem)} | Rychlost: ${formatSpeed(waypoint.speed, unitSystem)}\nGimbal: ${waypoint.gimbalPitchAngle}°\n${waypoint.latitude.toFixed(6)}, ${waypoint.longitude.toFixed(6)}`}
         style={{
           position: "relative",
           background: bg,

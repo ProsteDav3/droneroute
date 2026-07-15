@@ -63,7 +63,7 @@ describe("POST /api/template-presets — validation", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ ...validBody, name: "   " });
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("invalid preset name");
+    expect(res.body.error).toBe("neplatný název šablony");
   });
 
   it("rejects an unknown template type", async () => {
@@ -72,7 +72,7 @@ describe("POST /api/template-presets — validation", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ ...validBody, type: "not-a-real-type" });
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("invalid preset type");
+    expect(res.body.error).toBe("neplatný typ šablony");
   });
 
   it("rejects non-object params", async () => {
@@ -81,7 +81,7 @@ describe("POST /api/template-presets — validation", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ ...validBody, params: "not an object" });
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("invalid preset params");
+    expect(res.body.error).toBe("neplatné parametry šablony");
   });
 
   it("rejects oversized params", async () => {
@@ -90,7 +90,7 @@ describe("POST /api/template-presets — validation", () => {
       .set("Authorization", `Bearer ${token}`)
       .send({ ...validBody, params: { blob: "x".repeat(30000) } });
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("invalid preset params");
+    expect(res.body.error).toBe("neplatné parametry šablony");
   });
 });
 

@@ -66,7 +66,7 @@ describe("POST /api/missions — server-side validation", () => {
         waypoints: [{ ...validBody.waypoints[0], latitude: 999 }],
       });
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("waypoint coordinates out of range");
+    expect(res.body.error).toBe("souřadnice bodu trasy mimo rozsah");
   });
 
   it("rejects a non-array waypoints field with 400", async () => {
@@ -133,6 +133,6 @@ describe("templateGroups persistence", () => {
         templateGroups: { g1: { type: "not-a-real-type", params: {} } },
       });
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("invalid template group type");
+    expect(res.body.error).toBe("neplatný typ skupiny šablony");
   });
 });

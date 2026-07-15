@@ -79,7 +79,7 @@ export function PoiMarker({ poi, is3D }: PoiMarkerProps) {
     >
       <div
         onClick={handleClick}
-        title={`${poi.name}\nHeight: ${poi.height}m${ctrlReady ? "\nCtrl+click to aim waypoints here" : ""}`}
+        title={`${poi.name}\nVýška: ${poi.height}m${ctrlReady ? "\nCtrl+klik pro namíření bodů trasy sem" : ""}`}
         style={{
           background: bg,
           border: `2px solid ${border}`,

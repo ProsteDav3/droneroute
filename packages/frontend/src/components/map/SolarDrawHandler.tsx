@@ -82,6 +82,10 @@ export function SolarDrawHandler() {
     (s) => s.setEditingTemplateGroupId,
   );
   const templateGroups = useMissionStore((s) => s.templateGroups);
+  const pendingPresetLoad = useMissionStore((s) => s.pendingPresetLoad);
+  const setPendingPresetLoad = useMissionStore((s) => s.setPendingPresetLoad);
+  const pendingPresetForThisHandler =
+    pendingPresetLoad?.type === "solar" ? pendingPresetLoad : null;
   const { current: map } = useMap();
 
   const [vertices, setVertices] = useState<[number, number][]>([]);
@@ -101,9 +105,14 @@ export function SolarDrawHandler() {
   }, []);
 
   useEffect(() => {
-    if (editingTemplateGroupId) return;
+    if (editingTemplateGroupId || pendingPresetForThisHandler) return;
     resetState();
-  }, [templateMode, editingTemplateGroupId, resetState]);
+  }, [
+    templateMode,
+    editingTemplateGroupId,
+    pendingPresetForThisHandler,
+    resetState,
+  ]);
 
   // Reopening an already-applied solar survey for editing: load its stored
   // params straight into "confirmed" state, skipping the drawing gesture.
@@ -119,6 +128,24 @@ export function SolarDrawHandler() {
       setTemplateMode("solar");
     }
   }, [editingTemplateGroupId, templateGroups, templateMode, setTemplateMode]);
+
+  // A saved "solar" template preset was loaded: same one-shot seed pattern
+  // as TemplateDrawHandler's pendingOrbitParams — deliberately does NOT
+  // clear pendingPresetLoad here (cleared explicitly in handleApply/
+  // handleCancel instead), so the sibling reset-effect above doesn't wipe
+  // this out on the very next render.
+  useEffect(() => {
+    if (!pendingPresetForThisHandler) return;
+    const params = pendingPresetForThisHandler.params as SolarParams;
+    setSolarParams(params);
+    setVertices(params.vertices);
+    setClosedVertices(null);
+    setAnglePoints([]);
+    setConfirmed(true);
+    if (useMissionStore.getState().templateMode !== "solar") {
+      setTemplateMode("solar");
+    }
+  }, [pendingPresetForThisHandler, setTemplateMode]);
 
   const closeShape = useCallback((verts: [number, number][]) => {
     if (verts.length < 3) return;
@@ -288,6 +315,7 @@ export function SolarDrawHandler() {
   const handleApply = () => {
     if (!preview || !solarParams) {
       resetState();
+      setPendingPresetLoad(null);
       return;
     }
     if (editingTemplateGroupId) {
@@ -304,12 +332,14 @@ export function SolarDrawHandler() {
       });
     }
     resetState();
+    setPendingPresetLoad(null);
   };
 
   const handleCancel = () => {
     resetState();
     setTemplateMode(null);
     setEditingTemplateGroupId(null);
+    setPendingPresetLoad(null);
   };
 
   return (

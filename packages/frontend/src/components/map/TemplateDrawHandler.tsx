@@ -188,7 +188,21 @@ export function TemplateDrawHandler() {
   const templateGroups = useMissionStore((s) => s.templateGroups);
   const pendingOrbitParams = useMissionStore((s) => s.pendingOrbitParams);
   const setPendingOrbitParams = useMissionStore((s) => s.setPendingOrbitParams);
+  const pendingPresetLoad = useMissionStore((s) => s.pendingPresetLoad);
+  const setPendingPresetLoad = useMissionStore((s) => s.setPendingPresetLoad);
   const { current: map } = useMap();
+
+  // Only react to a pending preset load when it's one of the types this
+  // handler owns — a preset for "pencil"/"solar" is consumed by those
+  // handlers instead, and must not be treated as "busy" here (which would
+  // otherwise wrongly skip resetState() on the next unrelated mode change).
+  const pendingPresetForThisHandler =
+    pendingPresetLoad &&
+    (pendingPresetLoad.type === "orbit" ||
+      pendingPresetLoad.type === "grid" ||
+      pendingPresetLoad.type === "facade")
+      ? pendingPresetLoad
+      : null;
 
   const [dragging, setDragging] = useState(false);
   const [dragState, setDragState] = useState<DragState | null>(null);
@@ -208,9 +222,20 @@ export function TemplateDrawHandler() {
   }, []);
 
   useEffect(() => {
-    if (editingTemplateGroupId || pendingOrbitParams) return;
+    if (
+      editingTemplateGroupId ||
+      pendingOrbitParams ||
+      pendingPresetForThisHandler
+    )
+      return;
     resetState();
-  }, [templateMode, editingTemplateGroupId, pendingOrbitParams, resetState]);
+  }, [
+    templateMode,
+    editingTemplateGroupId,
+    pendingOrbitParams,
+    pendingPresetForThisHandler,
+    resetState,
+  ]);
 
   // A POI was placed on a building: open the Orbit panel pre-filled with a
   // recommended altitude/radius/gimbal pitch instead of an empty drag
@@ -238,6 +263,34 @@ export function TemplateDrawHandler() {
       setTemplateMode("orbit");
     }
   }, [pendingOrbitParams, setTemplateMode]);
+
+  // A saved template preset was loaded: same one-shot seed pattern as
+  // pendingOrbitParams above — deliberately does NOT clear
+  // pendingPresetLoad here (cleared explicitly in handleApply/handleCancel
+  // instead), for the same clobber-avoidance reason.
+  useEffect(() => {
+    if (!pendingPresetForThisHandler) return;
+    const { type, params } = pendingPresetForThisHandler;
+    if (type === "orbit") {
+      setOrbitParams(params as OrbitParams);
+      setGridParams(null);
+      setFacadeParams(null);
+    } else if (type === "grid") {
+      setGridParams(params as GridParams);
+      setOrbitParams(null);
+      setFacadeParams(null);
+    } else {
+      setFacadeParams(params as FacadeParams);
+      setOrbitParams(null);
+      setGridParams(null);
+    }
+    setDragging(false);
+    setDragState(null);
+    setConfirmed(true);
+    if (useMissionStore.getState().templateMode !== type) {
+      setTemplateMode(type);
+    }
+  }, [pendingPresetForThisHandler, setTemplateMode]);
 
   // Reopening an already-applied orbit/grid/facade for editing: load its
   // stored params straight into "confirmed" state, skipping the drag
@@ -441,6 +494,7 @@ export function TemplateDrawHandler() {
     if (!preview) {
       resetState();
       setPendingOrbitParams(null);
+      setPendingPresetLoad(null);
       return;
     }
     const params = orbitParams || gridParams || facadeParams;
@@ -459,6 +513,7 @@ export function TemplateDrawHandler() {
     }
     resetState();
     setPendingOrbitParams(null);
+    setPendingPresetLoad(null);
   };
 
   const handleCancel = () => {
@@ -466,6 +521,7 @@ export function TemplateDrawHandler() {
     setTemplateMode(null);
     setEditingTemplateGroupId(null);
     setPendingOrbitParams(null);
+    setPendingPresetLoad(null);
   };
 
   const activePreview = confirmed ? preview : dragPreview;

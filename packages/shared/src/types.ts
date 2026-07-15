@@ -247,6 +247,24 @@ export interface Building {
   vertices: [number, number][]; // Array of [latitude, longitude] pairs
 }
 
+// ── Template Preset ──────────────────────────────────────
+
+/**
+ * A saved template application (type + params) reusable across missions —
+ * e.g. the same recurring orbit around a fixed site, so it doesn't need to
+ * be redrawn from scratch each time. `type`/`params` mirror the frontend's
+ * `TemplateType`/`TemplateParams` (defined in the frontend's lib/templates,
+ * not shared) — the backend treats `params` as an opaque JSON blob and only
+ * validates its outer shape, the same way it treats `MissionConfig`.
+ */
+export interface TemplatePreset {
+  id: string;
+  name: string;
+  type: string;
+  params: Record<string, unknown>;
+  createdAt: string;
+}
+
 // ── Waypoint ─────────────────────────────────────────────
 
 export interface Waypoint {

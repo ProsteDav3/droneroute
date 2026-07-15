@@ -65,6 +65,11 @@ interface MissionState {
   /** Seeded when a POI is placed on a building — TemplateDrawHandler opens the Orbit panel pre-filled with these values instead of an empty drag gesture. */
   pendingOrbitParams: OrbitParams | null;
   setPendingOrbitParams: (params: OrbitParams | null) => void;
+  /** Set to load a saved template preset directly into its config panel (confirmed, skipping the draw gesture) — works for any of the 5 template types. */
+  pendingPresetLoad: { type: TemplateType; params: TemplateParams } | null;
+  setPendingPresetLoad: (
+    load: { type: TemplateType; params: TemplateParams } | null,
+  ) => void;
   /** Params of every applied template, keyed by the id tagged onto its waypoints/POIs — lets a template be reopened and edited after Apply instead of only being addable once. */
   templateGroups: Record<string, TemplateGroup>;
   /** Set to reopen a template's config panel for editing (see BulkActionToolbar's "Edit template"). */
@@ -202,6 +207,19 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   setFlyToTarget: (target) => set({ flyToTarget: target }),
   pendingOrbitParams: null,
   setPendingOrbitParams: (params) => set({ pendingOrbitParams: params }),
+  pendingPresetLoad: null,
+  setPendingPresetLoad: (load) =>
+    set((state) => ({
+      pendingPresetLoad: load,
+      // Loading a preset always means "start a fresh template," never
+      // "continue editing the one currently open" — without this, loading
+      // a same-type preset while "Edit template" is active would silently
+      // overwrite the group being edited on Apply (handleApply branches on
+      // editingTemplateGroupId to call replaceTemplateGroup instead of
+      // appendWaypoints). Centralized here so every caller gets this for
+      // free instead of having to remember to clear it themselves.
+      editingTemplateGroupId: load ? null : state.editingTemplateGroupId,
+    })),
   templateGroups: {},
   editingTemplateGroupId: null,
   setEditingTemplateGroupId: (id) => set({ editingTemplateGroupId: id }),
@@ -807,6 +825,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       templateGroups: {},
       editingTemplateGroupId: null,
       pendingOrbitParams: null,
+      pendingPresetLoad: null,
       dirty: false,
     }),
 
@@ -832,6 +851,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       templateGroups: {},
       editingTemplateGroupId: null,
       pendingOrbitParams: null,
+      pendingPresetLoad: null,
       dirty: false,
     });
   },

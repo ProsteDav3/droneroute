@@ -22,6 +22,7 @@ import { TemplateDrawHandler } from "./TemplateDrawHandler";
 import { PencilDrawHandler } from "./PencilDrawHandler";
 import { SolarDrawHandler } from "./SolarDrawHandler";
 import { CorridorDrawHandler } from "./CorridorDrawHandler";
+import { TurbineDrawHandler } from "./TurbineDrawHandler";
 import { ObstacleDrawHandler } from "./ObstacleDrawHandler";
 import { ObstaclePolygon } from "./ObstaclePolygon";
 import { BuildingDrawHandler } from "./BuildingDrawHandler";
@@ -639,6 +640,7 @@ export function MapView() {
         <PencilDrawHandler />
         <SolarDrawHandler />
         <CorridorDrawHandler />
+        <TurbineDrawHandler />
         <ObstacleDrawHandler />
         <BuildingDrawHandler />
         <AirspaceOverlay />

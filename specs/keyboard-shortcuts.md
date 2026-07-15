@@ -14,6 +14,7 @@ Quick reference for all available keyboard shortcuts.
 | **Z**                      | Open the pencil path template                    |
 | **S**                      | Open the solar panel survey template             |
 | **L**                      | Open the corridor (linear structure) template    |
+| **T**                      | Open the turbine blade inspection template       |
 | **B**                      | Enter obstacle drawing mode                      |
 | **H**                      | Enter building drawing mode                      |
 | **A**                      | Toggle airspace restriction zones overlay        |

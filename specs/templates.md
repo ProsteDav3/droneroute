@@ -24,14 +24,15 @@ Create common flight patterns automatically instead of placing waypoints one by 
 - **Photo spacing along each row**: a "Photo spacing" field controls how far apart photos are taken _along_ each flight line, not just at its two ends — so a long row of panels gets photographed all the way through, not only at its start and finish.
 - **Recommended spacing for known DJI thermal cameras**: when the mission's configured camera is a supported DJI thermal payload (H20T, M30T, M3T, M3TD, or Matrice 4T), the panel shows a recommended line spacing and photo spacing computed from that camera's real field of view and the current altitude, with a one-click "Use" button to apply them. For any other camera, spacing is set manually.
 - Each waypoint gets a straight-down (nadir) gimbal and a thermal (IR) photo action by default, since this template is built for FVE/PV thermography flights.
-- **Photo or video capture**: every template (Orbit, Grid, Facade, Pencil, Solar, and Corridor) has a "Foto"/"Video" choice in its config panel. Foto takes a photo at every generated waypoint, same as before. Video starts recording at the first waypoint and stops at the last, so the drone flies the whole path — the whole orbit loop, the whole grid, the whole traced line — with the camera rolling instead of stopping for a shot at each point. Useful for a smooth 360° orbit video, or a continuous facade/solar walkthrough.
+- **Photo or video capture**: every template (Orbit, Grid, Facade, Pencil, Solar, Corridor, and Turbine) has a "Foto"/"Video" choice in its config panel. Foto takes a photo at every generated waypoint, same as before. Video starts recording at the first waypoint and stops at the last, so the drone flies the whole path — the whole orbit loop, the whole grid, the whole traced line — with the camera rolling instead of stopping for a shot at each point. Useful for a smooth 360° orbit video, or a continuous facade/solar walkthrough.
 - **Corridor**: for bridges, pipelines, power lines, roads, railways, or any other linear structure — draw the structure's centerline like a Pencil path, then the app flies multiple parallel passes offset to the sides of it, useful for inspecting a structure from more than one angle in a single mission instead of just flying directly over it once. Set the lateral spacing between passes, how many passes to fly (an odd count includes an exact centerline pass; an even count straddles it symmetrically), altitude, speed, and gimbal pitch.
+- **Turbine blade inspection**: click the rotor hub of a wind turbine and the app generates a close-proximity inspection flight for every blade — from root to tip, offset a safe standoff distance from the blade, with the camera fixed on the rotor throughout. Set the rotor's compass orientation and hub height/blade length to match the actual turbine, how many blades (default 3, evenly spaced around the hub), the angle of the first blade (0° = straight up, matching a locked "one blade up" service position), the standoff distance, and how many passes per blade (2+ spreads across the blade's chord to cover both the leading and trailing edge).
 
 ## How it works
 
-1. Select a template from the toolbar or press its shortcut key (O for orbit, G for grid, F for facade, Z for pencil, S for solar panel survey, L for corridor/linear structure).
+1. Select a template from the toolbar or press its shortcut key (O for orbit, G for grid, F for facade, Z for pencil, S for solar panel survey, L for corridor/linear structure, T for turbine blade inspection).
 2. Configure the template options in the panel that appears.
-3. For Orbit, Grid, and Facade: click-and-drag on the map to place the template. For Solar: click to place each boundary point, click near the first point or double-click to close the shape, then click two more points along a panel row to set the flight direction. For Pencil and Corridor: click-and-drag to draw a freehand path.
+3. For Orbit, Grid, and Facade: click-and-drag on the map to place the template. For Solar: click to place each boundary point, click near the first point or double-click to close the shape, then click two more points along a panel row to set the flight direction. For Pencil and Corridor: click-and-drag to draw a freehand path. For Turbine: click once on the rotor hub.
 4. The generated waypoints appear in the sidebar and can be edited individually.
 
 ## Editing an already-applied template
@@ -43,13 +44,13 @@ Realized the orbit's radius was too small only after clicking Apply? You don't h
 3. Click it to reopen that template's settings panel with its original values — adjust radius, spacing, altitude, or any other field, and the preview updates live, just like when you first placed it.
 4. Click Apply again to replace the old waypoints with the updated ones (or Cancel to leave them as they were).
 
-This works for Orbit, Grid, Facade, Pencil, Solar, and Corridor, and survives saving and reloading a mission — reopen a saved mission later and "Edit template" still works on its templates exactly as it did before you saved.
+This works for Orbit, Grid, Facade, Pencil, Solar, Corridor, and Turbine, and survives saving and reloading a mission — reopen a saved mission later and "Edit template" still works on its templates exactly as it did before you saved.
 
 ## Reusable template presets
 
 For a template you fly again and again — the same recurring orbit around a fixed site, for example — save its exact settings once and reuse them without redrawing:
 
-1. Configure any template (Orbit, Grid, Facade, Pencil, Solar, or Corridor) as usual, then click **"Save as preset"** in its config panel before (or instead of) clicking Apply.
+1. Configure any template (Orbit, Grid, Facade, Pencil, Solar, Corridor, or Turbine) as usual, then click **"Save as preset"** in its config panel before (or instead of) clicking Apply.
 2. Give it a name. It's saved to your account under **Template presets** in the sidebar, requires being signed in (same as saving missions).
 3. To reuse it later — in this mission or any other — open **Template presets** in the sidebar and click a saved preset (or its folder icon). Its config panel opens pre-filled with every saved value, including its original location/shape, ready to click Apply.
 4. Rename a preset by double-clicking its name in the list, or delete it with the **×** button.

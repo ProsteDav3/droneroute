@@ -560,6 +560,11 @@ export default function App() {
           e.preventDefault();
           setTemplateMode(templateMode === "corridor" ? null : "corridor");
           break;
+        case "t":
+          if (e.metaKey || e.ctrlKey) return;
+          e.preventDefault();
+          setTemplateMode(templateMode === "turbine" ? null : "turbine");
+          break;
         case "b":
           if (e.metaKey || e.ctrlKey) return;
           e.preventDefault();

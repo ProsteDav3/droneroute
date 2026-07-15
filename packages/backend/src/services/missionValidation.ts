@@ -24,6 +24,7 @@ const VALID_TEMPLATE_GROUP_TYPES = [
   "pencil",
   "solar",
   "corridor",
+  "turbine",
 ];
 
 function isFiniteNumber(v: unknown): v is number {

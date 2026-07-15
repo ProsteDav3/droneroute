@@ -9,14 +9,22 @@ import {
   computeOrbitSeedForBuilding,
   orbitParamsForBuilding,
   generateSolarSurvey,
+  DEFAULT_SOLAR_PARAMS,
   generateGrid,
   DEFAULT_GRID_PARAMS,
+  generateFacade,
+  DEFAULT_FACADE_PARAMS,
   generatePencil,
   DEFAULT_PENCIL_PARAMS,
   bearing,
   destinationPoint,
 } from "./templates";
-import type { OrbitParams, SolarParams, GridParams } from "./templates";
+import type {
+  OrbitParams,
+  SolarParams,
+  GridParams,
+  FacadeParams,
+} from "./templates";
 import { recommendSolarSpacing, THERMAL_CAMERA_FOV } from "@/lib/solarCamera";
 import { haversineDistance } from "@/lib/geo";
 
@@ -689,5 +697,118 @@ describe("capture mode (photo/video)", () => {
     expect(
       result.waypoints[result.waypoints.length - 1].actions[0]?.actionType,
     ).toBe("stopRecord");
+  });
+
+  it("generateFacade: legacy addPhotos:true with no captureMode still behaves as photo mode (regression)", () => {
+    const { captureMode: _omit, ...legacyParams } = {
+      ...DEFAULT_FACADE_PARAMS,
+      point1: CENTER,
+      point2: destinationPoint(CENTER[0], CENTER[1], 40, 90),
+      addPhotos: true,
+    } satisfies FacadeParams;
+    const result = generateFacade(legacyParams as FacadeParams);
+
+    expect(result.waypoints.length).toBeGreaterThan(0);
+    expect(
+      result.waypoints.every(
+        (wp) =>
+          wp.actions.length === 1 && wp.actions[0].actionType === "takePhoto",
+      ),
+    ).toBe(true);
+  });
+
+  it("generateFacade: addPhotos:false with no captureMode produces no actions (regression)", () => {
+    const { captureMode: _omit, ...legacyParams } = {
+      ...DEFAULT_FACADE_PARAMS,
+      point1: CENTER,
+      point2: destinationPoint(CENTER[0], CENTER[1], 40, 90),
+      addPhotos: false,
+    } satisfies FacadeParams;
+    const result = generateFacade(legacyParams as FacadeParams);
+
+    expect(result.waypoints.every((wp) => wp.actions.length === 0)).toBe(true);
+  });
+
+  it("generateFacade: video mode puts startRecord/stopRecord only on the first/last waypoint", () => {
+    const result = generateFacade({
+      ...DEFAULT_FACADE_PARAMS,
+      point1: CENTER,
+      point2: destinationPoint(CENTER[0], CENTER[1], 40, 90),
+      captureMode: "video",
+    });
+
+    expect(result.waypoints[0].actions[0]?.actionType).toBe("startRecord");
+    expect(
+      result.waypoints[result.waypoints.length - 1].actions[0]?.actionType,
+    ).toBe("stopRecord");
+    for (const wp of result.waypoints.slice(1, -1)) {
+      expect(wp.actions).toEqual([]);
+    }
+  });
+
+  function squareVertices(sizeM: number): [number, number][] {
+    const east = destinationPoint(CENTER[0], CENTER[1], sizeM, 90);
+    const northEast = destinationPoint(east[0], east[1], sizeM, 0);
+    const north = destinationPoint(CENTER[0], CENTER[1], sizeM, 0);
+    return [CENTER, east, northEast, north];
+  }
+
+  it("generateSolarSurvey: legacy addPhotos:true with no captureMode still behaves as photo mode (regression)", () => {
+    const { captureMode: _omit, ...legacyParams } = {
+      ...DEFAULT_SOLAR_PARAMS,
+      vertices: squareVertices(40),
+      rowAngleDeg: 90,
+      addPhotos: true,
+    } satisfies SolarParams;
+    const result = generateSolarSurvey(legacyParams as SolarParams);
+
+    expect(result.waypoints.length).toBeGreaterThan(0);
+    expect(
+      result.waypoints.every(
+        (wp) =>
+          wp.actions.length === 1 && wp.actions[0].actionType === "takePhoto",
+      ),
+    ).toBe(true);
+  });
+
+  it("generateSolarSurvey: video mode puts startRecord/stopRecord only on the first/last waypoint", () => {
+    const result = generateSolarSurvey({
+      ...DEFAULT_SOLAR_PARAMS,
+      vertices: squareVertices(40),
+      rowAngleDeg: 90,
+      captureMode: "video",
+    });
+
+    expect(result.waypoints[0].actions[0]?.actionType).toBe("startRecord");
+    expect(
+      result.waypoints[result.waypoints.length - 1].actions[0]?.actionType,
+    ).toBe("stopRecord");
+    for (const wp of result.waypoints.slice(1, -1)) {
+      expect(wp.actions).toEqual([]);
+    }
+  });
+
+  it("applyVideoCaptureActions edge case: a single-waypoint path gets both startRecord and stopRecord with distinct actionIds", () => {
+    const result = generateOrbit({
+      ...DEFAULT_ORBIT_PARAMS,
+      center: CENTER,
+      radiusM: 50,
+      numPoints: 1,
+      captureMode: "video",
+    } satisfies OrbitParams);
+
+    expect(result.waypoints).toHaveLength(1);
+    expect(result.waypoints[0].actions).toEqual([
+      {
+        actionId: 0,
+        actionType: "startRecord",
+        params: { payloadPositionIndex: 0 },
+      },
+      {
+        actionId: 1,
+        actionType: "stopRecord",
+        params: { payloadPositionIndex: 0 },
+      },
+    ]);
   });
 });

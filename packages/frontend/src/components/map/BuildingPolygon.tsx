@@ -4,6 +4,12 @@ import { useMissionStore } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { heightLabel, toDisplayHeight } from "@/lib/units";
 import { useMemo } from "react";
+import { EdgeLengthLabels } from "./EdgeLengthLabels";
+
+const BUILDING_EDGE_LABEL_CLASS_NAME =
+  "pointer-events-none px-1 py-0.5 rounded bg-blue-950/70 border border-blue-400/50 text-[10px] font-mono text-blue-200 whitespace-nowrap";
+/** Nudged up from the edge midpoint so it doesn't sit exactly on top of the "click to insert a vertex" handle placed at the same spot when the building is selected. */
+const BUILDING_EDGE_LABEL_OFFSET: [number, number] = [0, -14];
 
 interface BuildingPolygonProps {
   building: Building;
@@ -82,6 +88,13 @@ export function BuildingPolygon({ building }: BuildingPolygonProps) {
           {heightLabel(unitSystem)}
         </div>
       </Marker>
+
+      <EdgeLengthLabels
+        vertices={building.vertices}
+        closed
+        labelClassName={BUILDING_EDGE_LABEL_CLASS_NAME}
+        offset={BUILDING_EDGE_LABEL_OFFSET}
+      />
 
       {isSelected &&
         building.vertices.map((pos, i) => (

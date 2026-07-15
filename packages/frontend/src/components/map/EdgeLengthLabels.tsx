@@ -11,16 +11,23 @@ function EdgeLengthLabel({
   a,
   b,
   labelClassName,
+  offset,
 }: {
   a: [number, number];
   b: [number, number];
   labelClassName: string;
+  offset?: [number, number];
 }) {
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
   const distM = haversineDistance(a[0], a[1], b[0], b[1]);
   const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
   return (
-    <Marker longitude={mid[1]} latitude={mid[0]} anchor="center">
+    <Marker
+      longitude={mid[1]}
+      latitude={mid[0]}
+      anchor="center"
+      offset={offset}
+    >
       <div className={labelClassName}>
         {Math.round(toDisplayDistance(distM, unitSystem))}
         {distanceLabel(unitSystem)}
@@ -34,11 +41,14 @@ export function EdgeLengthLabels({
   vertices,
   closed,
   labelClassName = DEFAULT_LABEL_CLASS_NAME,
+  offset,
 }: {
   vertices: [number, number][];
   closed: boolean;
   /** Tailwind classes for each label's pill — defaults to the yellow used for solar-panel tracing; pass a theme matching the caller's own drawing color otherwise. */
   labelClassName?: string;
+  /** Pixel offset for each label, e.g. to avoid sitting exactly on top of another marker placed at the same edge midpoint. */
+  offset?: [number, number];
 }) {
   if (vertices.length < 2) return null;
   const edges: [[number, number], [number, number]][] = [];
@@ -56,6 +66,7 @@ export function EdgeLengthLabels({
           a={a}
           b={b}
           labelClassName={labelClassName}
+          offset={offset}
         />
       ))}
     </>

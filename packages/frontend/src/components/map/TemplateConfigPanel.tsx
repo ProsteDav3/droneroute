@@ -268,24 +268,29 @@ export function TemplateConfigPanel({
 
     const handlePointerDown = (e: PointerEvent) => {
       e.preventDefault();
-      const parent = panel.offsetParent as HTMLElement | null;
+      // Viewport-relative (position: fixed) math throughout, deliberately
+      // avoiding anything relative to `offsetParent`/a parent's
+      // getBoundingClientRect(). This panel is rendered as a child of the
+      // Map component (react-map-gl portals it into Mapbox's own internal
+      // container), so its offsetParent is Mapbox's DOM structure, not this
+      // app's own wrapper div — and at non-100% OS display scaling
+      // (confirmed 125%+ on the machine that hit this), that indirection
+      // was enough to throw the panel's drag position off by a large,
+      // seemingly arbitrary amount. `clientX`/`clientY` and `position:
+      // fixed` coordinates are both defined directly against the viewport
+      // by spec, with no intermediate container's box model to agree with.
       const panelRect = panel.getBoundingClientRect();
-      const parentRect = parent?.getBoundingClientRect();
-      const baseLeft = panelRect.left - (parentRect?.left ?? 0);
-      const baseTop = panelRect.top - (parentRect?.top ?? 0);
-      const startX = e.clientX;
-      const startY = e.clientY;
+      const grabOffsetX = panelRect.left - e.clientX;
+      const grabOffsetY = panelRect.top - e.clientY;
 
       const handlePointerMove = (moveEvent: PointerEvent) => {
         moveEvent.preventDefault();
-        let left = baseLeft + (moveEvent.clientX - startX);
-        let top = baseTop + (moveEvent.clientY - startY);
-        if (parent) {
-          const maxLeft = Math.max(parent.clientWidth - panel.offsetWidth, 0);
-          const maxTop = Math.max(parent.clientHeight - panel.offsetHeight, 0);
-          left = Math.min(Math.max(left, 0), maxLeft);
-          top = Math.min(Math.max(top, 0), maxTop);
-        }
+        let left = moveEvent.clientX + grabOffsetX;
+        let top = moveEvent.clientY + grabOffsetY;
+        const maxLeft = Math.max(window.innerWidth - panel.offsetWidth, 0);
+        const maxTop = Math.max(window.innerHeight - panel.offsetHeight, 0);
+        left = Math.min(Math.max(left, 0), maxLeft);
+        top = Math.min(Math.max(top, 0), maxTop);
         setDragPosition({ left, top });
       };
 
@@ -324,6 +329,7 @@ export function TemplateConfigPanel({
 
   const positionStyle: CSSProperties = dragPosition
     ? {
+        position: "fixed",
         left: dragPosition.left,
         top: dragPosition.top,
         bottom: "auto",

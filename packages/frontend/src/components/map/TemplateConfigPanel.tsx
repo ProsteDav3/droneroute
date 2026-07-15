@@ -251,28 +251,6 @@ export function TemplateConfigPanel({
     left: number;
     top: number;
   } | null>(null);
-  // TEMPORARY diagnostic overlay — remove once the drag jump bug is
-  // actually root-caused. Three prior fix attempts (native-drag
-  // suppression, viewport-vs-offsetParent coordinate rewrite) didn't
-  // resolve the reported jump, so this surfaces the raw numbers instead of
-  // guessing at a fourth theory blind.
-  const [dragDebug, setDragDebug] = useState<Record<string, number> | null>(
-    null,
-  );
-
-  // Re-measures the panel's ACTUAL on-screen position after every
-  // dragPosition update, so the debug readout can show "intended" (state)
-  // vs. "actually rendered" (DOM) side by side — settles whether the state
-  // math is right but not being applied, vs. the math itself being wrong.
-  useEffect(() => {
-    if (!dragPosition || !panelRef.current) return;
-    const rect = panelRef.current.getBoundingClientRect();
-    setDragDebug((prev) => ({
-      ...prev,
-      actualLeft: rect.left,
-      actualTop: rect.top,
-    }));
-  }, [dragPosition]);
 
   useEffect(() => {
     const handle = dragHandleRef.current;
@@ -290,27 +268,15 @@ export function TemplateConfigPanel({
 
     const handlePointerDown = (e: PointerEvent) => {
       e.preventDefault();
-      // Diagnostics on a real machine (125% Windows display scaling, but
-      // reporting devicePixelRatio: 1) showed clientX jumping ~360px
-      // between pointerdown and the very next pointermove for what the
-      // user described as a small mouse movement — a real browser-level
-      // clientX/clientY inconsistency under this OS scaling configuration,
-      // not a bug in the position math itself (the arithmetic checked out
-      // exactly against the bad clientX values). Tracking via `movementX`/
-      // `movementY` (a per-event relative delta) instead of absolute
-      // clientX avoids relying on that seemingly-unreliable absolute
-      // coordinate — only the drag's starting position comes from
-      // getBoundingClientRect(), which is unaffected by the clientX bug.
+      // Track via movementX/movementY (per-event relative deltas), not
+      // absolute clientX/clientY — a real machine hit a browser-level bug
+      // where clientX jumped far more than the actual mouse movement under
+      // 125% Windows display scaling (devicePixelRatio reported as 1).
+      // Only the drag's starting position comes from getBoundingClientRect(),
+      // which is unaffected by that clientX inconsistency.
       const panelRect = panel.getBoundingClientRect();
       let currentLeft = panelRect.left;
       let currentTop = panelRect.top;
-      setDragDebug({
-        dpr: window.devicePixelRatio,
-        downClientX: e.clientX,
-        downClientY: e.clientY,
-        panelRectLeft: panelRect.left,
-        panelRectTop: panelRect.top,
-      });
 
       const handlePointerMove = (moveEvent: PointerEvent) => {
         moveEvent.preventDefault();
@@ -325,17 +291,6 @@ export function TemplateConfigPanel({
         currentLeft = Math.min(Math.max(currentLeft, 0), maxLeft);
         currentTop = Math.min(Math.max(currentTop, 0), maxTop);
         setDragPosition({ left: currentLeft, top: currentTop });
-        setDragDebug((prev) => ({
-          ...prev,
-          moveClientX: moveEvent.clientX,
-          moveClientY: moveEvent.clientY,
-          movementX: moveEvent.movementX,
-          movementY: moveEvent.movementY,
-          computedLeft: currentLeft,
-          computedTop: currentTop,
-          innerWidth: window.innerWidth,
-          innerHeight: window.innerHeight,
-        }));
       };
 
       const handlePointerUp = () => {
@@ -371,50 +326,34 @@ export function TemplateConfigPanel({
     };
   }, []);
 
+  // Root cause of the drag-jump bug, confirmed via the diagnostic overlay:
+  // Tailwind's `-translate-x-1/2` utility sets the `transform` property via
+  // its own class, and an inline `style.transform = "none"` did NOT
+  // override it (measured actual rendered position was consistently offset
+  // from the intended state position by exactly half the panel's own
+  // width — the signature of translateX(-50%) still being applied on top
+  // of the new `left`). Rather than fight that specificity/cascade
+  // question, the default-position classes (`bottom-4 left-1/2
+  // -translate-x-1/2`) are simply omitted from the className once dragging
+  // has set an explicit position, so there's no competing rule to override
+  // in the first place.
   const positionStyle: CSSProperties = dragPosition
     ? {
         position: "fixed",
         left: dragPosition.left,
         top: dragPosition.top,
-        bottom: "auto",
-        transform: "none",
       }
     : {};
+  const positionClassName = dragPosition
+    ? ""
+    : "absolute bottom-4 left-1/2 -translate-x-1/2";
 
   return (
     <div
       ref={panelRef}
       style={positionStyle}
-      className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-card/95 backdrop-blur-sm border border-border rounded-lg shadow-2xl p-3 min-w-[320px] max-w-[420px]"
+      className={`${positionClassName} z-20 bg-card/95 backdrop-blur-sm border border-border rounded-lg shadow-2xl p-3 min-w-[320px] max-w-[420px]`}
     >
-      {/* TEMPORARY diagnostic overlay — see the comment by dragDebug's declaration */}
-      {dragDebug && (
-        <div
-          className="fixed top-1 left-1 z-50 bg-black/90 text-lime-400 text-[10px] font-mono p-2 rounded whitespace-pre pointer-events-none"
-          style={{ position: "fixed" }}
-        >
-          {Object.entries(dragDebug)
-            .map(([k, v]) => `${k}: ${v}`)
-            .join("\n")}
-        </div>
-      )}
-      {/* TEMPORARY: red dot at the intended (state) position, for a direct
-          visual check against where the panel actually renders */}
-      {dragPosition && (
-        <div
-          className="fixed z-50 pointer-events-none"
-          style={{
-            position: "fixed",
-            left: dragPosition.left,
-            top: dragPosition.top,
-            width: 12,
-            height: 12,
-            borderRadius: "50%",
-            background: "red",
-            transform: "translate(-50%, -50%)",
-          }}
-        />
-      )}
       {/* Header */}
       <div className="flex items-center justify-between mb-1">
         <div

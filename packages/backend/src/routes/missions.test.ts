@@ -136,3 +136,67 @@ describe("templateGroups persistence", () => {
     expect(res.body.error).toBe("neplatný typ skupiny šablony");
   });
 });
+
+describe("POST /api/missions/segments", () => {
+  it("rejects the request without a token with 401", async () => {
+    const res = await request(app)
+      .post("/api/missions/segments")
+      .send(validBody);
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects a mission with fewer than 2 waypoints with 400", async () => {
+    const res = await request(app)
+      .post("/api/missions/segments")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...validBody, waypoints: [validBody.waypoints[0]] });
+    expect(res.status).toBe(400);
+  });
+
+  it("splits a 2-waypoint mission into exactly one saved leg mission", async () => {
+    const res = await request(app)
+      .post("/api/missions/segments")
+      .set("Authorization", `Bearer ${token}`)
+      .send(validBody);
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].name).toBe("Test_mission-seg-1-of-1");
+
+    const get = await request(app)
+      .get(`/api/missions/${res.body[0].id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(get.status).toBe(200);
+    expect(get.body.waypoints).toHaveLength(2);
+    expect(get.body.waypoints[0].index).toBe(0);
+    expect(get.body.waypoints[1].index).toBe(1);
+  });
+
+  it("splits an N-waypoint mission into N-1 consecutive leg missions, each owned by the caller", async () => {
+    const threeWaypointBody = {
+      ...validBody,
+      name: "Three WP mission",
+      waypoints: [
+        ...validBody.waypoints,
+        { ...validBody.waypoints[1], index: 2, latitude: 41.27 },
+      ],
+    };
+    const res = await request(app)
+      .post("/api/missions/segments")
+      .set("Authorization", `Bearer ${token}`)
+      .send(threeWaypointBody);
+    expect(res.status).toBe(201);
+    expect(res.body).toHaveLength(2);
+    expect(res.body.map((m: { name: string }) => m.name)).toEqual([
+      "Three_WP_mission-seg-1-of-2",
+      "Three_WP_mission-seg-2-of-2",
+    ]);
+
+    for (const { id } of res.body) {
+      const get = await request(app)
+        .get(`/api/missions/${id}`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(get.status).toBe(200);
+      expect(get.body.waypoints).toHaveLength(2);
+    }
+  });
+});

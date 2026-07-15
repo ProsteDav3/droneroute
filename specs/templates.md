@@ -19,6 +19,7 @@ Create common flight patterns automatically instead of placing waypoints one by 
 - **Photo spacing along each row**: a "Photo spacing" field controls how far apart photos are taken _along_ each flight line, not just at its two ends — so a long row of panels gets photographed all the way through, not only at its start and finish.
 - **Recommended spacing for known DJI thermal cameras**: when the mission's configured camera is a supported DJI thermal payload (H20T, M30T, M3T, M3TD, or Matrice 4T), the panel shows a recommended line spacing and photo spacing computed from that camera's real field of view and the current altitude, with a one-click "Use" button to apply them. For any other camera, spacing is set manually.
 - Each waypoint gets a straight-down (nadir) gimbal and a thermal (IR) photo action by default, since this template is built for FVE/PV thermography flights.
+- **Photo or video capture**: every template (Orbit, Grid, Facade, Pencil, and Solar) has a "Foto"/"Video" choice in its config panel. Foto takes a photo at every generated waypoint, same as before. Video starts recording at the first waypoint and stops at the last, so the drone flies the whole path — the whole orbit loop, the whole grid, the whole traced line — with the camera rolling instead of stopping for a shot at each point. Useful for a smooth 360° orbit video, or a continuous facade/solar walkthrough.
 
 ## How it works
 

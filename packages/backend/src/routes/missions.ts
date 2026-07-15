@@ -11,6 +11,7 @@ import {
   validateMissionCreate,
   validateMissionUpdate,
 } from "../services/missionValidation.js";
+import { buildMissionSegments } from "../services/missionSegments.js";
 
 export const missionRoutes = Router();
 
@@ -101,6 +102,79 @@ missionRoutes.post("/", optionalAuth, (req: AuthRequest, res) => {
   );
 
   res.status(201).json({ id, name });
+});
+
+// Split a mission into consecutive one-leg missions (WP1→WP2, WP2→WP3, ...)
+// and save every leg as its own mission in the caller's account.
+missionRoutes.post("/segments", authMiddleware, (req: AuthRequest, res) => {
+  const {
+    name,
+    config,
+    waypoints,
+    pois,
+    obstacles,
+    buildings,
+    templateGroups,
+  } = req.body;
+  if (!name || !config || !waypoints) {
+    res
+      .status(400)
+      .json({ error: "Pole name, config a waypoints jsou povinná" });
+    return;
+  }
+  if (waypoints.length < 2) {
+    res.status(400).json({
+      error: "Je vyžadováno alespoň 2 body trasy pro rozdělení na úseky",
+    });
+    return;
+  }
+
+  const validationError = validateMissionCreate(req.body);
+  if (validationError) {
+    res.status(400).json({ error: validationError });
+    return;
+  }
+
+  const parentMission: Mission = {
+    id: uuidv4(),
+    name,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    config,
+    waypoints,
+    pois: pois || [],
+    obstacles: obstacles || [],
+    buildings: buildings || [],
+    templateGroups: templateGroups || {},
+  };
+  const segments = buildMissionSegments(parentMission);
+
+  const db = getDb();
+  const insert = db.prepare(
+    "INSERT INTO missions (id, name, user_id, config, waypoints, pois, obstacles, buildings, template_groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  const created: { id: string; name: string }[] = [];
+
+  const insertAll = db.transaction((missionsToInsert: Mission[]) => {
+    for (const segment of missionsToInsert) {
+      const id = uuidv4();
+      insert.run(
+        id,
+        segment.name,
+        req.userId!,
+        JSON.stringify(segment.config),
+        JSON.stringify(segment.waypoints),
+        JSON.stringify(segment.pois),
+        JSON.stringify(segment.obstacles),
+        JSON.stringify(segment.buildings),
+        JSON.stringify(segment.templateGroups),
+      );
+      created.push({ id, name: segment.name });
+    }
+  });
+  insertAll(segments);
+
+  res.status(201).json(created);
 });
 
 // Update mission (owner only)

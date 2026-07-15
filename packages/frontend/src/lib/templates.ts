@@ -74,6 +74,14 @@ function haversine(
 
 export type TemplateType = "orbit" | "grid" | "facade" | "pencil" | "solar";
 
+/**
+ * "photo" takes a photo at every waypoint (the original behavior). "video"
+ * starts recording at the first waypoint and stops at the last, so the
+ * drone flies the whole path with the camera rolling instead of stopping
+ * for a shot at each point.
+ */
+export type CaptureMode = "photo" | "video";
+
 export interface OrbitParams {
   center: [number, number]; // [lat, lng]
   radiusM: number;
@@ -115,6 +123,8 @@ export interface OrbitParams {
    * flat).
    */
   poiCenter?: [number, number];
+  /** Unset means no capture actions at all — matches every orbit generated before this field existed. `DEFAULT_ORBIT_PARAMS` sets "photo" for newly created orbits. */
+  captureMode?: CaptureMode;
 }
 
 export interface GridParams {
@@ -122,9 +132,11 @@ export interface GridParams {
   corner2: [number, number]; // [lat, lng]
   altitude: number;
   spacingM: number;
+  /** @deprecated superseded by captureMode, kept for old saved data — true means "photo" when captureMode is unset. */
   addPhotos: boolean;
   rotationDeg: number; // rotation of the grid in degrees (0-360)
   reverse: boolean; // fly the grid in reverse order
+  captureMode?: CaptureMode;
 }
 
 export interface FacadeParams {
@@ -135,7 +147,9 @@ export interface FacadeParams {
   maxAltitude: number;
   numRows: number;
   numColumns: number;
+  /** @deprecated superseded by captureMode, kept for old saved data — true means "photo" when captureMode is unset. */
   addPhotos: boolean;
+  captureMode?: CaptureMode;
 }
 
 export interface PencilParams {
@@ -146,6 +160,8 @@ export interface PencilParams {
   gimbalPitchAngle: number;
   reverse: boolean;
   poiId?: string; // optional POI to face during flight
+  /** Unset means no capture actions at all — matches every pencil path generated before this field existed. `DEFAULT_PENCIL_PARAMS` sets "photo" for newly created paths. */
+  captureMode?: CaptureMode;
 }
 
 export interface SolarParams {
@@ -157,7 +173,9 @@ export interface SolarParams {
   photoSpacingM: number;
   /** Flight-line direction, bearing in degrees (0 = north) — set by the user's drawn reference line so lines run parallel to the actual panel rows instead of a guessed edge. */
   rowAngleDeg: number;
+  /** @deprecated superseded by captureMode, kept for old saved data — true means "photo" when captureMode is unset. */
   addPhotos: boolean;
+  captureMode?: CaptureMode;
 }
 
 export type TemplateParams =
@@ -184,6 +202,7 @@ export const DEFAULT_ORBIT_PARAMS: Omit<OrbitParams, "center" | "radiusM"> = {
   poiHeight: 0,
   gimbalPitchDeg: -45,
   altitudeGimbalLinked: true,
+  captureMode: "photo",
 };
 
 export const DEFAULT_GRID_PARAMS: Omit<GridParams, "corner1" | "corner2"> = {
@@ -192,6 +211,7 @@ export const DEFAULT_GRID_PARAMS: Omit<GridParams, "corner1" | "corner2"> = {
   addPhotos: true,
   rotationDeg: 0,
   reverse: false,
+  captureMode: "photo",
 };
 
 export const DEFAULT_FACADE_PARAMS: Omit<FacadeParams, "point1" | "point2"> = {
@@ -201,6 +221,7 @@ export const DEFAULT_FACADE_PARAMS: Omit<FacadeParams, "point1" | "point2"> = {
   numRows: 4,
   numColumns: 8,
   addPhotos: true,
+  captureMode: "photo",
 };
 
 export const DEFAULT_PENCIL_PARAMS: Omit<PencilParams, "path"> = {
@@ -209,6 +230,7 @@ export const DEFAULT_PENCIL_PARAMS: Omit<PencilParams, "path"> = {
   speed: 7,
   gimbalPitchAngle: -45,
   reverse: false,
+  captureMode: "photo",
 };
 
 export const DEFAULT_SOLAR_PARAMS: Omit<
@@ -219,6 +241,7 @@ export const DEFAULT_SOLAR_PARAMS: Omit<
   spacingM: 10,
   photoSpacingM: 8,
   addPhotos: true,
+  captureMode: "photo",
 };
 
 // ── Altitude / gimbal pitch geometry ─────────────────────
@@ -487,6 +510,38 @@ export function orbitParamsForBuilding(
 
 // ── Generators ───────────────────────────────────────────
 
+/**
+ * Mutates `waypoints` in place for "video" capture mode: `startRecord` on
+ * the first waypoint, `stopRecord` on the last, nothing in between, so the
+ * drone flies the whole path with the camera rolling instead of stopping
+ * for a photo at each point. Must run *after* any final `reverse()` step,
+ * since "first"/"last" here mean the actual flight order, not push order.
+ * `StartRecordParams`/`StopRecordParams` have no lens-selection field (only
+ * `TakePhotoParams` does — `wpml.ts` never reads `payloadLensIndex` for
+ * record actions), so unlike the photo actions there is no per-template
+ * lens override here.
+ */
+function applyVideoCaptureActions(
+  waypoints: TemplateResult["waypoints"],
+): void {
+  if (waypoints.length === 0) return;
+  waypoints[0].actions = [
+    {
+      actionId: 0,
+      actionType: "startRecord",
+      params: { payloadPositionIndex: 0 },
+    },
+  ];
+  const last = waypoints[waypoints.length - 1];
+  const stopAction: WaypointAction = {
+    actionId: last.actions.length,
+    actionType: "stopRecord",
+    params: { payloadPositionIndex: 0 },
+  };
+  last.actions =
+    waypoints.length === 1 ? [...last.actions, stopAction] : [stopAction];
+}
+
 export function generateOrbit(params: OrbitParams): TemplateResult {
   const {
     center,
@@ -500,6 +555,7 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     poiHeight,
     gimbalPitchDeg,
     poiCenter,
+    captureMode,
   } = params;
   const [cLat, cLng] = center;
   // Independent camera aim point (see OrbitParams.poiCenter). Falls back to
@@ -583,8 +639,21 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
       gimbalPitchAngle,
       turnMode: "toPointAndPassWithContinuityCurvature",
       useGlobalTurnParam: false,
-      actions: [],
+      actions:
+        captureMode === "photo"
+          ? [
+              {
+                actionId: 0,
+                actionType: "takePhoto",
+                params: { payloadPositionIndex: 0 },
+              },
+            ]
+          : [],
     });
+  }
+
+  if (captureMode === "video") {
+    applyVideoCaptureActions(waypoints);
   }
 
   return { waypoints, pois };
@@ -599,7 +668,9 @@ export function generateGrid(params: GridParams): TemplateResult {
     addPhotos,
     rotationDeg,
     reverse,
+    captureMode,
   } = params;
+  const mode = captureMode ?? (addPhotos ? "photo" : "none");
   const [lat1, lng1] = corner1;
   const [lat2, lng2] = corner2;
 
@@ -691,7 +762,7 @@ export function generateGrid(params: GridParams): TemplateResult {
       headingMode: "followWayline",
       turnMode: "toPointAndStopWithContinuityCurvature",
       useGlobalTurnParam: false,
-      actions: addPhotos ? [{ ...takePhotoAction, actionId: 0 }] : [],
+      actions: mode === "photo" ? [{ ...takePhotoAction, actionId: 0 }] : [],
     });
     waypoints.push({
       ...DEFAULT_WAYPOINT,
@@ -703,12 +774,16 @@ export function generateGrid(params: GridParams): TemplateResult {
       headingMode: "followWayline",
       turnMode: "toPointAndStopWithContinuityCurvature",
       useGlobalTurnParam: false,
-      actions: addPhotos ? [{ ...takePhotoAction, actionId: 0 }] : [],
+      actions: mode === "photo" ? [{ ...takePhotoAction, actionId: 0 }] : [],
     });
   }
 
   if (reverse) {
     waypoints.reverse();
+  }
+
+  if (mode === "video") {
+    applyVideoCaptureActions(waypoints);
   }
 
   return { waypoints, pois: [] };
@@ -724,7 +799,9 @@ export function generateFacade(params: FacadeParams): TemplateResult {
     numRows,
     numColumns,
     addPhotos,
+    captureMode,
   } = params;
+  const mode = captureMode ?? (addPhotos ? "photo" : "none");
   const [lat1, lng1] = point1;
   const [lat2, lng2] = point2;
 
@@ -782,17 +859,22 @@ export function generateFacade(params: FacadeParams): TemplateResult {
         gimbalPitchAngle: gimbalPitch,
         turnMode: "toPointAndStopWithContinuityCurvature",
         useGlobalTurnParam: false,
-        actions: addPhotos
-          ? [
-              {
-                actionId: 0,
-                actionType: "takePhoto",
-                params: { payloadPositionIndex: 0 },
-              },
-            ]
-          : [],
+        actions:
+          mode === "photo"
+            ? [
+                {
+                  actionId: 0,
+                  actionType: "takePhoto",
+                  params: { payloadPositionIndex: 0 },
+                },
+              ]
+            : [],
       });
     }
+  }
+
+  if (mode === "video") {
+    applyVideoCaptureActions(waypoints);
   }
 
   return { waypoints, pois: [] };
@@ -853,8 +935,16 @@ export function pathLength(path: [number, number][]): number {
 }
 
 export function generatePencil(params: PencilParams): TemplateResult {
-  const { path, numPoints, altitude, speed, gimbalPitchAngle, reverse, poiId } =
-    params;
+  const {
+    path,
+    numPoints,
+    altitude,
+    speed,
+    gimbalPitchAngle,
+    reverse,
+    poiId,
+    captureMode,
+  } = params;
 
   if (path.length < 2 || numPoints < 2) return { waypoints: [], pois: [] };
 
@@ -878,12 +968,25 @@ export function generatePencil(params: PencilParams): TemplateResult {
       gimbalPitchAngle,
       turnMode: "toPointAndPassWithContinuityCurvature" as const,
       useGlobalTurnParam: false,
-      actions: [],
+      actions:
+        captureMode === "photo"
+          ? [
+              {
+                actionId: 0,
+                actionType: "takePhoto" as const,
+                params: { payloadPositionIndex: 0 },
+              },
+            ]
+          : [],
     }),
   );
 
   if (reverse) {
     waypoints.reverse();
+  }
+
+  if (captureMode === "video") {
+    applyVideoCaptureActions(waypoints);
   }
 
   return { waypoints, pois: [] };
@@ -975,7 +1078,9 @@ export function generateSolarSurvey(params: SolarParams): TemplateResult {
     photoSpacingM,
     rowAngleDeg,
     addPhotos,
+    captureMode,
   } = params;
+  const mode = captureMode ?? (addPhotos ? "photo" : "none");
 
   if (vertices.length < 3) return { waypoints: [], pois: [] };
 
@@ -1057,19 +1162,27 @@ export function generateSolarSurvey(params: SolarParams): TemplateResult {
           headingMode: "followWayline",
           turnMode: "toPointAndStopWithContinuityCurvature",
           useGlobalTurnParam: false,
-          actions: addPhotos
-            ? [
-                {
-                  actionId: 0,
-                  actionType: "takePhoto",
-                  params: { payloadPositionIndex: 0, payloadLensIndex: "ir" },
-                },
-              ]
-            : [],
+          actions:
+            mode === "photo"
+              ? [
+                  {
+                    actionId: 0,
+                    actionType: "takePhoto",
+                    params: {
+                      payloadPositionIndex: 0,
+                      payloadLensIndex: "ir",
+                    },
+                  },
+                ]
+              : [],
         });
       }
       segmentIndex++;
     }
+  }
+
+  if (mode === "video") {
+    applyVideoCaptureActions(waypoints);
   }
 
   return { waypoints, pois: [] };

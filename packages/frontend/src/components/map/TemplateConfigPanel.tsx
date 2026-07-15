@@ -41,6 +41,7 @@ import {
   type FacadeParams,
   type PencilParams,
   type SolarParams,
+  type CaptureMode,
 } from "@/lib/templates";
 import {
   recommendSolarSpacing,
@@ -60,6 +61,48 @@ function heightModeLabel(mode: HeightMode): string {
     default:
       return mode;
   }
+}
+
+/** Photo (a shot at every waypoint) vs. video (record continuously start-to-finish) capture-mode picker, shared by all five templates. */
+function CaptureModeToggle({
+  value,
+  onChange,
+}: {
+  value: CaptureMode;
+  onChange: (mode: CaptureMode) => void;
+}) {
+  const optionClass = (mode: CaptureMode) =>
+    `flex-1 h-7 rounded text-xs border transition-colors ${
+      value === mode
+        ? "bg-[#00c2ff]/15 border-[#00c2ff]/50 text-[#33cfff]"
+        : "border-border text-muted-foreground hover:bg-muted"
+    }`;
+  return (
+    <div>
+      <Label
+        className="text-[10px]"
+        title="Foto: fotka na každém bodě trasy. Video: nahrávání se spustí na prvním bodě a zastaví na posledním, dron mezitím jen prolétá."
+      >
+        Záznam
+      </Label>
+      <div className="flex gap-1 mt-0.5">
+        <button
+          type="button"
+          onClick={() => onChange("photo")}
+          className={optionClass("photo")}
+        >
+          Foto
+        </button>
+        <button
+          type="button"
+          onClick={() => onChange("video")}
+          className={optionClass("video")}
+        >
+          Video
+        </button>
+      </div>
+    </div>
+  );
 }
 
 interface TemplateConfigPanelProps {
@@ -531,6 +574,14 @@ export function TemplateConfigPanel({
               Uzamknout POI
             </label>
           </div>
+          <div>
+            <CaptureModeToggle
+              value={orbitParams.captureMode === "video" ? "video" : "photo"}
+              onChange={(mode) =>
+                onOrbitChange({ ...orbitParams, captureMode: mode })
+              }
+            />
+          </div>
         </div>
       )}
 
@@ -585,18 +636,19 @@ export function TemplateConfigPanel({
               className="h-7 text-xs"
             />
           </div>
-          <div className="flex items-end gap-2 pb-1">
-            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                checked={gridParams.addPhotos}
-                onChange={(e) =>
-                  onGridChange({ ...gridParams, addPhotos: e.target.checked })
-                }
-                className="rounded"
-              />
-              Fotky
-            </label>
+          <div>
+            <CaptureModeToggle
+              value={gridParams.captureMode === "video" ? "video" : "photo"}
+              onChange={(mode) =>
+                onGridChange({
+                  ...gridParams,
+                  captureMode: mode,
+                  addPhotos: mode === "photo",
+                })
+              }
+            />
+          </div>
+          <div className="flex items-end pb-1">
             <label className="flex items-center gap-1.5 text-xs cursor-pointer">
               <input
                 type="checkbox"
@@ -700,21 +752,17 @@ export function TemplateConfigPanel({
               className="h-7 text-xs"
             />
           </div>
-          <div className="flex items-end pb-1">
-            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                checked={facadeParams.addPhotos}
-                onChange={(e) =>
-                  onFacadeChange({
-                    ...facadeParams,
-                    addPhotos: e.target.checked,
-                  })
-                }
-                className="rounded"
-              />
-              Fotky
-            </label>
+          <div>
+            <CaptureModeToggle
+              value={facadeParams.captureMode === "video" ? "video" : "photo"}
+              onChange={(mode) =>
+                onFacadeChange({
+                  ...facadeParams,
+                  captureMode: mode,
+                  addPhotos: mode === "photo",
+                })
+              }
+            />
           </div>
         </div>
       )}
@@ -799,6 +847,14 @@ export function TemplateConfigPanel({
               />
               Obrátit směr
             </label>
+          </div>
+          <div>
+            <CaptureModeToggle
+              value={pencilParams.captureMode === "video" ? "video" : "photo"}
+              onChange={(mode) =>
+                onPencilChange({ ...pencilParams, captureMode: mode })
+              }
+            />
           </div>
           {pois && pois.length > 0 && (
             <div>
@@ -959,21 +1015,21 @@ export function TemplateConfigPanel({
               </div>
             );
           })()}
-          <div className="col-span-2 flex items-center gap-2">
-            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                checked={solarParams.addPhotos}
-                onChange={(e) =>
-                  onSolarChange({
-                    ...solarParams,
-                    addPhotos: e.target.checked,
-                  })
-                }
-                className="rounded"
-              />
-              Termální (IR) fotka na každém bodu trasy
-            </label>
+          <div className="col-span-2">
+            <CaptureModeToggle
+              value={solarParams.captureMode === "video" ? "video" : "photo"}
+              onChange={(mode) =>
+                onSolarChange({
+                  ...solarParams,
+                  captureMode: mode,
+                  addPhotos: mode === "photo",
+                })
+              }
+            />
+            <div className="text-[10px] text-muted-foreground mt-0.5">
+              Foto: termální (IR) fotka na každém bodu trasy. Video: termální
+              záznam od prvního do posledního bodu trasy.
+            </div>
           </div>
           <div className="col-span-2 text-[10px] text-muted-foreground">
             Gimbal je pevně nastaven přímo dolů (nadir) — standardní kompozice

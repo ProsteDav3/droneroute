@@ -249,8 +249,37 @@ describe("computeFramedForRadius / computeFramedForAltitude", () => {
     expect(computeFramedForAltitude(60, 0, VFOV)).toBeNull();
   });
 
-  it("returns null when the radius is too large for the object to ever fit the target span", () => {
-    expect(computeFramedForRadius(5000, 10, VFOV)).toBeNull();
+  it("returns null when altitude is at or below poiHeight (camera not above the object's top — a different, unsolved geometry)", () => {
+    expect(computeFramedForAltitude(25, 25, VFOV)).toBeNull();
+    expect(computeFramedForAltitude(20, 25, VFOV)).toBeNull();
+  });
+
+  it("computeFramedForRadius: for a radius far too large to ever reach the aspirational target, still returns the best achievable framing instead of null (regression — this used to silently fall back to gimbal-only linking for any realistically large radius)", () => {
+    const result = computeFramedForRadius(5000, 10, VFOV);
+    expect(result).not.toBeNull();
+    // The achievable span for such a large radius is tiny — nowhere near
+    // the aspirational 28.4° target — but a real, flyable altitude/pitch
+    // pair must still come back.
+    const span = verticalSpanDeg(result!.altitude, 10, 5000);
+    expect(span).toBeGreaterThan(0);
+    expect(span).toBeLessThan(1);
+  });
+
+  it("computeFramedForRadius: a large but realistic radius (further than the building is tall) still returns a solution, not null (regression for the reported bug)", () => {
+    // Matches the real-world report: radius grown to 105m for a 40m-tall
+    // building — comfortably beyond the 79m point where the old fixed
+    // 28.4° target became unreachable and silently stopped updating.
+    const result = computeFramedForRadius(105, 40, VFOV, 32);
+    expect(result).not.toBeNull();
+    expect(result!.altitude).toBeGreaterThan(0);
+  });
+
+  it("computeFramedForAltitude: a high altitude relative to a modest poiHeight still returns a solution, not null (regression for the reported bug)", () => {
+    // Matches the real-world report: altitude raised to 150m for a 40m-tall
+    // building — the old fixed 28.4° target was unreachable there too.
+    const result = computeFramedForAltitude(150, 40, VFOV, 55);
+    expect(result).not.toBeNull();
+    expect(result!.radiusM).toBeGreaterThan(0);
   });
 
   it("picks the root closest to a given previous value instead of jumping", () => {

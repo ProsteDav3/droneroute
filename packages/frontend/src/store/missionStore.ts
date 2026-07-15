@@ -728,7 +728,20 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       selectedPoiId: null,
     }),
 
-  appendWaypoints: (newWps, newPois, templateGroup) =>
+  appendWaypoints: (newWps, newPois, templateGroup) => {
+    // Templates (Orbit/Grid/Facade/Solar/Pencil) are the other way a brand
+    // new mission gets its first content, alongside the manual
+    // addWaypoint/addPoi clicks — auto-naming only wired up for those two
+    // missed every template-created mission entirely.
+    const wasEmptyMission =
+      get().waypoints.length === 0 && get().pois.length === 0;
+    const generation = get().missionGeneration;
+    const firstLocation = newPois?.[0]
+      ? { lat: newPois[0].latitude, lng: newPois[0].longitude }
+      : newWps[0]
+        ? { lat: newWps[0].latitude, lng: newWps[0].longitude }
+        : null;
+
     set((state) => {
       const startIndex = state.waypoints.length;
       const groupId = templateGroup ? crypto.randomUUID() : undefined;
@@ -773,7 +786,16 @@ export const useMissionStore = create<MissionState>((set, get) => ({
         templateMode: null,
         dirty: true,
       };
-    }),
+    });
+
+    if (wasEmptyMission && firstLocation) {
+      void autoNameFromLocation(
+        firstLocation.lat,
+        firstLocation.lng,
+        generation,
+      );
+    }
+  },
 
   replaceTemplateGroup: (groupId, newWps, newPois, params) =>
     set((state) => {

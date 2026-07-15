@@ -68,7 +68,9 @@ export function BulkActionToolbar() {
 
   // Only offer "Edit template" when every selected waypoint came from the
   // same template application, and its original params are still available
-  // (they aren't after a save/reload — see missionStore's loadMission).
+  // (templateGroups is persisted with the mission — see missionStore's
+  // loadMission — but this guard also protects against any edge case where
+  // it isn't, e.g. an externally imported KMZ).
   const commonTemplateGroupId = getCommonValue(
     waypoints,
     selectedWaypointIndices,

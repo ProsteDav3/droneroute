@@ -176,6 +176,7 @@ interface MissionState {
     pois?: PointOfInterest[];
     obstacles?: Obstacle[];
     buildings?: Building[];
+    templateGroups?: Record<string, TemplateGroup>;
   }) => void;
   clearMission: () => void;
   setDirty: (dirty: boolean) => void;
@@ -817,12 +818,11 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       selectedPoiId: null,
       selectedObstacleId: null,
       selectedBuildingId: null,
-      // Template params aren't persisted with a saved mission (yet), so any
-      // waypoints/POIs tagged with a templateGroupId from a previous session
-      // become plain, non-editable-as-a-template waypoints after a
-      // save/reload round-trip — start with a clean slate here rather than
-      // carry over dangling group ids the store has no params for.
-      templateGroups: {},
+      // Template params are now persisted with the saved mission, so a
+      // waypoint/POI's templateGroupId from a previous session still
+      // resolves to real params after a save/reload round-trip — "Edit
+      // template" keeps working instead of degrading to plain waypoints.
+      templateGroups: data.templateGroups || {},
       editingTemplateGroupId: null,
       pendingOrbitParams: null,
       pendingPresetLoad: null,

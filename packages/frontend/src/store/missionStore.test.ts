@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { useMissionStore } from "./missionStore";
+import { useMissionStore, type TemplateGroup } from "./missionStore";
 import { DEFAULT_ORBIT_PARAMS, destinationPoint } from "@/lib/templates";
 import type { OrbitParams } from "@/lib/templates";
 
@@ -192,6 +192,45 @@ describe("missionStore — template groups (edit-after-apply)", () => {
     expect(Object.keys(templateGroups)).toHaveLength(0);
     expect(editingTemplateGroupId).toBeNull();
     expect(waypoints).toHaveLength(0);
+  });
+
+  it("loadMission restores templateGroups from the saved mission, so 'Edit template' keeps working after a save/reload round-trip", () => {
+    const savedGroups: Record<string, TemplateGroup> = {
+      "group-1": {
+        type: "orbit",
+        params: {
+          ...DEFAULT_ORBIT_PARAMS,
+          center: [50, 14],
+          radiusM: 90,
+        },
+      },
+    };
+
+    useMissionStore.getState().loadMission({
+      name: "Reloaded mission",
+      config: useMissionStore.getState().config,
+      waypoints: [
+        {
+          ...baseWaypoint(50, 14),
+          index: 0,
+          name: "Waypoint 1",
+          templateGroupId: "group-1",
+        },
+      ],
+      templateGroups: savedGroups,
+    });
+
+    expect(useMissionStore.getState().templateGroups).toEqual(savedGroups);
+  });
+
+  it("loadMission defaults templateGroups to an empty object when omitted (e.g. a KMZ import)", () => {
+    useMissionStore.getState().loadMission({
+      name: "Imported mission",
+      config: useMissionStore.getState().config,
+      waypoints: [],
+    });
+
+    expect(useMissionStore.getState().templateGroups).toEqual({});
   });
 });
 

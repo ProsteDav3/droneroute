@@ -74,6 +74,7 @@ export default function App() {
     pois,
     obstacles,
     buildings,
+    templateGroups,
     loadMission,
     currentPage,
     setCurrentPage,
@@ -335,6 +336,7 @@ export default function App() {
           pois,
           obstacles,
           buildings,
+          templateGroups,
         });
       } else {
         const result = await api.post<{ id: string }>("/missions", {
@@ -344,6 +346,7 @@ export default function App() {
           pois,
           obstacles,
           buildings,
+          templateGroups,
         });
         setMissionId(result.id);
       }

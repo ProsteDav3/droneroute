@@ -19,6 +19,7 @@ import {
   symbolLabel,
   symbolIconKey,
   assessFlightConditions,
+  CAUTION_WIND_MS,
   type FlightVerdict,
 } from "@/lib/weather";
 import {
@@ -35,9 +36,6 @@ const ICONS = {
   snow: CloudSnow,
   fog: CloudFog,
 };
-
-/** Wind speed (m/s) above which most consumer drones start struggling — shown as a caution color, not a hard block. */
-const CAUTION_WIND_MS = 8;
 
 const MAX_DAYS_SHOWN = 5;
 

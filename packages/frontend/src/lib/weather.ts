@@ -111,7 +111,8 @@ export interface FlightConditionAssessment {
 // and typical 0-40°C battery-safe operating range, with a few degrees of
 // margin on both ends.
 const NO_GO_WIND_MS = 12;
-const CAUTION_WIND_MS = 8; // matches the existing amber threshold already shown in the forecast list
+/** Exported so the forecast list's own amber wind-number highlight uses the exact same threshold as the verdict below, instead of a second hardcoded copy that could silently drift out of sync. */
+export const CAUTION_WIND_MS = 8;
 const MIN_SAFE_TEMP_C = -10;
 const MAX_SAFE_TEMP_C = 40;
 const HEAVY_PRECIP_MM = 2.5; // per representative period — enough to risk water ingress on non-sealed payloads
@@ -161,7 +162,10 @@ export function assessFlightConditions(
   }
 
   if (noGoReasons.length > 0) {
-    return { verdict: "no-go", reasons: noGoReasons };
+    // Caution-level factors are still worth surfacing alongside the no-go
+    // ones (e.g. strong wind AND light rain) — the verdict itself is
+    // unaffected either way, only the displayed reasons gain context.
+    return { verdict: "no-go", reasons: [...noGoReasons, ...cautionReasons] };
   }
   if (cautionReasons.length > 0) {
     return { verdict: "caution", reasons: cautionReasons };

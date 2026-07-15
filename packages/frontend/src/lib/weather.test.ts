@@ -190,11 +190,49 @@ describe("assessFlightConditions", () => {
     ).toBe("caution");
   });
 
-  it("a no-go reason is never downgraded by an additional caution-level factor", () => {
+  it("a no-go reason is never downgraded by an additional caution-level factor, and both reasons are surfaced", () => {
     const result = assessFlightConditions(
       day({ maxWindSpeedMs: 15, totalPrecipitationMm: 1 }),
     );
     expect(result.verdict).toBe("no-go");
+    expect(result.reasons.length).toBe(2);
+  });
+
+  it("lands exactly on the threshold boundaries as documented (caution, not no-go, at the no-go threshold itself)", () => {
+    // Wind: caution starts at 8, no-go starts strictly above 12.
+    expect(assessFlightConditions(day({ maxWindSpeedMs: 7.9 })).verdict).toBe(
+      "go",
+    );
+    expect(assessFlightConditions(day({ maxWindSpeedMs: 8 })).verdict).toBe(
+      "caution",
+    );
+    expect(assessFlightConditions(day({ maxWindSpeedMs: 12 })).verdict).toBe(
+      "caution",
+    );
+    expect(assessFlightConditions(day({ maxWindSpeedMs: 12.1 })).verdict).toBe(
+      "no-go",
+    );
+
+    // Precipitation: caution starts at 0.5, no-go starts at 2.5 (inclusive).
+    expect(
+      assessFlightConditions(day({ totalPrecipitationMm: 0.4 })).verdict,
+    ).toBe("go");
+    expect(
+      assessFlightConditions(day({ totalPrecipitationMm: 0.5 })).verdict,
+    ).toBe("caution");
+    expect(
+      assessFlightConditions(day({ totalPrecipitationMm: 2.5 })).verdict,
+    ).toBe("no-go");
+
+    // Temperature: no caution band — go right up to the boundary, no-go strictly beyond it.
+    expect(assessFlightConditions(day({ minTempC: -10 })).verdict).toBe("go");
+    expect(assessFlightConditions(day({ minTempC: -10.1 })).verdict).toBe(
+      "no-go",
+    );
+    expect(assessFlightConditions(day({ maxTempC: 40 })).verdict).toBe("go");
+    expect(assessFlightConditions(day({ maxTempC: 40.1 })).verdict).toBe(
+      "no-go",
+    );
   });
 
   it("treats null forecast fields as unknown, not as a reason to flag", () => {

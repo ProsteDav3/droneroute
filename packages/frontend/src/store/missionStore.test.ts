@@ -1,7 +1,19 @@
-import { describe, it, expect, beforeEach } from "vitest";
-import { useMissionStore, type TemplateGroup } from "./missionStore";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import {
+  useMissionStore,
+  DEFAULT_MISSION_NAME,
+  type TemplateGroup,
+} from "./missionStore";
+import { useConfigStore } from "./configStore";
 import { DEFAULT_ORBIT_PARAMS, destinationPoint } from "@/lib/templates";
 import type { OrbitParams } from "@/lib/templates";
+
+function mockGeocodeResponse(placeName: string) {
+  return {
+    ok: true,
+    json: async () => ({ features: [{ place_name: placeName }] }),
+  };
+}
 
 function baseWaypoint(lat: number, lng: number) {
   return {
@@ -399,5 +411,97 @@ describe("missionStore — pendingPresetLoad", () => {
     useMissionStore.getState().setPendingPresetLoad(null);
 
     expect(useMissionStore.getState().editingTemplateGroupId).toBe(groupId);
+  });
+});
+
+describe("missionStore — mission identity and address auto-naming", () => {
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  beforeEach(() => {
+    useMissionStore.getState().clearMission();
+    useConfigStore.setState({ mapboxToken: "test-token" });
+    vi.unstubAllGlobals();
+  });
+
+  it("clearMission and loadMission each bump missionGeneration", () => {
+    const before = useMissionStore.getState().missionGeneration;
+
+    useMissionStore.getState().clearMission();
+    expect(useMissionStore.getState().missionGeneration).toBe(before + 1);
+
+    useMissionStore.getState().loadMission({
+      name: "Loaded mission",
+      config: useMissionStore.getState().config,
+      waypoints: [],
+    });
+    expect(useMissionStore.getState().missionGeneration).toBe(before + 2);
+  });
+
+  it("names a still-default mission after the address of its first waypoint", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(mockGeocodeResponse("Praha 4, Podjavorinské")),
+    );
+
+    useMissionStore.getState().addWaypoint(50.06, 14.43);
+    await flush();
+
+    expect(useMissionStore.getState().missionName).toBe(
+      "Praha 4, Podjavorinské",
+    );
+  });
+
+  it("does not overwrite a name the user already typed while the geocode request was in flight", async () => {
+    let resolveFetch!: (value: unknown) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockReturnValue(
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+      ),
+    );
+
+    useMissionStore.getState().addWaypoint(50.06, 14.43);
+    useMissionStore.getState().setMissionName("Můj vlastní název");
+    resolveFetch(mockGeocodeResponse("Praha 4, Podjavorinské"));
+    await flush();
+
+    expect(useMissionStore.getState().missionName).toBe("Můj vlastní název");
+  });
+
+  it("does not rename a different mission started while the geocode request for the previous one was in flight", async () => {
+    let resolveFetch!: (value: unknown) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockReturnValue(
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+      ),
+    );
+
+    useMissionStore.getState().addWaypoint(50.06, 14.43);
+    // Abandon this mission (still unsaved, missionId stays null on both
+    // sides) and start a fresh one before the first request resolves.
+    useMissionStore.getState().clearMission();
+    resolveFetch(mockGeocodeResponse("Praha 4, Podjavorinské"));
+    await flush();
+
+    expect(useMissionStore.getState().missionName).toBe(DEFAULT_MISSION_NAME);
+  });
+
+  it("does nothing for a waypoint that isn't the mission's first point", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(mockGeocodeResponse("Praha 4, Podjavorinské"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    useMissionStore.getState().addWaypoint(50.06, 14.43);
+    await flush();
+    useMissionStore.getState().addWaypoint(50.061, 14.431);
+    await flush();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

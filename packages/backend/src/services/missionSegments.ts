@@ -11,6 +11,17 @@ function findAction(
   return undefined;
 }
 
+function isRecordAction(action: WaypointAction): boolean {
+  return (
+    action.actionType === "startRecord" || action.actionType === "stopRecord"
+  );
+}
+
+/** Re-numbers actionId 0..n so ids stay unique/sequential within the waypoint. */
+function renumberActions(actions: WaypointAction[]): WaypointAction[] {
+  return actions.map((action, i) => ({ ...action, actionId: i }));
+}
+
 /**
  * Splits a mission's waypoints into consecutive one-leg missions (waypoint
  * 1→2, 2→3, ... N-1→N). Each leg keeps the parent mission's config and
@@ -27,7 +38,9 @@ function findAction(
  * would leave every segment except the very first and very last with no
  * recording action at all. Instead, whenever the parent mission has a
  * start/stop record pair anywhere, every segment gets its own fresh pair:
- * start on its first waypoint, stop on its second.
+ * start on its first waypoint, stop on its second — added alongside
+ * (not instead of) any other action already on those waypoints (gimbal
+ * moves, hover, zoom, focus, yaw), which must survive the split untouched.
  */
 export function buildMissionSegments(mission: Mission): Mission[] {
   const segmentCount = mission.waypoints.length - 1;
@@ -45,8 +58,20 @@ export function buildMissionSegments(mission: Mission): Mission[] {
     const second: Waypoint = { ...mission.waypoints[i + 1], index: 1 };
 
     if (isVideoMode) {
-      first.actions = [{ ...startTemplate, actionId: 0 }];
-      second.actions = [{ ...stopTemplate, actionId: 0 }];
+      const firstOther = (first.actions ?? []).filter(
+        (a) => !isRecordAction(a),
+      );
+      const secondOther = (second.actions ?? []).filter(
+        (a) => !isRecordAction(a),
+      );
+      first.actions = renumberActions([
+        { ...startTemplate, actionId: 0 },
+        ...firstOther,
+      ]);
+      second.actions = renumberActions([
+        ...secondOther,
+        { ...stopTemplate, actionId: 0 },
+      ]);
     }
 
     segments.push({

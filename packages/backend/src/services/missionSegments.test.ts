@@ -111,32 +111,66 @@ describe("buildMissionSegments", () => {
     }
   });
 
-  it("preserves solar IR lens params on the re-derived recording actions", () => {
+  it("keeps non-recording actions (gimbal, hover, zoom, ...) alongside the re-derived recording pair", () => {
     const start = {
       actionId: 0,
       actionType: "startRecord" as const,
-      params: { payloadPositionIndex: 0, payloadLensIndex: "ir" },
+      params: { payloadPositionIndex: 0 },
     };
     const stop = {
       actionId: 0,
       actionType: "stopRecord" as const,
-      params: { payloadPositionIndex: 0, payloadLensIndex: "ir" },
+      params: { payloadPositionIndex: 0 },
     };
+    const gimbalRotate = {
+      actionId: 0,
+      actionType: "gimbalRotate" as const,
+      params: { gimbalPitchRotateAngle: -45 },
+    };
+    const hover = {
+      actionId: 0,
+      actionType: "hover" as const,
+      params: { hoverTime: 3 },
+    };
+    // Middle waypoint carries a gimbal move and a hover on top of the whole
+    // mission's start/stop record pair — splitting into segments must not
+    // drop them, only add/replace the record actions on each leg's own ends.
     const mission = makeMission([
       makeWaypoint(0, { actions: [start] }),
-      makeWaypoint(1, { actions: [] }),
-      makeWaypoint(2, { actions: [stop] }),
+      makeWaypoint(1, { actions: [gimbalRotate] }),
+      makeWaypoint(2, { actions: [hover, stop] }),
     ]);
 
     const segments = buildMissionSegments(mission);
+    const types = (actions: { actionType: string }[]) =>
+      actions.map((a) => a.actionType);
 
+    expect(segments).toHaveLength(2);
+    // Segment 1: WP0 (start) -> WP1 (gimbalRotate). The gimbal move must
+    // survive on the second waypoint, alongside its own re-derived stopRecord.
+    expect(types(segments[0].waypoints[0].actions)).toEqual(["startRecord"]);
+    expect(types(segments[0].waypoints[1].actions)).toEqual([
+      "gimbalRotate",
+      "stopRecord",
+    ]);
+    // Segment 2: WP1 (gimbalRotate) -> WP2 (hover, stop). The gimbal move
+    // must survive on the first waypoint, alongside its own startRecord, and
+    // the hover must survive on the second waypoint alongside stopRecord.
+    expect(types(segments[1].waypoints[0].actions)).toEqual([
+      "startRecord",
+      "gimbalRotate",
+    ]);
+    expect(types(segments[1].waypoints[1].actions)).toEqual([
+      "hover",
+      "stopRecord",
+    ]);
+    // actionIds stay unique/sequential within each waypoint's action list.
     for (const segment of segments) {
-      expect(segment.waypoints[0].actions[0].params).toMatchObject({
-        payloadLensIndex: "ir",
-      });
-      expect(segment.waypoints[1].actions[0].params).toMatchObject({
-        payloadLensIndex: "ir",
-      });
+      for (const wp of segment.waypoints) {
+        expect(wp.actions.map((a) => a.actionId)).toEqual(
+          wp.actions.map((_, i) => i),
+        );
+      }
     }
   });
 

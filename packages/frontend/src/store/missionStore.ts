@@ -34,6 +34,8 @@ interface MissionState {
   missionId: string | null;
   missionName: string;
   dirty: boolean;
+  /** Bumped whenever the current mission is replaced wholesale (new/clear/load) — lets an in-flight async task (e.g. auto-naming) detect it's now stale even when missionId itself is null on both sides. */
+  missionGeneration: number;
 
   // Config
   config: MissionConfig;
@@ -189,6 +191,7 @@ interface MissionState {
 
 export const useMissionStore = create<MissionState>((set, get) => ({
   missionId: null,
+  missionGeneration: 0,
   missionName: DEFAULT_MISSION_NAME,
   dirty: false,
   config: { ...DEFAULT_MISSION_CONFIG },
@@ -246,6 +249,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   addWaypoint: (lat, lng) => {
     const isFirstPointOfMission =
       get().waypoints.length === 0 && get().pois.length === 0;
+    const generation = get().missionGeneration;
     set((state) => {
       const index = state.waypoints.length;
       const newWaypoint: Waypoint = {
@@ -264,7 +268,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       };
     });
     if (isFirstPointOfMission) {
-      void autoNameFromLocation(lat, lng);
+      void autoNameFromLocation(lat, lng, generation);
     }
   },
 
@@ -465,6 +469,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
   addPoi: (lat, lng) => {
     const isFirstPointOfMission =
       get().waypoints.length === 0 && get().pois.length === 0;
+    const generation = get().missionGeneration;
     set((state) => {
       const building = state.buildings.find(
         (b) => b.vertices.length >= 3 && pointInPolygon([lat, lng], b.vertices),
@@ -496,7 +501,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       };
     });
     if (isFirstPointOfMission) {
-      void autoNameFromLocation(lat, lng);
+      void autoNameFromLocation(lat, lng, generation);
     }
   },
 
@@ -825,8 +830,9 @@ export const useMissionStore = create<MissionState>((set, get) => ({
     }),
 
   loadMission: (data) =>
-    set({
+    set((state) => ({
       missionId: data.id || null,
+      missionGeneration: state.missionGeneration + 1,
       missionName: data.name,
       config: data.config,
       waypoints: data.waypoints,
@@ -847,12 +853,13 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       pendingOrbitParams: null,
       pendingPresetLoad: null,
       dirty: false,
-    }),
+    })),
 
   clearMission: () => {
     const prefs = usePreferencesStore.getState().preferences;
-    set({
+    set((state) => ({
       missionId: null,
+      missionGeneration: state.missionGeneration + 1,
       missionName: DEFAULT_MISSION_NAME,
       config: { ...DEFAULT_MISSION_CONFIG, ...prefs.missionDefaults },
       waypoints: [],
@@ -873,7 +880,7 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       pendingOrbitParams: null,
       pendingPresetLoad: null,
       dirty: false,
-    });
+    }));
   },
 
   setDirty: (dirty) => set({ dirty }),
@@ -882,12 +889,19 @@ export const useMissionStore = create<MissionState>((set, get) => ({
 /**
  * Reverse-geocodes the mission's first placed point into a human-readable
  * address and uses it as the mission name — but only if the mission is
- * still unnamed by the time the request resolves (the user may have typed
- * their own name, or started a different mission, while this was in flight).
- * Silent on any failure: auto-naming is a nice-to-have, never worth
- * interrupting the user's flow over.
+ * still unnamed AND still the same mission by the time the request resolves.
+ * `generation` is the store's `missionGeneration` at the moment the point was
+ * placed; every `loadMission`/`clearMission` bumps it, so this still catches
+ * "switched to a different brand-new mission while the request was in
+ * flight" even though a not-yet-saved mission's `missionId` is `null` on
+ * both sides. Silent on any failure: auto-naming is a nice-to-have, never
+ * worth interrupting the user's flow over.
  */
-async function autoNameFromLocation(lat: number, lng: number): Promise<void> {
+async function autoNameFromLocation(
+  lat: number,
+  lng: number,
+  generation: number,
+): Promise<void> {
   const token = useConfigStore.getState().mapboxToken;
   if (!token) return;
 
@@ -899,7 +913,11 @@ async function autoNameFromLocation(lat: number, lng: number): Promise<void> {
     const placeName = data.features?.[0]?.place_name;
     if (!placeName || typeof placeName !== "string") return;
 
-    if (useMissionStore.getState().missionName === DEFAULT_MISSION_NAME) {
+    const current = useMissionStore.getState();
+    if (
+      current.missionGeneration === generation &&
+      current.missionName === DEFAULT_MISSION_NAME
+    ) {
       useMissionStore.setState({ missionName: placeName, dirty: true });
     }
   } catch {

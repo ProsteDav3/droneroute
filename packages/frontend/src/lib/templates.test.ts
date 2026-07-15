@@ -34,6 +34,7 @@ import type {
 import {
   recommendSolarSpacing,
   recommendGridSpacing,
+  recommendFacadeGrid,
   computeGsdCm,
   computeAltitudeForGsd,
   isMultispectralPayload,
@@ -575,6 +576,37 @@ describe("recommendGridSpacing", () => {
     const tightOverlap = recommendGridSpacing(80, M3E, 90, 90)!;
     expect(tightOverlap.lineSpacingM).toBeLessThan(looseOverlap.lineSpacingM);
     expect(tightOverlap.photoSpacingM).toBeLessThan(looseOverlap.photoSpacingM);
+  });
+});
+
+describe("recommendFacadeGrid", () => {
+  const M30T = 53;
+
+  it("returns null for a payload with no known thermal FOV", () => {
+    expect(recommendFacadeGrid(20, 999999, 20, 20)).toBeNull();
+  });
+
+  it("returns positive spacing below the raw (no-overlap) footprint", () => {
+    const rec = recommendFacadeGrid(20, M30T, 20, 20)!;
+    expect(rec).not.toBeNull();
+    expect(rec.horizSpacingM).toBeGreaterThan(0);
+    expect(rec.vertSpacingM).toBeGreaterThan(0);
+    const rawFootprintWidth = 2 * 20 * Math.tan((49.4 * Math.PI) / 180 / 2);
+    expect(rec.horizSpacingM).toBeLessThan(rawFootprintWidth);
+  });
+
+  it("higher overlap % recommends tighter spacing", () => {
+    const looseOverlap = recommendFacadeGrid(20, M30T, 10, 10)!;
+    const tightOverlap = recommendFacadeGrid(20, M30T, 60, 60)!;
+    expect(tightOverlap.horizSpacingM).toBeLessThan(looseOverlap.horizSpacingM);
+    expect(tightOverlap.vertSpacingM).toBeLessThan(looseOverlap.vertSpacingM);
+  });
+
+  it("recommends larger spacing at a greater standoff distance (wider footprint)", () => {
+    const close = recommendFacadeGrid(10, M30T, 20, 20)!;
+    const far = recommendFacadeGrid(30, M30T, 20, 20)!;
+    expect(far.horizSpacingM).toBeGreaterThan(close.horizSpacingM);
+    expect(far.vertSpacingM).toBeGreaterThan(close.vertSpacingM);
   });
 });
 

@@ -203,3 +203,40 @@ export function recommendGridSpacing(
       Math.round(footprintHeightM * (1 - frontOverlapPct / 100) * 10) / 10,
   };
 }
+
+export interface FacadeGridRecommendation {
+  horizSpacingM: number;
+  vertSpacingM: number;
+}
+
+/**
+ * Recommended horizontal (along-wall) and vertical (row-to-row) spacing
+ * between adjacent Facade waypoints, given the standoff distance from the
+ * wall, the desired horizontal/vertical overlap percentages, and a known
+ * DJI thermal payload — for building-envelope thermography (heat-loss and
+ * insulation-defect inspection), where full frame-to-frame coverage
+ * matters the same way it does for `recommendSolarSpacing`'s nadir
+ * thermal survey, just shooting sideways at a wall instead of straight
+ * down. Unlike the wide/RGB cameras used by `recommendGridSpacing`,
+ * `THERMAL_CAMERA_FOV` already stores both horizontal and vertical FOV
+ * directly, so no aspect-ratio derivation is needed here. Returns `null`
+ * when the payload's thermal FOV isn't known.
+ */
+export function recommendFacadeGrid(
+  distanceM: number,
+  payloadEnumValue: number,
+  horizOverlapPct: number,
+  vertOverlapPct: number,
+): FacadeGridRecommendation | null {
+  const fov = THERMAL_CAMERA_FOV[payloadEnumValue];
+  if (!fov) return null;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const footprintWidthM = 2 * distanceM * Math.tan(toRad(fov.hfovDeg) / 2);
+  const footprintHeightM = 2 * distanceM * Math.tan(toRad(fov.vfovDeg) / 2);
+  return {
+    horizSpacingM:
+      Math.round(footprintWidthM * (1 - horizOverlapPct / 100) * 10) / 10,
+    vertSpacingM:
+      Math.round(footprintHeightM * (1 - vertOverlapPct / 100) * 10) / 10,
+  };
+}

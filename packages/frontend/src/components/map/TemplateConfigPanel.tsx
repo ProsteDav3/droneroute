@@ -48,6 +48,7 @@ import {
 import {
   recommendSolarSpacing,
   recommendGridSpacing,
+  recommendFacadeGrid,
   computeGsdCm,
   isMultispectralPayload,
   NDVI_RECOMMENDED_FRONT_OVERLAP_PCT,
@@ -55,6 +56,7 @@ import {
   THERMAL_CAMERA_FOV,
   WIDE_CAMERA_FOV,
 } from "@/lib/solarCamera";
+import { haversineDistance } from "@/lib/geo";
 import type { PointOfInterest, HeightMode } from "@droneroute/shared";
 
 function heightModeLabel(mode: HeightMode): string {
@@ -220,6 +222,14 @@ export function TemplateConfigPanel({
   // 75%/65% are common photogrammetry defaults (front/side overlap).
   const [gridFrontOverlapPct, setGridFrontOverlapPct] = useState(75);
   const [gridSideOverlapPct, setGridSideOverlapPct] = useState(65);
+
+  // Facade thermal-overlap calculator inputs — ephemeral (not part of
+  // FacadeParams itself), used only to recommend numRows/numColumns.
+  // 20% matches recommendSolarSpacing's default — full coverage without
+  // gaps, not photogrammetric reconstruction, so no need for Grid's
+  // higher 65-75% overlap.
+  const [facadeHorizOverlapPct, setFacadeHorizOverlapPct] = useState(20);
+  const [facadeVertOverlapPct, setFacadeVertOverlapPct] = useState(20);
 
   const handleSavePreset = async () => {
     const name = presetName.trim();
@@ -1056,6 +1066,95 @@ export function TemplateConfigPanel({
               className="h-7 text-xs"
             />
           </div>
+          <div>
+            <Label className="text-[10px]">Vodorovný překryv (%)</Label>
+            <NumericInput
+              value={facadeHorizOverlapPct}
+              onChange={setFacadeHorizOverlapPct}
+              min={0}
+              max={90}
+              step={5}
+              fallback={20}
+              className="h-7 text-xs"
+            />
+          </div>
+          <div>
+            <Label className="text-[10px]">Svislý překryv (%)</Label>
+            <NumericInput
+              value={facadeVertOverlapPct}
+              onChange={setFacadeVertOverlapPct}
+              min={0}
+              max={90}
+              step={5}
+              fallback={20}
+              className="h-7 text-xs"
+            />
+          </div>
+          {(() => {
+            const rec = recommendFacadeGrid(
+              facadeParams.distanceM,
+              payloadEnumValue,
+              facadeHorizOverlapPct,
+              facadeVertOverlapPct,
+            );
+            if (!rec) {
+              return (
+                <div className="col-span-2 text-[10px] text-muted-foreground">
+                  Termální zorné pole aktuální kamery není známé — nastavte řady
+                  a sloupce ručně. (Doporučení je k dispozici pro termální
+                  kamery DJI: H20T, M30T, M3T, M3TD, Matrice 4T.)
+                </div>
+              );
+            }
+            const wallLengthM = haversineDistance(
+              facadeParams.point1[0],
+              facadeParams.point1[1],
+              facadeParams.point2[0],
+              facadeParams.point2[1],
+            );
+            const wallHeightM =
+              facadeParams.maxAltitude - facadeParams.minAltitude;
+            const recNumColumns = Math.max(
+              2,
+              Math.ceil(wallLengthM / rec.horizSpacingM) + 1,
+            );
+            const recNumRows = Math.max(
+              1,
+              Math.ceil(wallHeightM / rec.vertSpacingM) + 1,
+            );
+            const fov = THERMAL_CAMERA_FOV[payloadEnumValue];
+            return (
+              <div className="col-span-2 flex flex-col gap-1 text-[10px] text-muted-foreground bg-muted/20 rounded-md px-2 py-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span>
+                    Doporučeno pro {fov?.label} při tomto odstupu: {recNumRows}{" "}
+                    řad / {recNumColumns} sloupců
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-5 text-[10px] px-2 shrink-0"
+                    onClick={() =>
+                      onFacadeChange({
+                        ...facadeParams,
+                        numRows: recNumRows,
+                        numColumns: recNumColumns,
+                      })
+                    }
+                  >
+                    Použít
+                  </Button>
+                </div>
+                {fov?.experimental && (
+                  <div className="text-amber-500">
+                    Identita tohoto dronu/kamery není potvrzená (žádná
+                    zveřejněná specifikace DJI) — považujte toto doporučení za
+                    orientační, dokud nebude ověřeno na reálném hardwaru.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div>
             <CaptureModeToggle
               value={facadeParams.captureMode === "video" ? "video" : "photo"}

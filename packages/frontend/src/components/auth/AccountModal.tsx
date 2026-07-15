@@ -393,6 +393,8 @@ export function AccountModal({ onClose }: AccountModalProps) {
                         droneSubEnumValue: model.droneSubEnumValue,
                         payloadEnumValue:
                           model.payloads[0]?.payloadEnumValue || 0,
+                        payloadSubEnumValue:
+                          model.payloads[0]?.payloadSubEnumValue ?? 0,
                       });
                     }
                   }}
@@ -418,9 +420,16 @@ export function AccountModal({ onClose }: AccountModalProps) {
                   <Label className="text-xs">Náklad</Label>
                   <Select
                     value={String(missionDefaults.payloadEnumValue)}
-                    onValueChange={(v) =>
-                      setMissionDefault({ payloadEnumValue: parseInt(v) })
-                    }
+                    onValueChange={(v) => {
+                      const payloadEnumValue = parseInt(v);
+                      const payload = selectedDrone.payloads.find(
+                        (p) => p.payloadEnumValue === payloadEnumValue,
+                      );
+                      setMissionDefault({
+                        payloadEnumValue,
+                        payloadSubEnumValue: payload?.payloadSubEnumValue ?? 0,
+                      });
+                    }}
                   >
                     <SelectTrigger className="h-8 text-xs">
                       <SelectValue />

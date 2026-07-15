@@ -53,6 +53,8 @@ export function MissionConfig() {
                 droneEnumValue: model.droneEnumValue,
                 droneSubEnumValue: model.droneSubEnumValue,
                 payloadEnumValue: model.payloads[0]?.payloadEnumValue || 0,
+                payloadSubEnumValue:
+                  model.payloads[0]?.payloadSubEnumValue ?? 0,
               });
             }
           }}
@@ -78,7 +80,16 @@ export function MissionConfig() {
           <Label className="text-xs">Náklad</Label>
           <Select
             value={String(config.payloadEnumValue)}
-            onValueChange={(v) => setConfig({ payloadEnumValue: parseInt(v) })}
+            onValueChange={(v) => {
+              const payloadEnumValue = parseInt(v);
+              const payload = selectedDrone.payloads.find(
+                (p) => p.payloadEnumValue === payloadEnumValue,
+              );
+              setConfig({
+                payloadEnumValue,
+                payloadSubEnumValue: payload?.payloadSubEnumValue ?? 0,
+              });
+            }}
           >
             <SelectTrigger className="h-8 text-xs">
               <SelectValue />

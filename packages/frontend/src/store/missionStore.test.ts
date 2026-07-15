@@ -504,4 +504,43 @@ describe("missionStore — mission identity and address auto-naming", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  it("names a still-default mission from a template's first waypoint too (not just manual addWaypoint/addPoi)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(mockGeocodeResponse("Praha 4, Podjavorinské")),
+    );
+
+    // Mirrors an Orbit/Grid/Facade template applying to a brand-new mission
+    // via appendWaypoints, rather than a manual map click.
+    useMissionStore
+      .getState()
+      .appendWaypoints([
+        baseWaypoint(50.06, 14.43),
+        baseWaypoint(50.061, 14.431),
+      ]);
+    await flush();
+
+    expect(useMissionStore.getState().missionName).toBe(
+      "Praha 4, Podjavorinské",
+    );
+  });
+
+  it("uses the template's POI (not its first waypoint) as the location when both are created together", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(mockGeocodeResponse("Praha 4, Podjavorinské"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    useMissionStore
+      .getState()
+      .appendWaypoints(
+        [baseWaypoint(50.06, 14.43)],
+        [{ name: "Orbit center", latitude: 50.1, longitude: 14.5, height: 0 }],
+      );
+    await flush();
+
+    const calledUrl = fetchMock.mock.calls[0][0] as string;
+    expect(calledUrl).toContain("14.5,50.1");
+  });
 });

@@ -60,6 +60,15 @@ interface DragState {
   end: [number, number];
 }
 
+/**
+ * Radius used when Orbit is created by a plain click (no drag) — lets a
+ * touch/tablet user (who can't do a mouse-drag gesture) get a usable orbit
+ * immediately, then adjust the radius in the config panel afterward. Grid
+ * and Facade have no sensible single-point default (they need two distinct
+ * corners), so a plain click for those still does nothing.
+ */
+const DEFAULT_CLICK_ORBIT_RADIUS_M = 30;
+
 /** Generate a GeoJSON circle for orbit preview */
 function circleGeoJson(center: [number, number], radiusM: number) {
   const [lat, lng] = center;
@@ -85,6 +94,16 @@ function circleGeoJson(center: [number, number], radiusM: number) {
  * center after the fact — e.g. a searched address puts you close but not
  * exactly on the spot — without having to cancel and re-drag from scratch.
  * Only active while the config panel is open, before Apply.
+ *
+ * Explicit `zIndex` (higher than OrbitPoiHandle's) via the Marker's own
+ * `style` prop — not JSX/mount order — is what guarantees this handle stays
+ * grabbable when it overlaps OrbitPoiHandle right after locking the POI.
+ * The two markers are independent mapbox-gl `Marker` instances, each
+ * appended to the shared canvas container at its OWN mount time (see
+ * `@vis.gl/react-mapbox`'s Marker component) — OrbitPoiHandle only mounts
+ * the moment "Uzamknout POI" is checked, i.e. strictly after this handle,
+ * so relying on JSX order for stacking would put the newer POI marker on
+ * top regardless of where it appears in this file.
  */
 function OrbitCenterHandle({
   center,
@@ -109,6 +128,7 @@ function OrbitCenterHandle({
       anchor="center"
       draggable
       onDrag={handleDrag}
+      style={{ zIndex: 10 }}
     >
       <div
         title="Přetažením posunete střed orbitu"
@@ -127,38 +147,28 @@ function OrbitCenterHandle({
 }
 
 /**
- * A draggable handle for an orbit's independent camera aim point
- * (`OrbitParams.poiCenter`), only rendered once that field is set (see the
- * "Uzamknout POI" toggle in TemplateConfigPanel). Lets the flight circle be
- * resized/moved via OrbitCenterHandle while this point — and thus what the
- * camera looks at — stays put.
+ * A fixed (non-draggable) marker showing an orbit's independent camera aim
+ * point (`OrbitParams.poiCenter`), only rendered once that field is set (see
+ * the "Uzamknout POI" toggle in TemplateConfigPanel). Deliberately not
+ * draggable: the whole point of locking the POI is that it stays put while
+ * `OrbitCenterHandle` (given a higher `zIndex`, so it stays on top when the
+ * two overlap right after locking) is used to resize/move the orbit circle
+ * — previously both handles were draggable and overlapped exactly at lock
+ * time, so grabbing "the orbit handle" often grabbed this one instead,
+ * moving the POI by accident and forcing it to be dragged back afterward.
  */
-function OrbitPoiHandle({
-  poiCenter,
-  onMove,
-}: {
-  poiCenter: [number, number];
-  onMove: (poiCenter: [number, number]) => void;
-}) {
+function OrbitPoiHandle({ poiCenter }: { poiCenter: [number, number] }) {
   const [lat, lng] = poiCenter;
-
-  const handleDrag = useCallback(
-    (e: { lngLat: { lng: number; lat: number } }) => {
-      onMove([e.lngLat.lat, e.lngLat.lng]);
-    },
-    [onMove],
-  );
 
   return (
     <Marker
       longitude={lng}
       latitude={lat}
       anchor="center"
-      draggable
-      onDrag={handleDrag}
+      style={{ zIndex: 5 }}
     >
       <div
-        title="Přetažením posunete cíl kamery (POI je uzamčen odděleně od středu orbitu)"
+        title="Cíl kamery (POI je uzamčen na tomto místě, odděleně od středu orbitu)"
         style={{
           width: 18,
           height: 18,
@@ -166,7 +176,6 @@ function OrbitPoiHandle({
           background: "#00c2ff",
           border: "3px solid #33cfff",
           boxShadow: "0 0 0 4px rgba(0,194,255,0.35)",
-          cursor: "grab",
         }}
       />
     </Marker>
@@ -412,12 +421,26 @@ export function TemplateDrawHandler() {
         finalDrag.end[1],
       );
 
+      const tm = useMissionStore.getState().templateMode;
+
       if (dist < 5) {
+        // A plain click/tap with no meaningful drag. Orbit gets a
+        // default-radius circle right away — dragging still lets you pick
+        // the exact radius by hand, but a click alone is enough on a
+        // tablet where dragging isn't practical. Grid/Facade need two
+        // distinct corners, so a plain click for those is still a no-op.
+        if (tm === "orbit") {
+          setOrbitParams(
+            initialOrbitParams(finalDrag.start, DEFAULT_CLICK_ORBIT_RADIUS_M),
+          );
+          setConfirmed(true);
+          currentDrag = null;
+          return;
+        }
         resetState();
         return;
       }
 
-      const tm = useMissionStore.getState().templateMode;
       if (tm === "orbit") {
         setOrbitParams(initialOrbitParams(finalDrag.start, Math.round(dist)));
       } else if (tm === "grid") {
@@ -662,20 +685,15 @@ export function TemplateDrawHandler() {
               });
             }}
           />
+          {orbitParams.poiCenter && (
+            <OrbitPoiHandle poiCenter={orbitParams.poiCenter} />
+          )}
           <OrbitCenterHandle
             center={orbitParams.center}
             onMove={(newCenter) =>
               setOrbitParams({ ...orbitParams, center: newCenter })
             }
           />
-          {orbitParams.poiCenter && (
-            <OrbitPoiHandle
-              poiCenter={orbitParams.poiCenter}
-              onMove={(newPoiCenter) =>
-                setOrbitParams({ ...orbitParams, poiCenter: newPoiCenter })
-              }
-            />
-          )}
         </>
       )}
 

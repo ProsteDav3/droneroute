@@ -14,8 +14,13 @@ interface NumericInputProps {
 }
 
 /**
- * A numeric input that only validates/clamps on blur, allowing users to
- * freely type (including clearing the field) without the value snapping back.
+ * A numeric input that fires `onChange` live as soon as what's typed parses
+ * to a real number — so linked fields elsewhere in the panel (e.g. Orbit's
+ * radius/altitude/POI-height framing) recalculate immediately instead of
+ * only after clicking away. Min/max clamping still only happens on blur,
+ * so typing a multi-digit number that starts out of range (e.g. "5" on the
+ * way to "50" with a min of 30) doesn't get snapped mid-keystroke, and
+ * clearing the field to retype doesn't fire a spurious fallback value.
  */
 export function NumericInput({
   value,
@@ -55,11 +60,20 @@ export function NumericInput({
     onChange(clamped);
   };
 
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    setLocalValue(raw);
+    const parsed = integer ? parseInt(raw) : parseFloat(raw);
+    if (!isNaN(parsed) && isFinite(parsed)) {
+      onChange(parsed);
+    }
+  };
+
   return (
     <Input
       type="number"
       value={localValue}
-      onChange={(e) => setLocalValue(e.target.value)}
+      onChange={handleChange}
       onFocus={() => setIsFocused(true)}
       onBlur={handleBlur}
       min={min}

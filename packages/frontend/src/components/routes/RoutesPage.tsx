@@ -22,6 +22,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useConfigStore } from "@/store/configStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { formatDistance } from "@/lib/units";
+import { estimateFlightStats, formatFlightDuration } from "@/lib/flightStats";
 import { api } from "@/lib/api";
 import { DRONE_MODELS } from "@droneroute/shared";
 import type {
@@ -42,59 +43,6 @@ interface SavedMission {
   buildings: string;
   template_groups: string;
   share_token: string | null;
-}
-
-function haversine(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
-  const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function estimateDistance(waypoints: Waypoint[]): number {
-  let total = 0;
-  for (let i = 1; i < waypoints.length; i++) {
-    total += haversine(
-      waypoints[i - 1].latitude,
-      waypoints[i - 1].longitude,
-      waypoints[i].latitude,
-      waypoints[i].longitude,
-    );
-  }
-  return total;
-}
-
-function estimateFlightTime(waypoints: Waypoint[]): number {
-  let seconds = 0;
-  for (let i = 1; i < waypoints.length; i++) {
-    const dist = haversine(
-      waypoints[i - 1].latitude,
-      waypoints[i - 1].longitude,
-      waypoints[i].latitude,
-      waypoints[i].longitude,
-    );
-    seconds += dist / (waypoints[i - 1].speed || 7);
-  }
-  return Math.round(seconds);
-}
-
-function formatFlightTime(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (m < 60) return s > 0 ? `${m}m ${s}s` : `${m}m`;
-  const h = Math.floor(m / 60);
-  const rm = m % 60;
-  return rm > 0 ? `${h}h ${rm}m` : `${h}h`;
 }
 
 function getDroneLabel(config: MissionConfig): string | null {
@@ -395,8 +343,11 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
                       return null;
                     }
                   })();
-                  const dist = estimateDistance(waypoints);
-                  const flightTime = estimateFlightTime(waypoints);
+                  const { distanceM: dist, timeS: flightTime } =
+                    estimateFlightStats(
+                      waypoints,
+                      config?.autoFlightSpeed ?? 7,
+                    );
                   const droneLabel = config ? getDroneLabel(config) : null;
                   const maxAlt =
                     waypoints.length > 0
@@ -536,7 +487,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
                               <span className="text-orange-400 text-[10px]">
                                 ~
                               </span>
-                              {formatFlightTime(flightTime)}
+                              {formatFlightDuration(flightTime)}
                             </span>
                           )}
                         </div>

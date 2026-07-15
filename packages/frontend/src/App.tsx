@@ -26,6 +26,7 @@ import {
   Warehouse,
   Bookmark,
   CloudSun,
+  BatteryFull,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -58,6 +59,7 @@ import { formatDistance } from "@/lib/units";
 import { useAirspaceStore } from "@/store/airspaceStore";
 import { api } from "@/lib/api";
 import { getObstacleWarnings, getAirspaceWarnings } from "@/lib/geo";
+import { estimateFlightStats, formatFlightDuration } from "@/lib/flightStats";
 
 type SidebarSection =
   | "waypoints"
@@ -207,6 +209,32 @@ export default function App() {
     [waypoints, config.autoFlightSpeed],
   );
 
+  // Summary across a whole segmented project (export/save segments): each
+  // consecutive-pair segment is its own standalone flight (own take-off,
+  // own landing), so — unlike flightStats above, which ramps up/down once
+  // for the full continuous route — this estimates each segment as its own
+  // independent flight, then reports how many separate flights/battery
+  // cycles the whole revisit schedule will actually need.
+  const segmentsSummary = useMemo(() => {
+    if (waypoints.length < 2) return null;
+    const segmentCount = waypoints.length - 1;
+    let totalTimeS = 0;
+    let maxSegmentTimeS = 0;
+    for (let i = 0; i < segmentCount; i++) {
+      const { timeS } = estimateFlightStats(
+        [waypoints[i], waypoints[i + 1]],
+        config.autoFlightSpeed,
+      );
+      totalTimeS += timeS;
+      maxSegmentTimeS = Math.max(maxSegmentTimeS, timeS);
+    }
+    return {
+      segmentCount,
+      totalTimeS,
+      exceedsBattery: maxSegmentTimeS > config.maxBatteryMinutes * 60,
+    };
+  }, [waypoints, config.autoFlightSpeed, config.maxBatteryMinutes]);
+
   // Aggregated warnings for overlay
   const warnings = useMemo(() => {
     const result: Warning[] = [];
@@ -217,11 +245,11 @@ export default function App() {
         message: `${obstacleWarnings.length} upozornění na překážky — body trasy zasahují do zakázaných zón`,
       });
     }
-    if (flightStats && flightStats.time > config.maxBatteryMinutes * 60) {
+    if (flightStats && flightStats.timeS > config.maxBatteryMinutes * 60) {
       result.push({
         id: "battery",
         type: "battery",
-        message: `Doba letu (${formatDuration(flightStats.time)}) přesahuje maximální kapacitu baterie (${config.maxBatteryMinutes} min)`,
+        message: `Doba letu (${formatFlightDuration(flightStats.timeS)}) přesahuje maximální kapacitu baterie (${config.maxBatteryMinutes} min)`,
       });
     }
     // Airspace zone warnings
@@ -721,6 +749,32 @@ export default function App() {
             <FolderPlus className="h-3 w-3" />
             {savingSegments ? "..." : "Uložit segmenty jako mise"}
           </Button>
+          {segmentsSummary && (
+            <div
+              className={`flex items-center gap-3 text-[10px] px-1 ${
+                segmentsSummary.exceedsBattery
+                  ? "text-orange-300"
+                  : "text-muted-foreground"
+              }`}
+              title={
+                segmentsSummary.exceedsBattery
+                  ? `Nejdelší jednotlivý segment přesahuje maximální kapacitu baterie (${config.maxBatteryMinutes} min) — zvažte kratší úseky`
+                  : "Odhad pro celý projekt, pokud se každý segment létá jako samostatný let s vlastní baterií"
+              }
+            >
+              <span className="flex items-center gap-1">
+                <BatteryFull
+                  className={`h-3 w-3 ${segmentsSummary.exceedsBattery ? "text-orange-400" : "text-emerald-400"}`}
+                />
+                {segmentsSummary.segmentCount}{" "}
+                {segmentsSummary.segmentCount === 1 ? "let" : "letů"}
+              </span>
+              <span className="flex items-center gap-1">
+                <Clock className="h-3 w-3 text-yellow-400" />
+                {formatFlightDuration(segmentsSummary.totalTimeS)} celkem
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Scrollable content */}
@@ -931,7 +985,7 @@ export default function App() {
           <div className="flex items-center gap-3">
             {waypoints.length >= 2 && flightStats
               ? (() => {
-                  const { distance, time } = flightStats;
+                  const { distanceM: distance, timeS: time } = flightStats;
                   const elevGain = waypoints.reduce((sum, wp, i) => {
                     if (i === 0) return 0;
                     const diff = wp.height - waypoints[i - 1].height;
@@ -974,7 +1028,7 @@ export default function App() {
                         <span
                           className={`font-medium ${exceedsBattery ? "text-orange-300" : "text-yellow-300"}`}
                         >
-                          {formatDuration(time)}
+                          {formatFlightDuration(time)}
                         </span>
                       </span>
                     </>
@@ -1057,61 +1111,4 @@ export default function App() {
       <WelcomeDialog />
     </div>
   );
-}
-
-// Haversine distance between two points (meters)
-function haversine(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-// Estimate total distance (m) and flight time (s) using per-segment speeds
-function estimateFlightStats(
-  waypoints: {
-    latitude: number;
-    longitude: number;
-    speed: number;
-    useGlobalSpeed: boolean;
-  }[],
-  globalSpeed: number,
-): { distance: number; time: number } {
-  let distance = 0;
-  let time = 0;
-  for (let i = 1; i < waypoints.length; i++) {
-    const prev = waypoints[i - 1];
-    const curr = waypoints[i];
-    const segDist = haversine(
-      prev.latitude,
-      prev.longitude,
-      curr.latitude,
-      curr.longitude,
-    );
-    const speed = curr.useGlobalSpeed ? globalSpeed : curr.speed;
-    distance += segDist;
-    time += speed > 0 ? segDist / speed : 0;
-  }
-  return { distance, time };
-}
-
-// Format seconds into human-readable duration
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.round(seconds % 60);
-  if (mins < 60) return `${mins}m${secs > 0 ? ` ${secs}s` : ""}`;
-  const hrs = Math.floor(mins / 60);
-  const remainMins = mins % 60;
-  return `${hrs}h${remainMins > 0 ? ` ${remainMins}m` : ""}`;
 }

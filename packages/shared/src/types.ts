@@ -351,6 +351,24 @@ export interface SharedMission {
   obstacles: Obstacle[];
 }
 
+// ── Weather ──────────────────────────────────────────────
+
+/**
+ * One point-in-time weather sample for a location, proxied from MET
+ * Norway's Locationforecast API (see backend/src/services/weather.ts).
+ * `precipitationMm` and `symbolCode` are `null` when the upstream data
+ * doesn't cover that time slot (its resolution degrades from hourly to
+ * 6-hourly further out).
+ */
+export interface WeatherForecastEntry {
+  time: string; // ISO 8601
+  temperatureC: number | null;
+  windSpeedMs: number | null;
+  windFromDirectionDeg: number | null;
+  precipitationMm: number | null;
+  symbolCode: string | null;
+}
+
 // ── Admin ────────────────────────────────────────────────
 
 export interface AdminUser {

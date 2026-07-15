@@ -24,6 +24,7 @@ import {
   Scissors,
   Warehouse,
   Bookmark,
+  CloudSun,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +36,7 @@ import { PoiList } from "@/components/mission/PoiList";
 import { ObstacleList } from "@/components/mission/ObstacleList";
 import { BuildingList } from "@/components/mission/BuildingList";
 import { TemplatePresetList } from "@/components/mission/TemplatePresetList";
+import { WeatherForecast } from "@/components/mission/WeatherForecast";
 import { useTemplatePresetsStore } from "@/store/templatePresetsStore";
 import { RoutesPage } from "@/components/routes/RoutesPage";
 import { SharedMissionPage } from "@/components/routes/SharedMissionPage";
@@ -61,6 +63,7 @@ type SidebarSection =
   | "obstacles"
   | "buildings"
   | "presets"
+  | "weather"
   | "config";
 
 export default function App() {
@@ -92,6 +95,7 @@ export default function App() {
     obstacles: false,
     buildings: false,
     presets: false,
+    weather: false,
     config: false,
   });
 
@@ -751,6 +755,28 @@ export default function App() {
             {expandedSections.presets && (
               <div className="max-h-[30vh] overflow-y-auto section-expand">
                 <TemplatePresetList />
+              </div>
+            )}
+          </div>
+
+          {/* Weather forecast section — SKY accent */}
+          <div className="border-l-2 border-sky-500/70 bg-sky-500/[0.03]">
+            <button
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-sky-500/10 hover:bg-sky-500/15 text-sky-400"
+              onClick={() => toggleSection("weather")}
+              title="Wind and precipitation forecast for the mission's location"
+            >
+              {expandedSections.weather ? (
+                <ChevronDown className="h-3 w-3" />
+              ) : (
+                <ChevronRight className="h-3 w-3" />
+              )}
+              <CloudSun className="h-3 w-3" />
+              Weather forecast
+            </button>
+            {expandedSections.weather && (
+              <div className="max-h-[30vh] overflow-y-auto section-expand">
+                <WeatherForecast />
               </div>
             )}
           </div>

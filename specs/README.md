@@ -9,6 +9,7 @@ Everything DroneRoute can do, explained in plain language.
 - [Templates](templates.md) — generate common flight patterns with a few clicks
 - [Obstacles](obstacles.md) — draw no-fly zones and get warnings
 - [Buildings](buildings.md) — draw building footprints to get recommended orbit settings
+- [Weather forecast](weather.md) — wind, precipitation, and temperature for the mission's location
 - [Mission settings](mission-settings.md) — choose your drone, camera, altitude mode, and safety options
 - [Map and visualization](map-and-visualization.md) — the interactive map and flight path display
 - [Saving and sharing](saving-and-sharing.md) — save missions to your account and share them with others

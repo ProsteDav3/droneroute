@@ -147,6 +147,29 @@ export function computeAltitudeForGsd(
   return footprintHeightM / (2 * Math.tan(toRad(fov.vfovDeg) / 2));
 }
 
+/**
+ * Payloads with a multispectral sensor array (NDVI/vegetation-index
+ * capture), as opposed to a plain RGB-only wide camera. Currently only the
+ * DJI Mavic 3M — its 4-band multispectral bands share alignment with the
+ * RGB module already listed in `WIDE_CAMERA_FOV`, so that entry's FOV is
+ * used for framing/GSD purposes for this payload too.
+ */
+const MULTISPECTRAL_PAYLOAD_ENUM_VALUES: readonly number[] = [68]; // M3M Camera
+
+export function isMultispectralPayload(payloadEnumValue: number): boolean {
+  return MULTISPECTRAL_PAYLOAD_ENUM_VALUES.includes(payloadEnumValue);
+}
+
+/**
+ * Recommended front/side overlap (%) for multispectral/NDVI surveys —
+ * higher than typical RGB photogrammetry (see `recommendGridSpacing`'s own
+ * 70-80%/60-70% baseline) because radiometric/vegetation-index processing
+ * needs more redundancy between bands and is more sensitive to gaps than a
+ * purely visual orthomosaic.
+ */
+export const NDVI_RECOMMENDED_FRONT_OVERLAP_PCT = 80;
+export const NDVI_RECOMMENDED_SIDE_OVERLAP_PCT = 75;
+
 export interface GridSpacingRecommendation {
   lineSpacingM: number;
   photoSpacingM: number;

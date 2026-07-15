@@ -30,6 +30,7 @@ import {
   recommendGridSpacing,
   computeGsdCm,
   computeAltitudeForGsd,
+  isMultispectralPayload,
   THERMAL_CAMERA_FOV,
 } from "@/lib/solarCamera";
 import { haversineDistance } from "@/lib/geo";
@@ -568,6 +569,18 @@ describe("recommendGridSpacing", () => {
     const tightOverlap = recommendGridSpacing(80, M3E, 90, 90)!;
     expect(tightOverlap.lineSpacingM).toBeLessThan(looseOverlap.lineSpacingM);
     expect(tightOverlap.photoSpacingM).toBeLessThan(looseOverlap.photoSpacingM);
+  });
+});
+
+describe("isMultispectralPayload", () => {
+  it("identifies the Mavic 3M (multispectral) payload", () => {
+    expect(isMultispectralPayload(68)).toBe(true);
+  });
+
+  it("returns false for RGB-only and thermal payloads", () => {
+    expect(isMultispectralPayload(66)).toBe(false); // M3E Camera
+    expect(isMultispectralPayload(89)).toBe(false); // Matrice 4T Camera
+    expect(isMultispectralPayload(999999)).toBe(false);
   });
 });
 

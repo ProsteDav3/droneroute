@@ -169,6 +169,26 @@ export function estimateFlightStats(
   return { distanceM, timeS };
 }
 
+export interface CaptureActionCounts {
+  photoCount: number;
+  videoCount: number;
+}
+
+/** Count `takePhoto` and `startRecord` actions across all waypoints. */
+export function countCaptureActions(
+  waypoints: { actions: { actionType: string }[] }[],
+): CaptureActionCounts {
+  let photoCount = 0;
+  let videoCount = 0;
+  for (const wp of waypoints) {
+    for (const action of wp.actions) {
+      if (action.actionType === "takePhoto") photoCount++;
+      else if (action.actionType === "startRecord") videoCount++;
+    }
+  }
+  return { photoCount, videoCount };
+}
+
 /** Format seconds into a human-readable duration, e.g. "1m 5s", "2h 3m". */
 export function formatFlightDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   estimateFlightStats,
   formatFlightDuration,
+  countCaptureActions,
   haversine,
   type FlightStatsWaypoint,
 } from "./flightStats";
@@ -173,5 +174,28 @@ describe("formatFlightDuration", () => {
     expect(formatFlightDuration(120)).toBe("2m");
     expect(formatFlightDuration(3660)).toBe("1h 1m");
     expect(formatFlightDuration(3600)).toBe("1h");
+  });
+});
+
+describe("countCaptureActions", () => {
+  it("counts takePhoto and startRecord actions across all waypoints", () => {
+    const waypoints = [
+      { actions: [{ actionType: "takePhoto" }, { actionType: "hover" }] },
+      { actions: [{ actionType: "takePhoto" }] },
+      { actions: [{ actionType: "startRecord" }] },
+      { actions: [] },
+    ];
+    expect(countCaptureActions(waypoints)).toEqual({
+      photoCount: 2,
+      videoCount: 1,
+    });
+  });
+
+  it("returns zero counts for waypoints with no capture actions", () => {
+    expect(countCaptureActions([{ actions: [] }])).toEqual({
+      photoCount: 0,
+      videoCount: 0,
+    });
+    expect(countCaptureActions([])).toEqual({ photoCount: 0, videoCount: 0 });
   });
 });

@@ -22,6 +22,7 @@ Bring in existing missions or export your planned flight as a file ready for DJI
   appears if any single segment alone would already exceed your configured
   battery limit.
 - **Import** an existing KMZ file to load its waypoints, actions, POIs, and settings into the editor.
+- **PDF report**: download a client-facing summary of the planned mission — drone/camera used, waypoint count, flight distance and estimated duration, altitude range, photo/video action counts, and a table of every waypoint's coordinates, altitude, and actions.
 
 ## How it works
 
@@ -53,6 +54,16 @@ Bring in existing missions or export your planned flight as a file ready for DJI
 1. Click the import button.
 2. Select a KMZ file from your computer.
 3. The app reads the file and loads all waypoints, actions, and settings into the editor.
+
+### PDF report
+
+1. Plan a route with 2 or more waypoints.
+2. Click "Stáhnout PDF report".
+3. A PDF downloads with the mission name, drone/camera, waypoint count,
+   distance, estimated flight time, altitude range, photo/video action
+   counts, and a table listing every waypoint (very dense missions show the
+   first 200 rows with a note about how many more exist, to keep the report
+   a manageable length).
 
 ## Good to know
 

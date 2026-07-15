@@ -14,6 +14,7 @@ import {
   Square,
   Spline,
   Cable,
+  Fan,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -79,6 +80,14 @@ const TEMPLATE_OPTIONS: {
     icon: Cable,
     description: "Most, potrubí, vedení — souběžné průlety podél trasy",
     key: "L",
+  },
+  {
+    type: "turbine",
+    label: "Inspekce listů turbíny",
+    shortLabel: "Turbína",
+    icon: Fan,
+    description: "Klikněte na rotor — obletí každý list turbíny zblízka",
+    key: "T",
   },
 ];
 
@@ -234,6 +243,8 @@ export function MapToolbar() {
               <Sun className="h-4 w-4" />
             ) : templateMode === "corridor" ? (
               <Cable className="h-4 w-4" />
+            ) : templateMode === "turbine" ? (
+              <Fan className="h-4 w-4" />
             ) : (
               <Grid3X3 className="h-4 w-4" />
             )}

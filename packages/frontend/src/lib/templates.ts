@@ -78,7 +78,8 @@ export type TemplateType =
   | "facade"
   | "pencil"
   | "solar"
-  | "corridor";
+  | "corridor"
+  | "turbine";
 
 /**
  * "photo" takes a photo at every waypoint (the original behavior). "video"
@@ -193,6 +194,31 @@ export interface CorridorParams {
   captureMode?: CaptureMode;
 }
 
+export interface TurbineParams {
+  /** Rotor hub position, [lat, lng]. */
+  hubCenter: [number, number];
+  /** Height (AGL) of the rotor hub. */
+  hubHeight: number;
+  bladeLengthM: number;
+  numBlades: number;
+  /** Compass bearing the rotor's sweep-plane faces (0 = north) — perpendicular to the disc the blades sweep through. Must be set to match the actual turbine's orientation; there's no sensible default. */
+  rotorYawDeg: number;
+  /** Angle of blade 1 within the sweep-plane's own local frame, 0 = straight up, increasing clockwise (as seen facing the rotor). The other blades are evenly spaced from it by 360/numBlades. */
+  blade1AngleDeg: number;
+  /** Standoff distance (m) from the sweep-plane the drone hovers at. */
+  standoffM: number;
+  /** Extra chordwise offset (m) between passes, for covering the leading vs. trailing edge of the blade. */
+  edgeSpacingM: number;
+  /** How many passes to fly per blade. 1 = along the blade's own centerline only; 2+ spread symmetrically across the chord for edge coverage. */
+  numPasses: number;
+  numPointsPerBlade: number;
+  speed: number;
+  gimbalPitchAngle: number;
+  /** Creates a POI at the hub, purely as a visual reference — heading is baked into each waypoint directly (like Orbit), not derived from this POI. */
+  createPoi: boolean;
+  captureMode?: CaptureMode;
+}
+
 export interface SolarParams {
   /** Polygon boundary traced around the panel array, [lat, lng][], 3+ points. */
   vertices: [number, number][];
@@ -213,7 +239,8 @@ export type TemplateParams =
   | FacadeParams
   | PencilParams
   | SolarParams
-  | CorridorParams;
+  | CorridorParams
+  | TurbineParams;
 
 export interface TemplateResult {
   waypoints: Omit<Waypoint, "index" | "name">[];
@@ -272,6 +299,22 @@ export const DEFAULT_CORRIDOR_PARAMS: Omit<CorridorParams, "path"> = {
   speed: 5,
   gimbalPitchAngle: -30,
   reverse: false,
+  captureMode: "photo",
+};
+
+export const DEFAULT_TURBINE_PARAMS: Omit<TurbineParams, "hubCenter"> = {
+  hubHeight: 90,
+  bladeLengthM: 55,
+  numBlades: 3,
+  rotorYawDeg: 0,
+  blade1AngleDeg: 0,
+  standoffM: 10,
+  edgeSpacingM: 3,
+  numPasses: 2,
+  numPointsPerBlade: 15,
+  speed: 3,
+  gimbalPitchAngle: 0,
+  createPoi: true,
   captureMode: "photo",
 };
 
@@ -1207,6 +1250,131 @@ export function generateCorridor(params: CorridorParams): TemplateResult {
   }
 
   return { waypoints, pois: [] };
+}
+
+// ── Wind turbine blade inspection ─────────────────────────
+
+/**
+ * Generates a close-proximity inspection flight for each blade of a wind
+ * turbine, from a single clicked hub position. Models the blades as lying
+ * in a vertical "sweep-plane" disc facing `rotorYawDeg` (perpendicular to
+ * the wind): each blade radiates outward from the hub at its own angle
+ * within that disc (`blade1AngleDeg` for blade 1, evenly spaced for the
+ * rest), contributing partly to altitude (the "up" component) and partly
+ * to a horizontal chordwise offset (the "sweep" component, along
+ * `rotorYawDeg + 90`). The drone hovers `standoffM` in front of the disc
+ * (along `rotorYawDeg`) and flies root-to-tip along each blade; extra
+ * passes spread `edgeSpacingM` apart across the chord cover the leading
+ * and trailing edges. Heading is baked directly into each waypoint (fixed,
+ * pointing back at the hub) the same way `generateOrbit` does, so the
+ * camera keeps facing the turbine regardless of how far up the blade the
+ * drone currently is.
+ */
+export function generateTurbineInspection(
+  params: TurbineParams,
+): TemplateResult {
+  const {
+    hubCenter,
+    hubHeight,
+    bladeLengthM,
+    numBlades,
+    rotorYawDeg,
+    blade1AngleDeg,
+    standoffM,
+    edgeSpacingM,
+    numPasses,
+    numPointsPerBlade,
+    speed,
+    gimbalPitchAngle,
+    createPoi,
+    captureMode,
+  } = params;
+  const [hubLat, hubLng] = hubCenter;
+
+  if (numBlades < 1 || numPointsPerBlade < 2) {
+    return { waypoints: [], pois: [] };
+  }
+
+  const safeNumPasses = Math.max(1, Math.round(numPasses));
+  const chordBearing = rotorYawDeg + 90;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+
+  const takePhotoAction: WaypointAction = {
+    actionId: 0,
+    actionType: "takePhoto",
+    params: { payloadPositionIndex: 0 },
+  };
+
+  const waypoints: TemplateResult["waypoints"] = [];
+
+  for (let b = 0; b < numBlades; b++) {
+    const bladeAngleRad = toRad(blade1AngleDeg + (b * 360) / numBlades);
+    const upFraction = Math.cos(bladeAngleRad);
+    const chordFraction = Math.sin(bladeAngleRad);
+
+    for (let pass = 0; pass < safeNumPasses; pass++) {
+      const passChordOffsetM = (pass - (safeNumPasses - 1) / 2) * edgeSpacingM;
+      const passReversed = pass % 2 === 1;
+      const order = Array.from({ length: numPointsPerBlade }, (_, i) => i);
+      if (passReversed) order.reverse();
+
+      for (const i of order) {
+        const f = i / (numPointsPerBlade - 1);
+        const altitude = hubHeight + bladeLengthM * f * upFraction;
+        const chordOffsetM = bladeLengthM * f * chordFraction;
+
+        const [chordLat, chordLng] = destinationPoint(
+          hubLat,
+          hubLng,
+          chordOffsetM + passChordOffsetM,
+          chordBearing,
+        );
+        const [lat, lng] = destinationPoint(
+          chordLat,
+          chordLng,
+          standoffM,
+          rotorYawDeg,
+        );
+
+        const headingAngle = bearing(lat, lng, hubLat, hubLng);
+        const normalizedHeading =
+          headingAngle > 180 ? headingAngle - 360 : headingAngle;
+
+        waypoints.push({
+          ...DEFAULT_WAYPOINT,
+          latitude: lat,
+          longitude: lng,
+          height: altitude,
+          speed,
+          useGlobalSpeed: false,
+          useGlobalHeadingParam: false,
+          headingMode: "fixed" as const,
+          headingAngle: Math.round(normalizedHeading),
+          gimbalPitchAngle,
+          turnMode: "toPointAndPassWithContinuityCurvature" as const,
+          useGlobalTurnParam: false,
+          actions: captureMode === "photo" ? [{ ...takePhotoAction }] : [],
+        });
+      }
+    }
+  }
+
+  if (captureMode === "video") {
+    applyVideoCaptureActions(waypoints);
+  }
+
+  const pois: TemplateResult["pois"] = createPoi
+    ? [
+        {
+          name: "Rotor turbíny",
+          latitude: hubLat,
+          longitude: hubLng,
+          height: hubHeight,
+        },
+      ]
+    : [];
+
+  return { waypoints, pois };
 }
 
 // ── Solar panel survey (polygon-clipped lawn-mower grid) ─

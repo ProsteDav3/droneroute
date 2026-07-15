@@ -18,6 +18,8 @@ import {
   DEFAULT_PENCIL_PARAMS,
   generateCorridor,
   DEFAULT_CORRIDOR_PARAMS,
+  generateTurbineInspection,
+  DEFAULT_TURBINE_PARAMS,
   bearing,
   destinationPoint,
 } from "./templates";
@@ -27,6 +29,7 @@ import type {
   GridParams,
   FacadeParams,
   CorridorParams,
+  TurbineParams,
 } from "./templates";
 import {
   recommendSolarSpacing,
@@ -946,6 +949,155 @@ describe("capture mode (photo/video)", () => {
           wp.actions.length === 1 && wp.actions[0].actionType === "takePhoto",
       ),
     ).toBe(true);
+  });
+
+  it("generateTurbineInspection: returns empty when numBlades < 1 or numPointsPerBlade < 2", () => {
+    expect(
+      generateTurbineInspection({
+        ...DEFAULT_TURBINE_PARAMS,
+        hubCenter: CENTER,
+        numBlades: 0,
+      } satisfies TurbineParams).waypoints,
+    ).toEqual([]);
+    expect(
+      generateTurbineInspection({
+        ...DEFAULT_TURBINE_PARAMS,
+        hubCenter: CENTER,
+        numPointsPerBlade: 1,
+      } satisfies TurbineParams).waypoints,
+    ).toEqual([]);
+  });
+
+  it("generateTurbineInspection: produces numBlades * numPasses * numPointsPerBlade waypoints", () => {
+    const result = generateTurbineInspection({
+      ...DEFAULT_TURBINE_PARAMS,
+      hubCenter: CENTER,
+      numBlades: 3,
+      numPasses: 2,
+      numPointsPerBlade: 10,
+    } satisfies TurbineParams);
+    expect(result.waypoints).toHaveLength(3 * 2 * 10);
+  });
+
+  it("generateTurbineInspection: a vertical blade (angle 0) climbs from hub height to hub height + blade length, at a constant lateral position exactly standoffM from the hub", () => {
+    const standoffM = 12;
+    const result = generateTurbineInspection({
+      ...DEFAULT_TURBINE_PARAMS,
+      hubCenter: CENTER,
+      hubHeight: 90,
+      bladeLengthM: 50,
+      numBlades: 1,
+      numPasses: 1,
+      numPointsPerBlade: 5,
+      rotorYawDeg: 0,
+      blade1AngleDeg: 0,
+      standoffM,
+    } satisfies TurbineParams);
+
+    expect(result.waypoints[0].height).toBeCloseTo(90, 5);
+    expect(result.waypoints[4].height).toBeCloseTo(140, 5);
+    const lat0 = result.waypoints[0].latitude;
+    const lng0 = result.waypoints[0].longitude;
+    for (const wp of result.waypoints) {
+      expect(wp.latitude).toBeCloseTo(lat0, 6);
+      expect(wp.longitude).toBeCloseTo(lng0, 6);
+      // The blade has zero chordwise offset at this angle, so the only
+      // horizontal displacement from the hub is the standoff itself — a
+      // regression that dropped or zeroed that offset must fail this.
+      const distFromHub = haversineDistance(
+        CENTER[0],
+        CENTER[1],
+        wp.latitude,
+        wp.longitude,
+      );
+      expect(distFromHub).toBeCloseTo(standoffM, 0);
+    }
+  });
+
+  it("generateTurbineInspection: a horizontal blade (angle 90) stays at hub height and moves laterally by ~bladeLengthM", () => {
+    const result = generateTurbineInspection({
+      ...DEFAULT_TURBINE_PARAMS,
+      hubCenter: CENTER,
+      hubHeight: 90,
+      bladeLengthM: 50,
+      numBlades: 1,
+      numPasses: 1,
+      numPointsPerBlade: 5,
+      rotorYawDeg: 0,
+      blade1AngleDeg: 90,
+    } satisfies TurbineParams);
+
+    for (const wp of result.waypoints) {
+      expect(wp.height).toBeCloseTo(90, 3);
+    }
+    const distRootToTip = haversineDistance(
+      result.waypoints[0].latitude,
+      result.waypoints[0].longitude,
+      result.waypoints[4].latitude,
+      result.waypoints[4].longitude,
+    );
+    expect(distRootToTip).toBeCloseTo(50, 0);
+  });
+
+  it("generateTurbineInspection: heading is fixed and points back toward the hub", () => {
+    const result = generateTurbineInspection({
+      ...DEFAULT_TURBINE_PARAMS,
+      hubCenter: CENTER,
+      numBlades: 1,
+      numPasses: 1,
+      numPointsPerBlade: 5,
+      rotorYawDeg: 0,
+      blade1AngleDeg: 90,
+    } satisfies TurbineParams);
+
+    for (const wp of result.waypoints) {
+      expect(wp.headingMode).toBe("fixed");
+      const expectedHeading = bearing(
+        wp.latitude,
+        wp.longitude,
+        CENTER[0],
+        CENTER[1],
+      );
+      const normalized =
+        expectedHeading > 180 ? expectedHeading - 360 : expectedHeading;
+      expect(wp.headingAngle).toBe(Math.round(normalized));
+    }
+  });
+
+  it("generateTurbineInspection: creates a POI at the hub only when createPoi is true", () => {
+    const withPoi = generateTurbineInspection({
+      ...DEFAULT_TURBINE_PARAMS,
+      hubCenter: CENTER,
+      createPoi: true,
+    } satisfies TurbineParams);
+    expect(withPoi.pois).toHaveLength(1);
+    expect(withPoi.pois[0].latitude).toBeCloseTo(CENTER[0], 6);
+
+    const withoutPoi = generateTurbineInspection({
+      ...DEFAULT_TURBINE_PARAMS,
+      hubCenter: CENTER,
+      createPoi: false,
+    } satisfies TurbineParams);
+    expect(withoutPoi.pois).toEqual([]);
+  });
+
+  it("generateTurbineInspection: video mode puts startRecord/stopRecord only on the first/last waypoint", () => {
+    const result = generateTurbineInspection({
+      ...DEFAULT_TURBINE_PARAMS,
+      hubCenter: CENTER,
+      numBlades: 3,
+      numPasses: 2,
+      numPointsPerBlade: 5,
+      captureMode: "video",
+    } satisfies TurbineParams);
+
+    expect(result.waypoints[0].actions[0]?.actionType).toBe("startRecord");
+    expect(
+      result.waypoints[result.waypoints.length - 1].actions[0]?.actionType,
+    ).toBe("stopRecord");
+    for (const wp of result.waypoints.slice(1, -1)) {
+      expect(wp.actions).toEqual([]);
+    }
   });
 
   it("generateFacade: legacy addPhotos:true with no captureMode still behaves as photo mode (regression)", () => {

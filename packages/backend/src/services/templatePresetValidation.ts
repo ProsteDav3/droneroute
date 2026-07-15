@@ -8,7 +8,15 @@
 
 const MAX_NAME_LEN = 100;
 const MAX_PARAMS_JSON_LEN = 20000;
-const VALID_TYPES = ["orbit", "grid", "facade", "pencil", "solar", "corridor"];
+const VALID_TYPES = [
+  "orbit",
+  "grid",
+  "facade",
+  "pencil",
+  "solar",
+  "corridor",
+  "turbine",
+];
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);

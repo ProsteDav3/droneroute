@@ -267,6 +267,10 @@ export function TemplateConfigPanel({
     } | null = null;
 
     const handlePointerDown = (e: PointerEvent) => {
+      // The whole header row is the drag handle, but the close button
+      // lives inside it too — let its own click work normally instead of
+      // starting a drag underneath it.
+      if ((e.target as HTMLElement).closest("button")) return;
       e.preventDefault();
       // Track via movementX/movementY (per-event relative deltas), not
       // absolute clientX/clientY — a real machine hit a browser-level bug
@@ -354,16 +358,17 @@ export function TemplateConfigPanel({
       style={positionStyle}
       className={`${positionClassName} z-20 bg-card/95 backdrop-blur-sm border border-border rounded-lg shadow-2xl p-3 min-w-[320px] max-w-[420px]`}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-1">
-        <div
-          ref={dragHandleRef}
-          className="flex items-center gap-2 cursor-grab active:cursor-grabbing select-none"
-          style={{ touchAction: "none" }}
-          title="Přetažením přesunete panel"
-          draggable={false}
-          onDragStart={(e) => e.preventDefault()}
-        >
+      {/* Header — the whole row is the drag handle (see the pointerdown
+          guard below that excludes the close button specifically) */}
+      <div
+        ref={dragHandleRef}
+        className="flex items-center justify-between mb-1 cursor-grab active:cursor-grabbing select-none"
+        style={{ touchAction: "none" }}
+        title="Přetažením přesunete panel"
+        draggable={false}
+        onDragStart={(e) => e.preventDefault()}
+      >
+        <div className="flex items-center gap-2">
           <GripHorizontal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <span className="text-xs font-semibold uppercase tracking-wider text-purple-400">
             {title}

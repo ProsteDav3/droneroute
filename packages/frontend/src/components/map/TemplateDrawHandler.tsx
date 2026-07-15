@@ -127,38 +127,23 @@ function OrbitCenterHandle({
 }
 
 /**
- * A draggable handle for an orbit's independent camera aim point
- * (`OrbitParams.poiCenter`), only rendered once that field is set (see the
- * "Uzamknout POI" toggle in TemplateConfigPanel). Lets the flight circle be
- * resized/moved via OrbitCenterHandle while this point — and thus what the
- * camera looks at — stays put.
+ * A fixed (non-draggable) marker showing an orbit's independent camera aim
+ * point (`OrbitParams.poiCenter`), only rendered once that field is set (see
+ * the "Uzamknout POI" toggle in TemplateConfigPanel). Deliberately not
+ * draggable: the whole point of locking the POI is that it stays put while
+ * `OrbitCenterHandle` (rendered after this one, so it sits on top when the
+ * two overlap right after locking) is used to resize/move the orbit circle
+ * — previously both handles were draggable and overlapped exactly at lock
+ * time, so grabbing "the orbit handle" often grabbed this one instead,
+ * moving the POI by accident and forcing it to be dragged back afterward.
  */
-function OrbitPoiHandle({
-  poiCenter,
-  onMove,
-}: {
-  poiCenter: [number, number];
-  onMove: (poiCenter: [number, number]) => void;
-}) {
+function OrbitPoiHandle({ poiCenter }: { poiCenter: [number, number] }) {
   const [lat, lng] = poiCenter;
 
-  const handleDrag = useCallback(
-    (e: { lngLat: { lng: number; lat: number } }) => {
-      onMove([e.lngLat.lat, e.lngLat.lng]);
-    },
-    [onMove],
-  );
-
   return (
-    <Marker
-      longitude={lng}
-      latitude={lat}
-      anchor="center"
-      draggable
-      onDrag={handleDrag}
-    >
+    <Marker longitude={lng} latitude={lat} anchor="center">
       <div
-        title="Přetažením posunete cíl kamery (POI je uzamčen odděleně od středu orbitu)"
+        title="Cíl kamery (POI je uzamčen na tomto místě, odděleně od středu orbitu)"
         style={{
           width: 18,
           height: 18,
@@ -166,7 +151,6 @@ function OrbitPoiHandle({
           background: "#00c2ff",
           border: "3px solid #33cfff",
           boxShadow: "0 0 0 4px rgba(0,194,255,0.35)",
-          cursor: "grab",
         }}
       />
     </Marker>
@@ -662,20 +646,15 @@ export function TemplateDrawHandler() {
               });
             }}
           />
+          {orbitParams.poiCenter && (
+            <OrbitPoiHandle poiCenter={orbitParams.poiCenter} />
+          )}
           <OrbitCenterHandle
             center={orbitParams.center}
             onMove={(newCenter) =>
               setOrbitParams({ ...orbitParams, center: newCenter })
             }
           />
-          {orbitParams.poiCenter && (
-            <OrbitPoiHandle
-              poiCenter={orbitParams.poiCenter}
-              onMove={(newPoiCenter) =>
-                setOrbitParams({ ...orbitParams, poiCenter: newPoiCenter })
-              }
-            />
-          )}
         </>
       )}
 

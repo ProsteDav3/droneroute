@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useRef, useEffect, useState, type CSSProperties } from "react";
 import { toast } from "sonner";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Check, X, MapPin, Lock, Unlock, Save } from "lucide-react";
+import {
+  Check,
+  X,
+  MapPin,
+  Lock,
+  Unlock,
+  Save,
+  GripHorizontal,
+} from "lucide-react";
 import { LocationSearch } from "@/components/ui/location-search";
 import { useMissionStore } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
@@ -230,14 +238,85 @@ export function TemplateConfigPanel({
     };
   }, []);
 
+  // Drag-to-reposition, grabbed by the title/badge area of the header (not
+  // the close button). The panel defaults to bottom-center over the map,
+  // which can sit right on top of the area the user is working on — this
+  // lets it be moved out of the way instead of forcing a zoom-out to see
+  // underneath it. Plain native listeners (not React's onPointerDown), same
+  // as the stopPropagation effect above, since a native pointerdown fired on
+  // this panel never reaches React's root-delegated listener once
+  // `stop()` above calls stopPropagation on it.
+  const dragHandleRef = useRef<HTMLDivElement>(null);
+  const [dragPosition, setDragPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const handle = dragHandleRef.current;
+    const panel = panelRef.current;
+    if (!handle || !panel) return;
+
+    const handlePointerDown = (e: PointerEvent) => {
+      e.preventDefault();
+      const parent = panel.offsetParent as HTMLElement | null;
+      const panelRect = panel.getBoundingClientRect();
+      const parentRect = parent?.getBoundingClientRect();
+      const baseLeft = panelRect.left - (parentRect?.left ?? 0);
+      const baseTop = panelRect.top - (parentRect?.top ?? 0);
+      const startX = e.clientX;
+      const startY = e.clientY;
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        moveEvent.preventDefault();
+        let left = baseLeft + (moveEvent.clientX - startX);
+        let top = baseTop + (moveEvent.clientY - startY);
+        if (parent) {
+          const maxLeft = Math.max(parent.clientWidth - panel.offsetWidth, 0);
+          const maxTop = Math.max(parent.clientHeight - panel.offsetHeight, 0);
+          left = Math.min(Math.max(left, 0), maxLeft);
+          top = Math.min(Math.max(top, 0), maxTop);
+        }
+        setDragPosition({ left, top });
+      };
+
+      const handlePointerUp = () => {
+        window.removeEventListener("pointermove", handlePointerMove);
+        window.removeEventListener("pointerup", handlePointerUp);
+      };
+
+      window.addEventListener("pointermove", handlePointerMove);
+      window.addEventListener("pointerup", handlePointerUp);
+    };
+
+    handle.addEventListener("pointerdown", handlePointerDown);
+    return () => handle.removeEventListener("pointerdown", handlePointerDown);
+  }, []);
+
+  const positionStyle: CSSProperties = dragPosition
+    ? {
+        left: dragPosition.left,
+        top: dragPosition.top,
+        bottom: "auto",
+        transform: "none",
+      }
+    : {};
+
   return (
     <div
       ref={panelRef}
+      style={positionStyle}
       className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-card/95 backdrop-blur-sm border border-border rounded-lg shadow-2xl p-3 min-w-[320px] max-w-[420px]"
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-2">
+        <div
+          ref={dragHandleRef}
+          className="flex items-center gap-2 cursor-grab active:cursor-grabbing select-none"
+          style={{ touchAction: "none" }}
+          title="Přetažením přesunete panel"
+        >
+          <GripHorizontal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <span className="text-xs font-semibold uppercase tracking-wider text-purple-400">
             {title}
           </span>

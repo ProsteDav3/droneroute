@@ -15,6 +15,7 @@ import type {
   OrbitParams,
 } from "@/lib/templates";
 import { orbitParamsForBuilding } from "@/lib/templates";
+import { WIDE_CAMERA_FOV } from "@/lib/solarCamera";
 import { pointInPolygon } from "@/lib/geo";
 
 export type SelectionMode = "replace" | "toggle" | "range";
@@ -469,7 +470,10 @@ export const useMissionStore = create<MissionState>((set, get) => ({
       // recommended altitude/radius/gimbal pitch for orbiting it, instead
       // of generating a route automatically.
       const pendingOrbitParams = building
-        ? orbitParamsForBuilding(building)
+        ? orbitParamsForBuilding(
+            building,
+            WIDE_CAMERA_FOV[state.config.payloadEnumValue]?.vfovDeg,
+          )
         : state.pendingOrbitParams;
 
       return {

@@ -127,6 +127,53 @@ function OrbitCenterHandle({
 }
 
 /**
+ * A draggable handle for an orbit's independent camera aim point
+ * (`OrbitParams.poiCenter`), only rendered once that field is set (see the
+ * "Uzamknout POI" toggle in TemplateConfigPanel). Lets the flight circle be
+ * resized/moved via OrbitCenterHandle while this point — and thus what the
+ * camera looks at — stays put.
+ */
+function OrbitPoiHandle({
+  poiCenter,
+  onMove,
+}: {
+  poiCenter: [number, number];
+  onMove: (poiCenter: [number, number]) => void;
+}) {
+  const [lat, lng] = poiCenter;
+
+  const handleDrag = useCallback(
+    (e: { lngLat: { lng: number; lat: number } }) => {
+      onMove([e.lngLat.lat, e.lngLat.lng]);
+    },
+    [onMove],
+  );
+
+  return (
+    <Marker
+      longitude={lng}
+      latitude={lat}
+      anchor="center"
+      draggable
+      onDrag={handleDrag}
+    >
+      <div
+        title="Přetažením posunete cíl kamery (POI je uzamčen odděleně od středu orbitu)"
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: "50%",
+          background: "#00c2ff",
+          border: "3px solid #33cfff",
+          boxShadow: "0 0 0 4px rgba(0,194,255,0.35)",
+          cursor: "grab",
+        }}
+      />
+    </Marker>
+  );
+}
+
+/**
  * A draggable handle sitting on the orbit's start bearing. Dragging it
  * rotates the whole arc (keeping its angular width constant) around the
  * center — lets you pick exactly where the first waypoint goes by eye,
@@ -621,6 +668,14 @@ export function TemplateDrawHandler() {
               setOrbitParams({ ...orbitParams, center: newCenter })
             }
           />
+          {orbitParams.poiCenter && (
+            <OrbitPoiHandle
+              poiCenter={orbitParams.poiCenter}
+              onMove={(newPoiCenter) =>
+                setOrbitParams({ ...orbitParams, poiCenter: newPoiCenter })
+              }
+            />
+          )}
         </>
       )}
 

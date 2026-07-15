@@ -249,9 +249,10 @@ export function TemplateDrawHandler() {
   const { current: map } = useMap();
 
   // Only react to a pending preset load when it's one of the types this
-  // handler owns — a preset for "pencil"/"solar" is consumed by those
-  // handlers instead, and must not be treated as "busy" here (which would
-  // otherwise wrongly skip resetState() on the next unrelated mode change).
+  // handler owns — a preset for "pencil"/"solar"/"corridor" is consumed by
+  // those handlers instead, and must not be treated as "busy" here (which
+  // would otherwise wrongly skip resetState() on the next unrelated mode
+  // change).
   const pendingPresetForThisHandler =
     pendingPresetLoad &&
     (pendingPresetLoad.type === "orbit" ||

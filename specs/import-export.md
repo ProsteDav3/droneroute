@@ -15,6 +15,12 @@ Bring in existing missions or export your planned flight as a file ready for DJI
 - **Save segments as missions**: instead of (or in addition to) downloading
   the zip, save every leg as its own named mission in your account, right
   alongside the original full-route mission — requires being signed in.
+- **Whole-project flight summary**: next to the segment export/save buttons, see
+  how many separate flights the whole revisit schedule needs (one per segment,
+  since each leg is its own standalone flight with its own take-off and
+  landing) and the combined flight time across all of them — a warning
+  appears if any single segment alone would already exceed your configured
+  battery limit.
 - **Import** an existing KMZ file to load its waypoints, actions, POIs, and settings into the editor.
 
 ## How it works

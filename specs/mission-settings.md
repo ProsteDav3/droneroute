@@ -27,6 +27,14 @@ Configure your drone model, camera, altitude reference, and safety options for t
 
 - The available cameras change depending on which drone you select.
 - If the estimated flight time exceeds the battery limit you set, a warning appears.
+- The flight time estimate accounts for more than straight-line distance ÷
+  speed: it adds acceleration/deceleration time at the start and end of the
+  flight, extra time for waypoints that bring the drone to a full stop to
+  turn, a smaller slowdown for sharp turns that aren't otherwise smoothed
+  out, and any explicit hover-action time. It's still an estimate, not an
+  exact match to what DJI's own apps calculate (their flight-dynamics model
+  isn't published), but it's meaningfully closer than a flat distance/speed
+  calculation.
 - Height reference affects how altitude values are interpreted by the drone — choose the one that matches your operational needs. The default is **above ground level**.
 - All height fields enforce a minimum of 1 meter.
 - You can set default values for all mission settings in the **Mission defaults** tab of the settings dialog. New missions will use those defaults instead of the factory defaults.

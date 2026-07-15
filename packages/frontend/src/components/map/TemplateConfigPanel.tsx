@@ -531,7 +531,7 @@ export function TemplateConfigPanel({
               className="h-7 text-xs"
             />
           </div>
-          <div className="flex items-end gap-2">
+          <div className="col-span-2 flex flex-wrap items-center gap-x-3 gap-y-1">
             <label className="flex items-center gap-1.5 text-xs cursor-pointer">
               <input
                 type="checkbox"
@@ -574,7 +574,7 @@ export function TemplateConfigPanel({
               Uzamknout POI
             </label>
           </div>
-          <div>
+          <div className="col-span-2">
             <CaptureModeToggle
               value={orbitParams.captureMode === "video" ? "video" : "photo"}
               onChange={(mode) =>

@@ -290,17 +290,37 @@ export function computeAltitudeForPitch(
 // ── FOV-aware object framing ──────────────────────────────
 
 /**
- * Target fraction of the camera's true vertical FOV the framed object should
- * occupy. Deliberately moderate (not close to 1): the achievable span for a
- * FIXED radius is capped at 2*atan(poiHeight/(2*radiusM)) (maximized at
- * altitude=poiHeight/2), which shrinks fast as radius grows — a target much
- * above ~0.5 would make most realistic (radius comparable to or larger than
- * building height) orbit distances unsolvable, forcing the graceful
- * computeGimbalPitch fallback far more often than intended. 0.5 stays
- * comfortably framed (not tiny) while remaining solvable across the radius
- * range this app's orbit-on-building seeding actually produces.
+ * Aspirational fraction of the camera's true vertical FOV the framed object
+ * should occupy, used whenever it's actually achievable. The achievable
+ * span for a fixed radius is capped at 2*atan(poiHeight/(2*radiusM))
+ * (maximized at altitude=poiHeight/2), which shrinks fast as radius grows —
+ * radius/altitude combinations well beyond a building's own height (the
+ * overwhelmingly common case: flying 75-150m over a 30-40m building) make
+ * even a modest fixed fraction unreachable. `computeFramedForRadius`/
+ * `computeFramedForAltitude` cap their actual target at whatever's
+ * achievable for the given fixed dimension (see `maxSpanForRadius`/
+ * `maxSpanForAltitude`) instead of failing outright, so this constant only
+ * matters for close-range shots where hitting it is actually possible.
  */
 const FOV_SAFETY_MARGIN = 0.5;
+/** Stay a hair under the true maximum so the solve keeps two distinct (if close) roots instead of sitting exactly on a repeated-root boundary. */
+const MAX_SPAN_SAFETY_FACTOR = 0.98;
+
+/** Maximum vertical span (radians) any altitude can achieve for a fixed radiusM — occurs at altitude = poiHeight/2. */
+function maxSpanForRadius(poiHeight: number, radiusM: number): number {
+  return 2 * Math.atan(poiHeight / (2 * radiusM));
+}
+
+/**
+ * Maximum vertical span (radians) any radius can achieve for a fixed
+ * altitude, valid only for altitude > poiHeight (camera above the object's
+ * top) — occurs at radiusM = sqrt(altitude*(altitude-poiHeight)).
+ */
+function maxSpanForAltitude(altitude: number, poiHeight: number): number {
+  return Math.atan(
+    poiHeight / (2 * Math.sqrt(altitude * (altitude - poiHeight))),
+  );
+}
 
 /** Sane radius bounds for values derived from a framing solve. */
 const MIN_RADIUS_M = 5;
@@ -351,15 +371,18 @@ function computeFramingPitch(
 
 /**
  * Altitude (and centering gimbal pitch) needed so an object spanning ground
- * level (0m) to `poiHeight` fits inside `vfovDeg` (minus `FOV_SAFETY_MARGIN`
- * headroom), viewed from `radiusM` away horizontally. Two altitudes can
- * produce the same angular span (a steep-close vs. a flat-far viewing
- * geometry) — `prevAltitude`, when given, picks whichever is closer to avoid
- * a visual jump on edit; otherwise the higher (looking-down) altitude is
- * preferred, matching this app's usual -45°-ish orbit convention. Returns
- * `null` when `poiHeight`/`radiusM` aren't positive, or no altitude can fit
- * the object in frame at all (e.g. radius too large for the target span) —
- * callers must fall back to `computeGimbalPitch`-based linking in that case.
+ * level (0m) to `poiHeight` fits inside `vfovDeg`, viewed from `radiusM`
+ * away horizontally. Targets `FOV_SAFETY_MARGIN` of the camera's FOV when
+ * that's achievable at this radius; otherwise targets the maximum span this
+ * radius can ever achieve (see `maxSpanForRadius`) instead of failing — a
+ * real solution always exists here for any `radiusM`/`poiHeight` > 0. Two
+ * altitudes can produce the same angular span (a steep-close vs. a flat-far
+ * viewing geometry) — `prevAltitude`, when given, picks whichever is closer
+ * to avoid a visual jump on edit; otherwise the higher (looking-down)
+ * altitude is preferred, matching this app's usual -45°-ish orbit
+ * convention. Returns `null` only when `poiHeight`/`radiusM` aren't
+ * positive — callers must fall back to `computeGimbalPitch`-based linking
+ * in that case.
  */
 export function computeFramedForRadius(
   radiusM: number,
@@ -368,7 +391,10 @@ export function computeFramedForRadius(
   prevAltitude?: number,
 ): { altitude: number; gimbalPitchDeg: number } | null {
   if (poiHeight <= 0 || radiusM <= 0) return null;
-  const targetSpanRad = (vfovDeg * FOV_SAFETY_MARGIN * Math.PI) / 180;
+  const desiredSpanRad = (vfovDeg * FOV_SAFETY_MARGIN * Math.PI) / 180;
+  const maxSpanRad =
+    maxSpanForRadius(poiHeight, radiusM) * MAX_SPAN_SAFETY_FACTOR;
+  const targetSpanRad = Math.min(desiredSpanRad, maxSpanRad);
   const T = Math.tan(targetSpanRad);
   if (!(T > 0)) return null;
   // T*a^2 - T*poiHeight*a + (T*radiusM^2 - poiHeight*radiusM) = 0
@@ -393,10 +419,20 @@ export function computeFramedForRadius(
 /**
  * Inverse of `computeFramedForRadius`: radius (and centering gimbal pitch)
  * needed so the same ground-to-poiHeight object fits inside `vfovDeg` while
- * flying at a fixed `altitude`. See `computeFramedForRadius` for the
- * root-selection and null-return rules; `prevRadius` absent defaults to the
- * smaller (closer) radius root, since callers editing altitude virtually
- * always already have a current radius to pass as `prevRadius` instead.
+ * flying at a fixed `altitude`. Targets `FOV_SAFETY_MARGIN` of the camera's
+ * FOV when achievable at this altitude; when `altitude > poiHeight` (camera
+ * above the object's top) and that target isn't reachable, targets the
+ * maximum span this altitude can ever achieve instead (see
+ * `maxSpanForAltitude`) rather than failing. When `0 < altitude <=
+ * poiHeight` (camera at or below the object's own top), the desired span is
+ * always achievable for *some* radius — as radius shrinks toward 0 the span
+ * approaches a full 180° — so no capping is needed there either; a real
+ * solution always exists for any `altitude > 0` and `poiHeight > 0`.
+ * Returns `null` only when `poiHeight`/`altitude` aren't positive. See
+ * `computeFramedForRadius` for the root-selection rules; `prevRadius`
+ * absent defaults to the smaller (closer) radius root, since callers
+ * editing altitude virtually always already have a current radius to pass
+ * as `prevRadius` instead.
  */
 export function computeFramedForAltitude(
   altitude: number,
@@ -405,7 +441,17 @@ export function computeFramedForAltitude(
   prevRadius?: number,
 ): { radiusM: number; gimbalPitchDeg: number } | null {
   if (poiHeight <= 0 || altitude <= 0) return null;
-  const targetSpanRad = (vfovDeg * FOV_SAFETY_MARGIN * Math.PI) / 180;
+  const desiredSpanRad = (vfovDeg * FOV_SAFETY_MARGIN * Math.PI) / 180;
+  // maxSpanForAltitude's derivation assumes altitude > poiHeight (it takes
+  // sqrt(altitude*(altitude-poiHeight))) — below/at that line, the desired
+  // span is unconditionally achievable (see doc comment), so skip the cap.
+  const targetSpanRad =
+    altitude > poiHeight
+      ? Math.min(
+          desiredSpanRad,
+          maxSpanForAltitude(altitude, poiHeight) * MAX_SPAN_SAFETY_FACTOR,
+        )
+      : desiredSpanRad;
   const T = Math.tan(targetSpanRad);
   if (!(T > 0)) return null;
   // T*r^2 - poiHeight*r + T*altitude*(altitude-poiHeight) = 0

@@ -1,6 +1,6 @@
-# Draggable template panel + fixed orbit POI marker
+# Draggable template panel, click-to-create orbit, live field updates, and fixed orbit POI marker
 
-Two UI fixes reported while planning an orbit mission.
+Four UI fixes/additions reported while planning an orbit mission.
 
 ## Added: drag the template config panel out of the way
 
@@ -27,3 +27,25 @@ exact same spot right after locking. Two problems:
 The POI marker is now fixed in place (not draggable) once locked, and
 renders first so the orbit's center handle sits on top of it and is always
 the one you actually grab.
+
+## Added: create an Orbit with a single click/tap, not just a drag
+
+Orbit could previously only be created by dragging on the map (drag start =
+center, drag distance = radius) — a plain click did nothing. That made it
+unusable on a tablet/touchscreen where a mouse-drag gesture isn't
+practical. A plain click or tap now places a default-radius (30 m) orbit
+immediately, ready to fine-tune in the config panel. Dragging still works
+exactly as before for picking the exact radius by hand in one motion. Grid
+and Facade still require a drag (they need two distinct corners, so a
+single point has no sensible default).
+
+## Fixed: template panel number fields required clicking away to take effect
+
+`NumericInput` (used for radius, altitude, POI height, gimbal pitch, etc.
+throughout the template panel) only committed its value on blur, so linked
+fields (e.g. Orbit's radius/altitude/POI-height framing) wouldn't
+recalculate until clicking somewhere else first. It now fires the same
+update live, on every keystroke that parses to a valid number — min/max
+clamping still only happens on blur, so typing a multi-digit number that
+starts out of range isn't snapped mid-keystroke, and clearing the field to
+retype doesn't briefly commit a fallback value.

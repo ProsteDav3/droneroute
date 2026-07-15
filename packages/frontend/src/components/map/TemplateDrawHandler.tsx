@@ -60,6 +60,15 @@ interface DragState {
   end: [number, number];
 }
 
+/**
+ * Radius used when Orbit is created by a plain click (no drag) — lets a
+ * touch/tablet user (who can't do a mouse-drag gesture) get a usable orbit
+ * immediately, then adjust the radius in the config panel afterward. Grid
+ * and Facade have no sensible single-point default (they need two distinct
+ * corners), so a plain click for those still does nothing.
+ */
+const DEFAULT_CLICK_ORBIT_RADIUS_M = 30;
+
 /** Generate a GeoJSON circle for orbit preview */
 function circleGeoJson(center: [number, number], radiusM: number) {
   const [lat, lng] = center;
@@ -396,12 +405,26 @@ export function TemplateDrawHandler() {
         finalDrag.end[1],
       );
 
+      const tm = useMissionStore.getState().templateMode;
+
       if (dist < 5) {
+        // A plain click/tap with no meaningful drag. Orbit gets a
+        // default-radius circle right away — dragging still lets you pick
+        // the exact radius by hand, but a click alone is enough on a
+        // tablet where dragging isn't practical. Grid/Facade need two
+        // distinct corners, so a plain click for those is still a no-op.
+        if (tm === "orbit") {
+          setOrbitParams(
+            initialOrbitParams(finalDrag.start, DEFAULT_CLICK_ORBIT_RADIUS_M),
+          );
+          setConfirmed(true);
+          currentDrag = null;
+          return;
+        }
         resetState();
         return;
       }
 
-      const tm = useMissionStore.getState().templateMode;
       if (tm === "orbit") {
         setOrbitParams(initialOrbitParams(finalDrag.start, Math.round(dist)));
       } else if (tm === "grid") {

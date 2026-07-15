@@ -23,6 +23,7 @@ Bring in existing missions or export your planned flight as a file ready for DJI
   battery limit.
 - **Import** an existing KMZ file to load its waypoints, actions, POIs, and settings into the editor.
 - **PDF report**: download a client-facing summary of the planned mission — drone/camera used, waypoint count, flight distance and estimated duration, altitude range, photo/video action counts, and a table of every waypoint's coordinates, altitude, and actions.
+- **Export for Pix4D/Metashape**: download a CSV listing the planned GPS position of every photo the mission will capture, in flight order — usable as an external image-geolocation import in Pix4D or Agisoft Metashape.
 
 ## How it works
 
@@ -65,6 +66,18 @@ Bring in existing missions or export your planned flight as a file ready for DJI
    first 200 rows with a note about how many more exist, to keep the report
    a manageable length).
 
+### Export for Pix4D/Metashape
+
+1. Plan a mission with photo capture (not video) actions.
+2. Click "Export pro Pix4D/Metashape (.csv)".
+3. A CSV downloads with one row per planned photo, in flight order: a
+   sequential placeholder name (`photo_0001`, `photo_0002`, ...), latitude,
+   longitude, and altitude in meters.
+4. Import it into Pix4D as an image geolocation file, or into Metashape via
+   the Reference pane's CSV import — both tools let you remap columns and
+   match rows to your actual captured photos during their own import
+   wizard.
+
 ## Good to know
 
 - The exported KMZ follows DJI's WPML standard, so it works with DJI's own flight apps too.
@@ -76,3 +89,7 @@ Bring in existing missions or export your planned flight as a file ready for DJI
 - The maximum import file size is 50 MB.
 - Imported and saved missions are validated: files with malformed contents or
   out-of-range coordinates are rejected with an error rather than being loaded.
+- The Pix4D/Metashape CSV's row names are sequential placeholders, not real
+  camera filenames — this app only plans the flight, it has no way to know
+  what the drone will actually name its photos, so rows must be matched to
+  the real captured files by capture order after the flight, not by name.

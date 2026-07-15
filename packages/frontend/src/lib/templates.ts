@@ -337,7 +337,7 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
 
   // Optionally create a POI at the center, at the real height the camera
   // should look at (not always ground level).
-  const poiName = "Orbit center";
+  const poiName = "Střed orbitu";
 
   if (createPoi) {
     pois.push({

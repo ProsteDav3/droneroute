@@ -82,7 +82,7 @@ export function BulkActionToolbar() {
       : null;
 
   const handleDelete = () => {
-    if (confirm(`Delete ${count} waypoints?`)) {
+    if (confirm(`Smazat ${count} bodů trasy?`)) {
       removeSelectedWaypoints();
     }
   };
@@ -157,7 +157,7 @@ export function BulkActionToolbar() {
         {/* Action bar */}
         <div className="flex items-center gap-3 px-4 py-2.5">
           <Badge variant="default" className="text-xs px-2 py-0.5">
-            {count} selected
+            Vybráno: {count}
           </Badge>
 
           <div className="h-4 w-px bg-border" />
@@ -167,7 +167,7 @@ export function BulkActionToolbar() {
             <Select onValueChange={handleAssignPoi}>
               <SelectTrigger className="h-7 w-auto gap-1.5 text-xs border-0 bg-transparent hover:bg-secondary px-2">
                 <Crosshair className="h-3 w-3" />
-                <span>Point to POI</span>
+                <span>Namířit na POI</span>
               </SelectTrigger>
               <SelectContent>
                 {pois.map((poi) => (
@@ -185,10 +185,10 @@ export function BulkActionToolbar() {
             size="sm"
             onClick={() => setShowEditor(!showEditor)}
             className="h-7 text-xs gap-1.5 px-2"
-            title="Edit properties"
+            title="Upravit vlastnosti"
           >
             <SlidersHorizontal className="h-3 w-3" />
-            Edit
+            Upravit
           </Button>
 
           {/* Edit template — only when the whole selection is one template's output */}
@@ -201,10 +201,10 @@ export function BulkActionToolbar() {
                 setEditingTemplateGroupId(commonTemplateGroupId);
               }}
               className="h-7 text-xs gap-1.5 px-2"
-              title={`Reopen this ${editableTemplateGroup.type} template's settings to adjust it (e.g. radius, spacing) without redrawing it`}
+              title={`Znovu otevřít nastavení této šablony ${editableTemplateGroup.type} pro úpravu (např. radius, rozestup) bez nutnosti překreslení`}
             >
               <Pencil className="h-3 w-3" />
-              Edit template
+              Upravit šablonu
             </Button>
           )}
 
@@ -218,7 +218,7 @@ export function BulkActionToolbar() {
             className="h-7 text-xs gap-1.5 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
           >
             <Trash2 className="h-3 w-3" />
-            Delete
+            Smazat
           </Button>
 
           <div className="h-4 w-px bg-border" />
@@ -229,7 +229,7 @@ export function BulkActionToolbar() {
             size="icon"
             onClick={clearWaypointSelection}
             className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            title="Clear selection (Esc)"
+            title="Zrušit výběr (Esc)"
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -243,14 +243,14 @@ export function BulkActionToolbar() {
               <div>
                 <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
                   <ArrowUp className="h-2.5 w-2.5" />
-                  Altitude ({heightLabel(unitSystem)})
+                  Výška ({heightLabel(unitSystem)})
                 </Label>
                 <Input
                   type="number"
                   placeholder={
                     commonHeight !== undefined
                       ? String(toDisplayHeight(commonHeight, unitSystem))
-                      : "Mixed"
+                      : "Různé"
                   }
                   defaultValue={
                     commonHeight !== undefined
@@ -284,14 +284,14 @@ export function BulkActionToolbar() {
               <div>
                 <Label className="text-[10px] text-muted-foreground flex items-center gap-1">
                   <Gauge className="h-2.5 w-2.5" />
-                  Speed ({speedLabel(unitSystem)})
+                  Rychlost ({speedLabel(unitSystem)})
                 </Label>
                 <Input
                   type="number"
                   placeholder={
                     commonSpeed !== undefined
                       ? String(toDisplaySpeed(commonSpeed, unitSystem))
-                      : "Mixed"
+                      : "Různé"
                   }
                   defaultValue={
                     commonSpeed !== undefined
@@ -332,7 +332,7 @@ export function BulkActionToolbar() {
                 <Input
                   type="number"
                   placeholder={
-                    commonGimbal !== undefined ? String(commonGimbal) : "Mixed"
+                    commonGimbal !== undefined ? String(commonGimbal) : "Různé"
                   }
                   defaultValue={commonGimbal !== undefined ? commonGimbal : ""}
                   key={`g-${commonGimbal}`}
@@ -360,7 +360,7 @@ export function BulkActionToolbar() {
               {/* Heading mode */}
               <div>
                 <Label className="text-[10px] text-muted-foreground">
-                  Heading mode
+                  Režim natočení
                 </Label>
                 <Select
                   value={headingSelectValue}
@@ -377,26 +377,24 @@ export function BulkActionToolbar() {
                   }}
                 >
                   <SelectTrigger className="h-7 text-xs mt-0.5">
-                    <SelectValue placeholder="Mixed" />
+                    <SelectValue placeholder="Různé" />
                   </SelectTrigger>
                   <SelectContent>
                     {headingSelectValue === "mixed" && (
                       <SelectItem value="mixed" disabled>
-                        Mixed
+                        Různé
                       </SelectItem>
                     )}
                     <SelectItem value="global">
-                      Use global ({config.globalHeadingMode})
+                      Použít globální ({config.globalHeadingMode})
                     </SelectItem>
-                    <SelectItem value="followWayline">
-                      Follow wayline
-                    </SelectItem>
-                    <SelectItem value="manually">Manual</SelectItem>
-                    <SelectItem value="fixed">Fixed</SelectItem>
+                    <SelectItem value="followWayline">Podle trasy</SelectItem>
+                    <SelectItem value="manually">Ruční</SelectItem>
+                    <SelectItem value="fixed">Pevné</SelectItem>
                     <SelectItem value="smoothTransition">
-                      Smooth transition
+                      Plynulý přechod
                     </SelectItem>
-                    <SelectItem value="towardPOI">Toward POI</SelectItem>
+                    <SelectItem value="towardPOI">Směrem k POI</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -405,7 +403,7 @@ export function BulkActionToolbar() {
               {headingSelectValue === "towardPOI" && pois.length > 0 && (
                 <div>
                   <Label className="text-[10px] text-muted-foreground">
-                    Target POI
+                    Cílový POI
                   </Label>
                   <Select
                     value={commonPoiId || "none"}
@@ -418,12 +416,12 @@ export function BulkActionToolbar() {
                     <SelectTrigger className="h-7 text-xs mt-0.5">
                       <SelectValue
                         placeholder={
-                          commonPoiId === undefined ? "Mixed" : "Select POI..."
+                          commonPoiId === undefined ? "Různé" : "Vyberte POI..."
                         }
                       />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="none">Žádný</SelectItem>
                       {pois.map((poi) => (
                         <SelectItem key={poi.id} value={poi.id}>
                           {poi.name}
@@ -438,7 +436,7 @@ export function BulkActionToolbar() {
               {(headingSelectValue !== "towardPOI" || pois.length === 0) && (
                 <div>
                   <Label className="text-[10px] text-muted-foreground">
-                    Turn mode
+                    Režim zatáčení
                   </Label>
                   <Select
                     value={turnSelectValue}
@@ -455,26 +453,26 @@ export function BulkActionToolbar() {
                     }}
                   >
                     <SelectTrigger className="h-7 text-xs mt-0.5">
-                      <SelectValue placeholder="Mixed" />
+                      <SelectValue placeholder="Různé" />
                     </SelectTrigger>
                     <SelectContent>
                       {turnSelectValue === "mixed" && (
                         <SelectItem value="mixed" disabled>
-                          Mixed
+                          Různé
                         </SelectItem>
                       )}
-                      <SelectItem value="global">Use global</SelectItem>
+                      <SelectItem value="global">Použít globální</SelectItem>
                       <SelectItem value="coordinateTurn">
-                        Coordinated turn
+                        Koordinovaná zatáčka
                       </SelectItem>
                       <SelectItem value="toPointAndStopWithDiscontinuityCurvature">
-                        Stop at point (sharp)
+                        Zastavit v bodě (ostré)
                       </SelectItem>
                       <SelectItem value="toPointAndStopWithContinuityCurvature">
-                        Stop at point (curve)
+                        Zastavit v bodě (plynulé)
                       </SelectItem>
                       <SelectItem value="toPointAndPassWithContinuityCurvature">
-                        Pass point (curve)
+                        Projet bodem (plynulé)
                       </SelectItem>
                     </SelectContent>
                   </Select>

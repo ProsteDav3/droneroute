@@ -297,12 +297,12 @@ export function BuildingDrawHandler() {
 
       {pendingVertices && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-card/95 backdrop-blur-sm border border-border rounded-lg shadow-2xl p-3 min-w-[220px]">
-          <div className="text-xs font-semibold mb-2">Building</div>
+          <div className="text-xs font-semibold mb-2">Budova</div>
           <Label
             className="text-[10px]"
-            title="Real height of the building, above ground — used to recommend an orbit altitude, radius, and gimbal pitch when a POI is placed on it."
+            title="Skutečná výška budovy nad terénem — používá se pro doporučení výšky orbitu, radiusu a náklonu gimbalu při umístění POI na budovu."
           >
-            Height ({heightLabel(unitSystem)})
+            Výška ({heightLabel(unitSystem)})
           </Label>
           <NumericInput
             value={toDisplayHeight(height, unitSystem)}
@@ -315,7 +315,7 @@ export function BuildingDrawHandler() {
           <div className="flex gap-2 mt-2">
             <Button size="sm" onClick={handleApply} className="flex-1">
               <Check className="h-3 w-3" />
-              Apply
+              Použít
             </Button>
             <Button
               size="sm"
@@ -324,7 +324,7 @@ export function BuildingDrawHandler() {
               className="flex-1"
             >
               <X className="h-3 w-3" />
-              Cancel
+              Zrušit
             </Button>
           </div>
         </div>

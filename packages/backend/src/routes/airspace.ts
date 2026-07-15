@@ -17,9 +17,9 @@ airspaceRoutes.get("/zones", airspaceLimiter, async (req, res) => {
   const { south, west, north, east, providers } = req.query;
 
   if (!south || !west || !north || !east) {
-    res
-      .status(400)
-      .json({ error: "Missing bounding box params: south, west, north, east" });
+    res.status(400).json({
+      error: "Chybí parametry ohraničení: south, west, north, east",
+    });
     return;
   }
 
@@ -33,7 +33,7 @@ airspaceRoutes.get("/zones", airspaceLimiter, async (req, res) => {
   if (Object.values(bounds).some((v) => !Number.isFinite(v))) {
     res
       .status(400)
-      .json({ error: "Bounding box params must be valid numbers" });
+      .json({ error: "Parametry ohraničení musí být platná čísla" });
     return;
   }
 
@@ -47,9 +47,7 @@ airspaceRoutes.get("/zones", airspaceLimiter, async (req, res) => {
     res.json({ zones });
   } catch (err) {
     console.error("Airspace fetch error:", err);
-    res
-      .status(502)
-      .json({ error: "Failed to fetch airspace data from upstream providers" });
+    res.status(502).json({ error: "Načtení dat o vzdušném prostoru selhalo" });
   }
 });
 

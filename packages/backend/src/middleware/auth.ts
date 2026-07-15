@@ -14,14 +14,16 @@ export function authMiddleware(
 ): void {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Missing or invalid authorization header" });
+    res
+      .status(401)
+      .json({ error: "Chybí nebo je neplatná autorizační hlavička" });
     return;
   }
 
   const token = header.slice(7);
   const payload = verifyToken(token);
   if (!payload) {
-    res.status(401).json({ error: "Invalid or expired token" });
+    res.status(401).json({ error: "Neplatný nebo vypršený token" });
     return;
   }
 
@@ -33,13 +35,11 @@ export function authMiddleware(
     )
     .get(payload.userId) as any;
   if (!user) {
-    res.status(401).json({ error: "User not found" });
+    res.status(401).json({ error: "Uživatel nenalezen" });
     return;
   }
   if (user.is_banned) {
-    res
-      .status(403)
-      .json({ error: "Your account has been suspended", banned: true });
+    res.status(403).json({ error: "Váš účet byl pozastaven", banned: true });
     return;
   }
 
@@ -48,7 +48,7 @@ export function authMiddleware(
   if (!selfHosted && !user.email_verified) {
     res.status(403).json({
       error:
-        "Email not verified. Please sign in with Google to verify your account.",
+        "E-mail není ověřen. Přihlaste se prosím přes Google pro ověření účtu.",
       code: "EMAIL_NOT_VERIFIED",
     });
     return;

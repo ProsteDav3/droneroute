@@ -185,11 +185,11 @@ export function ElevationGraph() {
           ) : (
             <ChevronRight className="h-3 w-3" />
           )}
-          Elevation chart
+          Výškový profil
         </button>
         {expanded && (
           <div className="px-3 py-4 text-[10px] text-muted-foreground text-center">
-            Add waypoints to see elevation profile
+            Přidejte body trasy pro zobrazení výškového profilu
           </div>
         )}
       </div>
@@ -323,7 +323,7 @@ export function ElevationGraph() {
 
               return (
                 <g key={wp.index}>
-                  <title>Drag to adjust altitude</title>
+                  <title>Přetažením upravíte výšku</title>
                   <circle
                     cx={cx}
                     cy={cy}

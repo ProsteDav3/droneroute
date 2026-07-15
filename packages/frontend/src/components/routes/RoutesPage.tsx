@@ -126,7 +126,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
       const data = await api.get<SavedMission[]>("/missions");
       setMissions(data);
     } catch (e: any) {
-      setError(e.message || "Failed to load missions");
+      setError(e.message || "Nepodařilo se načíst mise");
     } finally {
       setLoading(false);
     }
@@ -167,12 +167,12 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this route permanently?")) return;
+    if (!confirm("Trvale smazat tuto trasu?")) return;
     try {
       await api.delete(`/missions/${id}`);
       setMissions((prev) => prev.filter((m) => m.id !== id));
     } catch (e: any) {
-      toast.error("Failed to delete: " + (e.message || "Unknown error"));
+      toast.error("Smazání se nezdařilo: " + (e.message || "Neznámá chyba"));
     }
   };
 
@@ -205,15 +205,14 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
         setTimeout(() => setCopiedId(null), 2000);
       }
     } catch (e: any) {
-      toast.error("Failed to share: " + (e.message || "Unknown error"));
+      toast.error("Sdílení se nezdařilo: " + (e.message || "Neznámá chyba"));
     } finally {
       setSharingId(null);
     }
   };
 
   const handleUnshare = async (mission: SavedMission) => {
-    if (!confirm("Revoke sharing? Anyone with the link will lose access."))
-      return;
+    if (!confirm("Zrušit sdílení? Kdokoliv s odkazem ztratí přístup.")) return;
     try {
       await api.delete(`/missions/${mission.id}/share`);
       setMissions((prev) =>
@@ -222,7 +221,9 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
         ),
       );
     } catch (e: any) {
-      toast.error("Failed to unshare: " + (e.message || "Unknown error"));
+      toast.error(
+        "Zrušení sdílení se nezdařilo: " + (e.message || "Neznámá chyba"),
+      );
     }
   };
 
@@ -236,7 +237,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
         : [];
 
       if (waypoints.length < 2) {
-        toast.warning("Need at least 2 waypoints to export");
+        toast.warning("Pro export je potřeba alespoň 2 body trasy");
         return;
       }
 
@@ -254,7 +255,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      toast.error(`Export failed: ${err.message}`);
+      toast.error(`Export selhal: ${err.message}`);
     } finally {
       setExportingId(null);
     }
@@ -299,17 +300,21 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
               <div>
                 <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
                   <Route className="h-5 w-5 text-primary" />
-                  My routes
+                  Moje trasy
                 </h1>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {missions.length} saved route
-                  {missions.length !== 1 ? "s" : ""}
+                  {missions.length}{" "}
+                  {missions.length === 1
+                    ? "uložená trasa"
+                    : missions.length >= 2 && missions.length <= 4
+                      ? "uložené trasy"
+                      : "uložených tras"}
                 </p>
               </div>
             </div>
             <Button onClick={handleNewRoute} size="sm" className="gap-1.5">
               <Plus className="h-4 w-4" />
-              New route
+              Nová trasa
             </Button>
           </div>
         </div>
@@ -321,7 +326,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
               <div className="flex items-center justify-center py-20 text-muted-foreground">
                 <div className="text-center">
                   <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-3" />
-                  <p className="text-sm">Loading routes...</p>
+                  <p className="text-sm">Načítání tras...</p>
                 </div>
               </div>
             )}
@@ -330,13 +335,13 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
               <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                 <Route className="h-12 w-12 mb-4 opacity-30" />
                 <p className="text-lg font-medium mb-1">
-                  Sign in to view your routes
+                  Přihlaste se pro zobrazení svých tras
                 </p>
                 <p className="text-sm mb-4">
-                  Create an account to save and manage drone missions
+                  Vytvořte si účet pro ukládání a správu misí dronu
                 </p>
                 <Button size="sm" className="gap-1.5" onClick={onRequestAuth}>
-                  Sign in
+                  Přihlásit se
                 </Button>
               </div>
             )}
@@ -345,7 +350,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
               <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                 <p className="text-sm text-destructive mb-2">{error}</p>
                 <Button variant="outline" size="sm" onClick={fetchMissions}>
-                  Retry
+                  Zkusit znovu
                 </Button>
               </div>
             )}
@@ -353,13 +358,15 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
             {!loading && !error && token && missions.length === 0 && (
               <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                 <Route className="h-12 w-12 mb-4 opacity-30" />
-                <p className="text-lg font-medium mb-1">No saved routes yet</p>
+                <p className="text-lg font-medium mb-1">
+                  Zatím žádné uložené trasy
+                </p>
                 <p className="text-sm mb-4">
-                  Create your first drone waypoint mission
+                  Vytvořte svou první misi s body trasy pro dron
                 </p>
                 <Button onClick={handleNewRoute} size="sm" className="gap-1.5">
                   <Plus className="h-4 w-4" />
-                  Create route
+                  Vytvořit trasu
                 </Button>
               </div>
             )}
@@ -408,7 +415,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
                       <div className="p-4">
                         <div className="flex items-start justify-between mb-3">
                           <h3 className="text-sm font-semibold text-foreground truncate flex-1 mr-2 group-hover:text-primary transition-colors">
-                            {mission.name || "Untitled route"}
+                            {mission.name || "Trasa bez názvu"}
                           </h3>
                           <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                             {!selfHosted && (
@@ -420,9 +427,9 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
                                 title={
                                   mission.share_token
                                     ? copiedId === mission.id
-                                      ? "Link copied!"
-                                      : "Copy share link"
-                                    : "Share route"
+                                      ? "Odkaz zkopírován!"
+                                      : "Kopírovat odkaz ke sdílení"
+                                    : "Sdílet trasu"
                                 }
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -443,7 +450,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
                                 variant="ghost"
                                 size="icon"
                                 className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                title="Revoke sharing"
+                                title="Zrušit sdílení"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   handleUnshare(mission);
@@ -457,7 +464,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
                               size="icon"
                               className="h-7 w-7 text-muted-foreground hover:text-foreground"
                               disabled={exportingId === mission.id}
-                              title="Download KMZ"
+                              title="Stáhnout KMZ"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleExportKmz(mission);
@@ -469,7 +476,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                              title="Delete route"
+                              title="Smazat trasu"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleDelete(mission.id);
@@ -491,7 +498,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
                           {!selfHosted && mission.share_token && (
                             <div className="flex items-center gap-1 text-[11px] text-emerald-400">
                               <Share2 className="h-3 w-3" />
-                              Shared
+                              Sdíleno
                             </div>
                           )}
                         </div>

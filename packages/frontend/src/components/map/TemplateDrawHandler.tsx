@@ -111,7 +111,7 @@ function OrbitCenterHandle({
       onDrag={handleDrag}
     >
       <div
-        title="Drag to move the orbit center"
+        title="Přetažením posunete střed orbitu"
         style={{
           width: 18,
           height: 18,
@@ -159,7 +159,7 @@ function OrbitRotationHandle({
       onDrag={handleDrag}
     >
       <div
-        title="Drag to rotate the arc"
+        title="Přetažením otočíte oblouk"
         style={{
           width: 16,
           height: 16,

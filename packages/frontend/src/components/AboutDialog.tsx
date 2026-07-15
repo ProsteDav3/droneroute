@@ -57,14 +57,14 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
         {/* Body */}
         <div className="px-5 pt-4 pb-2 space-y-4">
           <p className="text-sm text-muted-foreground leading-relaxed">
-            A free, open-source mission planner for DJI drones. Place waypoints
-            on the map, configure flight parameters, and export KMZ files ready
-            to fly.
+            Plánovač misí pro drony DJI. Umísťujte body trasy na mapě,
+            nastavujte parametry letu a exportujte soubory KMZ připravené k
+            letu.
           </p>
 
           {/* Version */}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>Version</span>
+            <span>Verze</span>
             <a
               href={`https://github.com/fcsonline/droneroute/releases/tag/v${version}`}
               target="_blank"
@@ -92,7 +92,7 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
               className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               <GithubIcon className="h-4 w-4 shrink-0" />
-              GitHub — Star the repo, report bugs, contribute
+              GitHub — hvězdička, nahlášení chyb, příspěvky
             </a>
             <a
               href="https://github.com/fcsonline/droneroute/blob/main/GUIDE.md"
@@ -101,7 +101,7 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
               className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               <BookOpen className="h-4 w-4 shrink-0" />
-              User Guide — Features, shortcuts &amp; tips
+              Uživatelská příručka — funkce, zkratky a tipy
             </a>
             <a
               href="https://www.npmjs.com/package/droneroute"
@@ -110,7 +110,7 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
               className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               <Terminal className="h-4 w-4 shrink-0" />
-              Upload to RC — npx droneroute mission.kmz
+              Nahrát do RC — npx droneroute mission.kmz
             </a>
             <a
               href="https://github.com/fcsonline/droneroute/issues?q=is%3Aissue%20state%3Aopen%20label%3Aenhancement"
@@ -119,7 +119,7 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
               className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               <Lightbulb className="h-4 w-4 shrink-0" />
-              Feature Requests — Vote &amp; suggest ideas
+              Návrhy funkcí — hlasujte a navrhujte nápady
             </a>
             <a
               href="https://github.com/fcsonline/droneroute/blob/main/PRIVACY.md"
@@ -128,12 +128,12 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
               className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               <ShieldCheck className="h-4 w-4 shrink-0" />
-              Privacy &amp; data — what we store and where
+              Soukromí a data — co ukládáme a kde
             </a>
             <div className="mt-2 pt-2 border-t border-border">
               <p className="text-xs text-muted-foreground mb-2">
-                DroneRoute is free and open-source. If you find it useful,
-                consider supporting its development:
+                DroneRoute je zdarma a s otevřeným zdrojovým kódem. Pokud ho
+                shledáte užitečným, zvažte podporu jeho vývoje:
               </p>
               <a
                 href="https://www.buymeacoffee.com/fcsonline"
@@ -154,12 +154,10 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
           <div className="flex gap-2 pt-2 border-t border-border">
             <TriangleAlert className="h-3.5 w-3.5 shrink-0 text-amber-500 mt-0.5" />
             <p className="text-[10px] text-muted-foreground leading-relaxed">
-              <span className="text-amber-500 font-medium">
-                Active development.
-              </span>{" "}
-              Provided "as is" without warranty. The authors are not responsible
-              for any damage to your drones, equipment, or property. Always
-              verify mission parameters before flying.
+              <span className="text-amber-500 font-medium">Aktivní vývoj.</span>{" "}
+              Poskytováno "tak, jak je" bez záruky. Autoři neodpovídají za žádné
+              škody na vašich dronech, vybavení nebo majetku. Před letem vždy
+              ověřte parametry mise.
             </p>
           </div>
         </div>

@@ -26,18 +26,18 @@ export interface AirspaceProviderInfo {
 export const AIRSPACE_PROVIDERS: AirspaceProviderInfo[] = [
   {
     id: "enaire",
-    name: "Spain (ENAIRE)",
-    description: "Prohibited and restricted airspace zones",
+    name: "Španělsko (ENAIRE)",
+    description: "Zakázané a omezené vzdušné zóny",
   },
   {
     id: "dgac",
-    name: "France (DGAC)",
-    description: "UAS restriction zones — open category",
+    name: "Francie (DGAC)",
+    description: "Omezené zóny pro UAS — kategorie open",
   },
   {
     id: "nats",
-    name: "United Kingdom (NATS)",
-    description: "Flight restriction zones around aerodromes",
+    name: "Velká Británie (NATS)",
+    description: "Zóny s omezením letu kolem letišť",
   },
 ];
 

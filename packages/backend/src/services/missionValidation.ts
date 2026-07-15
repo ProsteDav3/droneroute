@@ -52,43 +52,43 @@ function isOptionalName(v: unknown): boolean {
 }
 
 function validateWaypoints(value: unknown): string | null {
-  if (!Array.isArray(value)) return "waypoints must be an array";
-  if (value.length > MAX_WAYPOINTS) return "too many waypoints";
+  if (!Array.isArray(value)) return "waypoints musí být pole";
+  if (value.length > MAX_WAYPOINTS) return "příliš mnoho bodů trasy";
   for (const wp of value) {
-    if (!isPlainObject(wp)) return "invalid waypoint";
+    if (!isPlainObject(wp)) return "neplatný bod trasy";
     if (!isLatitude(wp.latitude) || !isLongitude(wp.longitude)) {
-      return "waypoint coordinates out of range";
+      return "souřadnice bodu trasy mimo rozsah";
     }
-    if (!isFiniteNumber(wp.height)) return "invalid waypoint height";
-    if (!isOptionalName(wp.name)) return "invalid waypoint name";
+    if (!isFiniteNumber(wp.height)) return "neplatná výška bodu trasy";
+    if (!isOptionalName(wp.name)) return "neplatný název bodu trasy";
   }
   return null;
 }
 
 function validatePois(value: unknown): string | null {
   if (value === undefined) return null;
-  if (!Array.isArray(value)) return "pois must be an array";
-  if (value.length > MAX_POIS) return "too many points of interest";
+  if (!Array.isArray(value)) return "pois musí být pole";
+  if (value.length > MAX_POIS) return "příliš mnoho bodů zájmu";
   for (const poi of value) {
-    if (!isPlainObject(poi)) return "invalid point of interest";
+    if (!isPlainObject(poi)) return "neplatný bod zájmu";
     if (!isLatitude(poi.latitude) || !isLongitude(poi.longitude)) {
-      return "POI coordinates out of range";
+      return "souřadnice POI mimo rozsah";
     }
-    if (!isFiniteNumber(poi.height)) return "invalid POI height";
-    if (!isOptionalName(poi.name)) return "invalid POI name";
+    if (!isFiniteNumber(poi.height)) return "neplatná výška POI";
+    if (!isOptionalName(poi.name)) return "neplatný název POI";
   }
   return null;
 }
 
 function validateObstacles(value: unknown): string | null {
   if (value === undefined) return null;
-  if (!Array.isArray(value)) return "obstacles must be an array";
-  if (value.length > MAX_OBSTACLES) return "too many obstacles";
+  if (!Array.isArray(value)) return "obstacles musí být pole";
+  if (value.length > MAX_OBSTACLES) return "příliš mnoho překážek";
   for (const obstacle of value) {
-    if (!isPlainObject(obstacle)) return "invalid obstacle";
-    if (!Array.isArray(obstacle.vertices)) return "invalid obstacle vertices";
+    if (!isPlainObject(obstacle)) return "neplatná překážka";
+    if (!Array.isArray(obstacle.vertices)) return "neplatné vrcholy překážky";
     if (obstacle.vertices.length > MAX_VERTICES_PER_OBSTACLE) {
-      return "too many obstacle vertices";
+      return "příliš mnoho vrcholů překážky";
     }
     for (const vertex of obstacle.vertices) {
       if (
@@ -97,23 +97,23 @@ function validateObstacles(value: unknown): string | null {
         !isLatitude(vertex[0]) ||
         !isLongitude(vertex[1])
       ) {
-        return "obstacle vertex out of range";
+        return "vrchol překážky mimo rozsah";
       }
     }
-    if (!isOptionalName(obstacle.name)) return "invalid obstacle name";
+    if (!isOptionalName(obstacle.name)) return "neplatný název překážky";
   }
   return null;
 }
 
 function validateBuildings(value: unknown): string | null {
   if (value === undefined) return null;
-  if (!Array.isArray(value)) return "buildings must be an array";
-  if (value.length > MAX_BUILDINGS) return "too many buildings";
+  if (!Array.isArray(value)) return "buildings musí být pole";
+  if (value.length > MAX_BUILDINGS) return "příliš mnoho budov";
   for (const building of value) {
-    if (!isPlainObject(building)) return "invalid building";
-    if (!Array.isArray(building.vertices)) return "invalid building vertices";
+    if (!isPlainObject(building)) return "neplatná budova";
+    if (!Array.isArray(building.vertices)) return "neplatné vrcholy budovy";
     if (building.vertices.length > MAX_VERTICES_PER_BUILDING) {
-      return "too many building vertices";
+      return "příliš mnoho vrcholů budovy";
     }
     for (const vertex of building.vertices) {
       if (
@@ -122,13 +122,13 @@ function validateBuildings(value: unknown): string | null {
         !isLatitude(vertex[0]) ||
         !isLongitude(vertex[1])
       ) {
-        return "building vertex out of range";
+        return "vrchol budovy mimo rozsah";
       }
     }
     if (!isFiniteNumber(building.height) || building.height < 0) {
-      return "invalid building height";
+      return "neplatná výška budovy";
     }
-    if (!isOptionalName(building.name)) return "invalid building name";
+    if (!isOptionalName(building.name)) return "neplatný název budovy";
   }
   return null;
 }
@@ -142,22 +142,23 @@ function validateBuildings(value: unknown): string | null {
  */
 function validateTemplateGroups(value: unknown): string | null {
   if (value === undefined) return null;
-  if (!isPlainObject(value)) return "templateGroups must be an object";
+  if (!isPlainObject(value)) return "templateGroups musí být objekt";
   const groups = Object.values(value);
-  if (groups.length > MAX_TEMPLATE_GROUPS) return "too many template groups";
+  if (groups.length > MAX_TEMPLATE_GROUPS) return "příliš mnoho skupin šablon";
   for (const group of groups) {
-    if (!isPlainObject(group)) return "invalid template group";
+    if (!isPlainObject(group)) return "neplatná skupina šablony";
     if (
       typeof group.type !== "string" ||
       !VALID_TEMPLATE_GROUP_TYPES.includes(group.type)
     ) {
-      return "invalid template group type";
+      return "neplatný typ skupiny šablony";
     }
-    if (!isPlainObject(group.params)) return "invalid template group params";
+    if (!isPlainObject(group.params))
+      return "neplatné parametry skupiny šablony";
     if (
       JSON.stringify(group.params).length > MAX_TEMPLATE_GROUP_PARAMS_JSON_LEN
     ) {
-      return "template group params too large";
+      return "parametry skupiny šablony jsou příliš velké";
     }
   }
   return null;
@@ -175,8 +176,8 @@ export interface MissionPayload {
 
 /** Validate a full mission-create payload. Returns an error message or null. */
 export function validateMissionCreate(body: MissionPayload): string | null {
-  if (!isValidName(body.name)) return "invalid mission name";
-  if (!isPlainObject(body.config)) return "invalid mission config";
+  if (!isValidName(body.name)) return "neplatný název mise";
+  if (!isPlainObject(body.config)) return "neplatná konfigurace mise";
   return (
     validateWaypoints(body.waypoints) ??
     validatePois(body.pois) ??
@@ -192,10 +193,10 @@ export function validateMissionCreate(body: MissionPayload): string | null {
  */
 export function validateMissionUpdate(body: MissionPayload): string | null {
   if (body.name !== undefined && !isValidName(body.name)) {
-    return "invalid mission name";
+    return "neplatný název mise";
   }
   if (body.config !== undefined && !isPlainObject(body.config)) {
-    return "invalid mission config";
+    return "neplatná konfigurace mise";
   }
   if (body.waypoints !== undefined) {
     const error = validateWaypoints(body.waypoints);

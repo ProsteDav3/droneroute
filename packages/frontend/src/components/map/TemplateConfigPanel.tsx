@@ -46,11 +46,11 @@ import type { PointOfInterest, HeightMode } from "@droneroute/shared";
 function heightModeLabel(mode: HeightMode): string {
   switch (mode) {
     case "relativeToStartPoint":
-      return "relative to the takeoff point";
+      return "relativně od vzletového bodu";
     case "aboveGroundLevel":
-      return "above ground level";
+      return "nad terénem";
     case "EGM96":
-      return "above mean sea level (EGM96)";
+      return "nad mořem (EGM96)";
     default:
       return mode;
   }
@@ -100,22 +100,22 @@ export function TemplateConfigPanel({
     type === "orbit"
       ? "Orbit"
       : type === "grid"
-        ? "Grid survey"
+        ? "Mřížkový průzkum"
         : type === "facade"
-          ? "Facade scan"
+          ? "Sken fasády"
           : type === "solar"
-            ? "Solar panel survey"
-            : "Pencil path";
+            ? "Solární panelový průzkum"
+            : "Volná křivka";
   const description =
     type === "orbit"
-      ? "Circular flight path around a center point. Adjust the radius, number of points, and enable POI to keep the camera focused on the center. Set end angle below 360° for an open arc between a start and end bearing instead of a full loop."
+      ? "Kruhová letová trasa kolem středového bodu. Upravte radius, počet bodů a zapněte POI, aby kamera zůstala zaměřená na střed. Nastavte koncový úhel pod 360° pro otevřený oblouk mezi počátečním a koncovým směrem místo celého kruhu."
       : type === "grid"
-        ? "Lawn-mower zigzag pattern for systematic area coverage. Control line spacing for overlap and rotation to align with the terrain."
+        ? "Cik-cak vzor pro systematické pokrytí plochy. Nastavte rozestup řádků pro překryv a rotaci pro zarovnání s terénem."
         : type === "facade"
-          ? "Vertical scanning pattern along a wall or building face. Set the standoff distance, altitude range, and grid density for full coverage."
+          ? "Svislý skenovací vzor podél stěny nebo fasády budovy. Nastavte odstup od stěny, rozsah výšky a hustotu mřížky pro úplné pokrytí."
           : type === "solar"
-            ? "Lawn-mower path clipped to the exact shape you traced around the panel array — the drone never flies past its edges. Flight lines run at the row angle you set by drawing a reference line along a panel row."
-            : "Freehand flight path drawn on the map. Adjust the number of waypoints to control how closely the path is followed.";
+            ? "Cik-cak trasa oříznutá přesně podle tvaru, který jste obkreslili kolem pole panelů — dron nikdy nepřeletí za jeho okraje. Letové řádky vedou pod úhlem, který jste nastavili nakreslením referenční čáry podél řady panelů."
+            : "Letová trasa nakreslená od ruky na mapě. Upravte počet bodů trasy pro řízení toho, jak přesně se trasa dodrží.";
 
   // Must stay in sync with MAX_WAYPOINTS in
   // packages/backend/src/services/missionValidation.ts — surfaced here so
@@ -146,11 +146,11 @@ export function TemplateConfigPanel({
         type,
         currentParams as unknown as Record<string, unknown>,
       );
-      toast.success(`Saved "${name}" as a template preset`);
+      toast.success(`Šablona "${name}" byla uložena`);
       setSavingPreset(false);
       setPresetName("");
     } catch (err: any) {
-      toast.error(`Failed to save preset: ${err.message}`);
+      toast.error(`Uložení šablony se nezdařilo: ${err.message}`);
     } finally {
       setPresetSaveInFlight(false);
     }
@@ -196,7 +196,12 @@ export function TemplateConfigPanel({
             className="text-[10px] gap-1"
           >
             <MapPin className="h-3 w-3" />
-            {waypointCount} waypoints
+            {waypointCount}{" "}
+            {waypointCount === 1
+              ? "bod trasy"
+              : waypointCount >= 2 && waypointCount <= 4
+                ? "body trasy"
+                : "bodů trasy"}
           </Badge>
         </div>
         <button
@@ -213,7 +218,7 @@ export function TemplateConfigPanel({
         <div className="grid grid-cols-2 gap-2 mb-3">
           <div className="col-span-2">
             <Label className="text-[10px]">
-              Center on address or coordinates
+              Vystředit na adresu nebo souřadnice
             </Label>
             <LocationSearch
               onLocationFound={(lat, lng) => {
@@ -225,7 +230,7 @@ export function TemplateConfigPanel({
           <div>
             <Label
               className="text-[10px]"
-              title="Horizontal distance from the center point to the flight path."
+              title="Vodorovná vzdálenost od středového bodu k letové trase."
             >
               Radius ({distanceLabel(unitSystem)})
             </Label>
@@ -254,7 +259,7 @@ export function TemplateConfigPanel({
             />
           </div>
           <div>
-            <Label className="text-[10px]">Points</Label>
+            <Label className="text-[10px]">Body</Label>
             <NumericInput
               value={orbitParams.numPoints}
               onChange={(v) => onOrbitChange({ ...orbitParams, numPoints: v })}
@@ -267,9 +272,9 @@ export function TemplateConfigPanel({
           <div>
             <Label
               className="text-[10px]"
-              title={`How high the drone flies, ${heightModeText} (this mission's height reference).`}
+              title={`Jak vysoko dron letí, ${heightModeText} (referenční výška této mise).`}
             >
-              Flight altitude ({heightLabel(unitSystem)})
+              Výška letu ({heightLabel(unitSystem)})
             </Label>
             <NumericInput
               value={toDisplayHeight(orbitParams.altitude, unitSystem)}
@@ -298,9 +303,9 @@ export function TemplateConfigPanel({
           <div>
             <Label
               className="text-[10px]"
-              title={`Real height of the point the camera should look at (e.g. a rooftop), ${heightModeText} — same reference as flight altitude.`}
+              title={`Skutečná výška bodu, na který má kamera mířit (např. střecha), ${heightModeText} — stejná reference jako výška letu.`}
             >
-              POI height ({heightLabel(unitSystem)})
+              Výška POI ({heightLabel(unitSystem)})
             </Label>
             <NumericInput
               value={toDisplayHeight(orbitParams.poiHeight, unitSystem)}
@@ -330,9 +335,9 @@ export function TemplateConfigPanel({
             <div className="flex items-center justify-between">
               <Label
                 className="text-[10px]"
-                title="Camera tilt. -90° = straight down, 0° = horizon."
+                title="Náklon kamery. -90° = přímo dolů, 0° = horizont."
               >
-                Gimbal pitch (°)
+                Náklon gimbalu (°)
               </Label>
               <button
                 type="button"
@@ -344,8 +349,8 @@ export function TemplateConfigPanel({
                 }
                 title={
                   orbitParams.altitudeGimbalLinked
-                    ? "Altitude and gimbal pitch auto-update each other. Click to lock and edit them independently."
-                    : "Altitude and gimbal pitch are locked independently. Click to link them again."
+                    ? "Výška a náklon gimbalu se vzájemně automaticky aktualizují. Kliknutím uzamknete a upravíte je nezávisle."
+                    : "Výška a náklon gimbalu jsou uzamčeny nezávisle. Kliknutím je znovu propojíte."
                 }
                 className="text-muted-foreground hover:text-foreground"
               >
@@ -389,12 +394,12 @@ export function TemplateConfigPanel({
             />
             <div className="text-[10px] text-muted-foreground mt-0.5">
               {orbitParams.altitudeGimbalLinked
-                ? "Linked with altitude — changing either recalculates the other from radius + POI height."
-                : "Locked — altitude and gimbal pitch no longer auto-update each other."}
+                ? "Propojeno s výškou — změna kteréhokoliv přepočítá druhý z radiusu a výšky POI."
+                : "Uzamčeno — výška a náklon gimbalu se už vzájemně automaticky neaktualizují."}
             </div>
           </div>
           <div>
-            <Label className="text-[10px]">Start angle (°)</Label>
+            <Label className="text-[10px]">Počáteční úhel (°)</Label>
             <NumericInput
               value={orbitParams.startAngleDeg}
               onChange={(v) =>
@@ -409,7 +414,7 @@ export function TemplateConfigPanel({
           </div>
           <div>
             <Label className="text-[10px]">
-              End angle (°, 360 = full circle)
+              Koncový úhel (°, 360 = celý kruh)
             </Label>
             <NumericInput
               value={orbitParams.endAngleDeg}
@@ -433,7 +438,7 @@ export function TemplateConfigPanel({
                 }
                 className="rounded"
               />
-              Clockwise
+              Po směru hodin
             </label>
             <label className="flex items-center gap-1.5 text-xs cursor-pointer">
               <input
@@ -444,7 +449,7 @@ export function TemplateConfigPanel({
                 }
                 className="rounded"
               />
-              Center POI
+              Středový POI
             </label>
           </div>
         </div>
@@ -455,7 +460,7 @@ export function TemplateConfigPanel({
         <div className="grid grid-cols-2 gap-2 mb-3">
           <div>
             <Label className="text-[10px]">
-              Altitude ({heightLabel(unitSystem)})
+              Výška ({heightLabel(unitSystem)})
             </Label>
             <NumericInput
               value={toDisplayHeight(gridParams.altitude, unitSystem)}
@@ -473,7 +478,7 @@ export function TemplateConfigPanel({
           </div>
           <div>
             <Label className="text-[10px]">
-              Line spacing ({distanceLabel(unitSystem)})
+              Rozestup řádků ({distanceLabel(unitSystem)})
             </Label>
             <NumericInput
               value={toDisplayDistance(gridParams.spacingM, unitSystem)}
@@ -490,7 +495,7 @@ export function TemplateConfigPanel({
             />
           </div>
           <div>
-            <Label className="text-[10px]">Rotation (°)</Label>
+            <Label className="text-[10px]">Rotace (°)</Label>
             <NumericInput
               value={gridParams.rotationDeg}
               onChange={(v) => onGridChange({ ...gridParams, rotationDeg: v })}
@@ -511,7 +516,7 @@ export function TemplateConfigPanel({
                 }
                 className="rounded"
               />
-              Photos
+              Fotky
             </label>
             <label className="flex items-center gap-1.5 text-xs cursor-pointer">
               <input
@@ -522,7 +527,7 @@ export function TemplateConfigPanel({
                 }
                 className="rounded"
               />
-              Reverse
+              Obrátit směr
             </label>
           </div>
         </div>
@@ -533,7 +538,7 @@ export function TemplateConfigPanel({
         <div className="grid grid-cols-2 gap-2 mb-3">
           <div>
             <Label className="text-[10px]">
-              Distance from wall ({distanceLabel(unitSystem)})
+              Vzdálenost od stěny ({distanceLabel(unitSystem)})
             </Label>
             <NumericInput
               value={toDisplayDistance(facadeParams.distanceM, unitSystem)}
@@ -551,7 +556,7 @@ export function TemplateConfigPanel({
           </div>
           <div>
             <Label className="text-[10px]">
-              Min altitude ({heightLabel(unitSystem)})
+              Min. výška ({heightLabel(unitSystem)})
             </Label>
             <NumericInput
               value={toDisplayHeight(facadeParams.minAltitude, unitSystem)}
@@ -571,7 +576,7 @@ export function TemplateConfigPanel({
           </div>
           <div>
             <Label className="text-[10px]">
-              Max altitude ({heightLabel(unitSystem)})
+              Max. výška ({heightLabel(unitSystem)})
             </Label>
             <NumericInput
               value={toDisplayHeight(facadeParams.maxAltitude, unitSystem)}
@@ -591,7 +596,7 @@ export function TemplateConfigPanel({
             />
           </div>
           <div>
-            <Label className="text-[10px]">Rows</Label>
+            <Label className="text-[10px]">Řady</Label>
             <NumericInput
               value={facadeParams.numRows}
               onChange={(v) => onFacadeChange({ ...facadeParams, numRows: v })}
@@ -603,7 +608,7 @@ export function TemplateConfigPanel({
             />
           </div>
           <div>
-            <Label className="text-[10px]">Columns</Label>
+            <Label className="text-[10px]">Sloupce</Label>
             <NumericInput
               value={facadeParams.numColumns}
               onChange={(v) =>
@@ -629,7 +634,7 @@ export function TemplateConfigPanel({
                 }
                 className="rounded"
               />
-              Photos
+              Fotky
             </label>
           </div>
         </div>
@@ -639,7 +644,7 @@ export function TemplateConfigPanel({
       {type === "pencil" && pencilParams && onPencilChange && (
         <div className="grid grid-cols-2 gap-2 mb-3">
           <div>
-            <Label className="text-[10px]">Waypoints</Label>
+            <Label className="text-[10px]">Body trasy</Label>
             <NumericInput
               value={pencilParams.numPoints}
               onChange={(v) =>
@@ -654,7 +659,7 @@ export function TemplateConfigPanel({
           </div>
           <div>
             <Label className="text-[10px]">
-              Altitude ({heightLabel(unitSystem)})
+              Výška ({heightLabel(unitSystem)})
             </Label>
             <NumericInput
               value={toDisplayHeight(pencilParams.altitude, unitSystem)}
@@ -672,7 +677,7 @@ export function TemplateConfigPanel({
           </div>
           <div>
             <Label className="text-[10px]">
-              Speed ({speedLabel(unitSystem)})
+              Rychlost ({speedLabel(unitSystem)})
             </Label>
             <NumericInput
               value={toDisplaySpeed(pencilParams.speed, unitSystem)}
@@ -690,7 +695,7 @@ export function TemplateConfigPanel({
             />
           </div>
           <div>
-            <Label className="text-[10px]">Gimbal pitch (°)</Label>
+            <Label className="text-[10px]">Náklon gimbalu (°)</Label>
             <NumericInput
               value={pencilParams.gimbalPitchAngle}
               onChange={(v) =>
@@ -713,12 +718,12 @@ export function TemplateConfigPanel({
                 }
                 className="rounded"
               />
-              Reverse
+              Obrátit směr
             </label>
           </div>
           {pois && pois.length > 0 && (
             <div>
-              <Label className="text-[10px]">Face POI</Label>
+              <Label className="text-[10px]">Mířit na POI</Label>
               <Select
                 value={pencilParams.poiId || "none"}
                 onValueChange={(v) =>
@@ -732,7 +737,7 @@ export function TemplateConfigPanel({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">None (follow path)</SelectItem>
+                  <SelectItem value="none">Žádný (sledovat trasu)</SelectItem>
                   {pois.map((poi) => (
                     <SelectItem key={poi.id} value={poi.id}>
                       {poi.name}
@@ -751,9 +756,9 @@ export function TemplateConfigPanel({
           <div>
             <Label
               className="text-[10px]"
-              title={`How high the drone flies, ${heightModeText} (this mission's height reference).`}
+              title={`Jak vysoko dron letí, ${heightModeText} (referenční výška této mise).`}
             >
-              Altitude ({heightLabel(unitSystem)})
+              Výška ({heightLabel(unitSystem)})
             </Label>
             <NumericInput
               value={toDisplayHeight(solarParams.altitude, unitSystem)}
@@ -772,9 +777,9 @@ export function TemplateConfigPanel({
           <div>
             <Label
               className="text-[10px]"
-              title="Compass bearing the flight lines run at, set by the reference line you drew along a panel row."
+              title="Kompasový směr, ve kterém vedou letové řádky, nastavený referenční čárou nakreslenou podél řady panelů."
             >
-              Row angle
+              Úhel řady
             </Label>
             <div className="h-7 flex items-center text-xs px-2 rounded-md border border-input bg-muted/30">
               {Math.round(solarParams.rowAngleDeg)}&deg;
@@ -783,9 +788,9 @@ export function TemplateConfigPanel({
           <div>
             <Label
               className="text-[10px]"
-              title="Distance between flight lines (cross-track). Tighter spacing gives more thermal image overlap but a longer flight."
+              title="Vzdálenost mezi letovými řádky (napříč tratí). Menší rozestup dává větší překryv termálních snímků, ale delší let."
             >
-              Line spacing ({distanceLabel(unitSystem)})
+              Rozestup řádků ({distanceLabel(unitSystem)})
             </Label>
             <NumericInput
               value={toDisplayDistance(solarParams.spacingM, unitSystem)}
@@ -804,9 +809,9 @@ export function TemplateConfigPanel({
           <div>
             <Label
               className="text-[10px]"
-              title="Distance between photos along each flight line (along-track). Without this, only the two ends of each row would ever be photographed."
+              title="Vzdálenost mezi fotkami podél každého letového řádku (podél trati). Bez toho by byly vyfoceny jen oba konce každé řady."
             >
-              Photo spacing ({distanceLabel(unitSystem)})
+              Rozestup fotek ({distanceLabel(unitSystem)})
             </Label>
             <NumericInput
               value={toDisplayDistance(solarParams.photoSpacingM, unitSystem)}
@@ -830,9 +835,9 @@ export function TemplateConfigPanel({
             if (!rec) {
               return (
                 <div className="col-span-2 text-[10px] text-muted-foreground">
-                  Field of view for the current camera isn't known — set spacing
-                  manually. (Recommended spacing is available for DJI thermal
-                  payloads: H20T, M30T, M3T, M3TD, Matrice 4T.)
+                  Zorné pole aktuální kamery není známé — nastavte rozestup
+                  ručně. (Doporučený rozestup je k dispozici pro termální kamery
+                  DJI: H20T, M30T, M3T, M3TD, Matrice 4T.)
                 </div>
               );
             }
@@ -840,15 +845,15 @@ export function TemplateConfigPanel({
               <div className="col-span-2 flex flex-col gap-1 text-[10px] text-muted-foreground bg-muted/20 rounded-md px-2 py-1">
                 <div className="flex items-center justify-between gap-2">
                   <span>
-                    Recommended for {fov.label} at this altitude:{" "}
+                    Doporučeno pro {fov.label} v této výšce:{" "}
                     {Math.round(
                       toDisplayDistance(rec.lineSpacingM, unitSystem),
                     )}
-                    {distanceLabel(unitSystem)} line /{" "}
+                    {distanceLabel(unitSystem)} řádek /{" "}
                     {Math.round(
                       toDisplayDistance(rec.photoSpacingM, unitSystem),
                     )}
-                    {distanceLabel(unitSystem)} photo
+                    {distanceLabel(unitSystem)} fotka
                   </span>
                   <Button
                     size="sm"
@@ -862,14 +867,14 @@ export function TemplateConfigPanel({
                       })
                     }
                   >
-                    Use
+                    Použít
                   </Button>
                 </div>
                 {fov.experimental && (
                   <div className="text-amber-500">
-                    This drone/camera identity is unconfirmed (no published DJI
-                    spec) — treat this recommendation as provisional until
-                    verified on real hardware.
+                    Identita tohoto dronu/kamery není potvrzená (žádná
+                    zveřejněná specifikace DJI) — považujte toto doporučení za
+                    orientační, dokud nebude ověřeno na reálném hardwaru.
                   </div>
                 )}
               </div>
@@ -888,20 +893,20 @@ export function TemplateConfigPanel({
                 }
                 className="rounded"
               />
-              Thermal (IR) photo at each waypoint
+              Termální (IR) fotka na každém bodu trasy
             </label>
           </div>
           <div className="col-span-2 text-[10px] text-muted-foreground">
-            Gimbal is fixed straight down (nadir) — standard framing for
-            photographing a flat panel surface from above.
+            Gimbal je pevně nastaven přímo dolů (nadir) — standardní kompozice
+            pro fotografování ploché plochy panelů shora.
           </div>
         </div>
       )}
 
       {exceedsWaypointLimit && (
         <div className="text-[10px] text-destructive mb-2">
-          This would generate {waypointCount} waypoints, over the mission limit
-          of {MAX_WAYPOINTS} — increase spacing before applying.
+          Tímto by vzniklo {waypointCount} bodů trasy, nad limit mise{" "}
+          {MAX_WAYPOINTS} — před použitím zvyšte rozestup.
         </div>
       )}
 
@@ -920,7 +925,7 @@ export function TemplateConfigPanel({
                   setPresetName("");
                 }
               }}
-              placeholder="Preset name"
+              placeholder="Název šablony"
               className="h-7 text-xs flex-1"
             />
             <Button
@@ -928,7 +933,7 @@ export function TemplateConfigPanel({
               className="h-7 w-7 shrink-0"
               disabled={!presetName.trim() || presetSaveInFlight}
               onClick={handleSavePreset}
-              title="Save preset"
+              title="Uložit šablonu"
             >
               <Check className="h-3 w-3" />
             </Button>
@@ -940,7 +945,7 @@ export function TemplateConfigPanel({
                 setSavingPreset(false);
                 setPresetName("");
               }}
-              title="Cancel"
+              title="Zrušit"
             >
               <X className="h-3 w-3" />
             </Button>
@@ -952,14 +957,14 @@ export function TemplateConfigPanel({
             disabled={!token}
             title={
               token
-                ? "Save this template's settings as a reusable preset"
-                : "Sign in to save presets"
+                ? "Uložit aktuální nastavení jako znovupoužitelnou šablonu"
+                : "Přihlaste se pro ukládání šablon"
             }
             onClick={() => setSavingPreset(true)}
             className="w-full h-7 text-xs mb-2"
           >
             <Save className="h-3 w-3 mr-1" />
-            Save as preset
+            Uložit jako šablonu
           </Button>
         ))}
 
@@ -972,7 +977,7 @@ export function TemplateConfigPanel({
           className="flex-1 h-7 text-xs bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
         >
           <Check className="h-3 w-3 mr-1" />
-          Apply
+          Použít
         </Button>
         <Button
           variant="outline"
@@ -980,7 +985,7 @@ export function TemplateConfigPanel({
           onClick={onCancel}
           className="h-7 text-xs"
         >
-          Cancel
+          Zrušit
         </Button>
       </div>
     </div>

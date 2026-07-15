@@ -34,7 +34,7 @@ kmzRoutes.post(
       if (!config || !waypoints || waypoints.length < 2) {
         res
           .status(400)
-          .json({ error: "At least 2 waypoints and a config are required" });
+          .json({ error: "Je vyžadována konfigurace a alespoň 2 body trasy" });
         return;
       }
 
@@ -68,7 +68,7 @@ kmzRoutes.post(
       res.send(buffer);
     } catch (err: any) {
       console.error("KMZ download error:", err);
-      res.status(500).json({ error: "Failed to generate KMZ" });
+      res.status(500).json({ error: "Generování KMZ selhalo" });
     }
   },
 );
@@ -85,7 +85,7 @@ kmzRoutes.post(
       if (!config || !waypoints || waypoints.length < 2) {
         res
           .status(400)
-          .json({ error: "At least 2 waypoints and a config are required" });
+          .json({ error: "Je vyžadována konfigurace a alespoň 2 body trasy" });
         return;
       }
 
@@ -119,7 +119,7 @@ kmzRoutes.post(
       res.send(buffer);
     } catch (err: any) {
       console.error("KMZ segments export error:", err);
-      res.status(500).json({ error: "Failed to generate mission segments" });
+      res.status(500).json({ error: "Generování segmentů mise selhalo" });
     }
   },
 );
@@ -135,7 +135,7 @@ kmzRoutes.get(
         .prepare("SELECT * FROM missions WHERE id = ? AND user_id = ?")
         .get(req.params.missionId, req.userId) as any;
       if (!row) {
-        res.status(404).json({ error: "Mission not found" });
+        res.status(404).json({ error: "Mise nebyla nalezena" });
         return;
       }
 
@@ -163,7 +163,7 @@ kmzRoutes.get(
       res.send(buffer);
     } catch (err: any) {
       console.error("KMZ download error:", err);
-      res.status(500).json({ error: "Failed to generate KMZ" });
+      res.status(500).json({ error: "Generování KMZ selhalo" });
     }
   },
 );
@@ -176,7 +176,7 @@ kmzRoutes.post(
   async (req: AuthRequest, res) => {
     try {
       if (!req.file) {
-        res.status(400).json({ error: "No file uploaded" });
+        res.status(400).json({ error: "Nebyl nahrán žádný soubor" });
         return;
       }
 
@@ -184,9 +184,7 @@ kmzRoutes.post(
 
       const geometryError = validateMissionGeometry({ waypoints, pois });
       if (geometryError) {
-        res
-          .status(400)
-          .json({ error: `Invalid KMZ contents: ${geometryError}` });
+        res.status(400).json({ error: `Neplatný obsah KMZ: ${geometryError}` });
         return;
       }
 
@@ -198,7 +196,7 @@ kmzRoutes.post(
         const db = getDb();
         missionId = uuidv4();
         const name =
-          req.file.originalname.replace(/\.kmz$/i, "") || "Imported Mission";
+          req.file.originalname.replace(/\.kmz$/i, "") || "Importovaná mise";
         db.prepare(
           "INSERT INTO missions (id, name, user_id, config, waypoints, pois, obstacles) VALUES (?, ?, ?, ?, ?, ?, ?)",
         ).run(
@@ -215,7 +213,7 @@ kmzRoutes.post(
       res.json({ id: missionId, config, waypoints, pois });
     } catch (err: any) {
       console.error("KMZ import error:", err);
-      res.status(500).json({ error: "Failed to parse KMZ" });
+      res.status(500).json({ error: "Zpracování KMZ selhalo" });
     }
   },
 );

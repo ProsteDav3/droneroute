@@ -40,7 +40,7 @@ export function MissionConfig() {
   return (
     <div className="p-3 space-y-3">
       <div>
-        <Label className="text-xs">Drone model</Label>
+        <Label className="text-xs">Model dronu</Label>
         <Select
           value={`${config.droneEnumValue}-${config.droneSubEnumValue}`}
           onValueChange={(v) => {
@@ -75,7 +75,7 @@ export function MissionConfig() {
 
       {selectedDrone && selectedDrone.payloads.length > 1 && (
         <div>
-          <Label className="text-xs">Payload</Label>
+          <Label className="text-xs">Náklad</Label>
           <Select
             value={String(config.payloadEnumValue)}
             onValueChange={(v) => setConfig({ payloadEnumValue: parseInt(v) })}
@@ -100,7 +100,7 @@ export function MissionConfig() {
       <div className="grid grid-cols-2 gap-2">
         <div>
           <Label className="text-xs">
-            Flight speed ({speedLabel(unitSystem)})
+            Rychlost letu ({speedLabel(unitSystem)})
           </Label>
           <Input
             type="number"
@@ -121,7 +121,7 @@ export function MissionConfig() {
         </div>
         <div>
           <Label className="text-xs">
-            Takeoff height ({heightLabel(unitSystem)})
+            Výška vzletu ({heightLabel(unitSystem)})
           </Label>
           <Input
             type="number"
@@ -142,7 +142,7 @@ export function MissionConfig() {
       </div>
 
       <div>
-        <Label className="text-xs">Max battery (min)</Label>
+        <Label className="text-xs">Max. baterie (min)</Label>
         <Input
           type="number"
           value={config.maxBatteryMinutes}
@@ -157,12 +157,12 @@ export function MissionConfig() {
           className="h-8 text-xs"
         />
         <div className="text-[10px] text-muted-foreground mt-0.5">
-          Warning when flight time exceeds this limit
+          Upozornění, když čas letu přesáhne tento limit
         </div>
       </div>
 
       <div>
-        <Label className="text-xs">Height reference</Label>
+        <Label className="text-xs">Reference výšky</Label>
         <Select
           value={config.heightMode}
           onValueChange={(v) => setConfig({ heightMode: v as HeightMode })}
@@ -172,15 +172,15 @@ export function MissionConfig() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="relativeToStartPoint">
-              Relative to start
+              Relativně od startu
             </SelectItem>
-            <SelectItem value="aboveGroundLevel">Above ground level</SelectItem>
+            <SelectItem value="aboveGroundLevel">Nad terénem (AGL)</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <Label className="text-xs">Heading mode</Label>
+        <Label className="text-xs">Režim natočení</Label>
         <Select
           value={config.globalHeadingMode}
           onValueChange={(v) =>
@@ -191,17 +191,17 @@ export function MissionConfig() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="followWayline">Follow wayline</SelectItem>
-            <SelectItem value="manually">Manual</SelectItem>
-            <SelectItem value="fixed">Fixed</SelectItem>
-            <SelectItem value="smoothTransition">Smooth transition</SelectItem>
-            <SelectItem value="towardPOI">Toward POI</SelectItem>
+            <SelectItem value="followWayline">Podle trasy</SelectItem>
+            <SelectItem value="manually">Ruční</SelectItem>
+            <SelectItem value="fixed">Pevné</SelectItem>
+            <SelectItem value="smoothTransition">Plynulý přechod</SelectItem>
+            <SelectItem value="towardPOI">Směrem k POI</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <Label className="text-xs">Fly-to mode</Label>
+        <Label className="text-xs">Režim přeletu</Label>
         <Select
           value={config.flyToWaylineMode}
           onValueChange={(v) =>
@@ -212,16 +212,14 @@ export function MissionConfig() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="safely">Safely (climb then fly)</SelectItem>
-            <SelectItem value="pointToPoint">
-              Point to point (direct)
-            </SelectItem>
+            <SelectItem value="safely">Bezpečně (nejdřív stoupání)</SelectItem>
+            <SelectItem value="pointToPoint">Přímo (bod k bodu)</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <Label className="text-xs">Finish action</Label>
+        <Label className="text-xs">Akce po dokončení</Label>
         <Select
           value={config.finishAction}
           onValueChange={(v) => setConfig({ finishAction: v as FinishAction })}
@@ -230,16 +228,18 @@ export function MissionConfig() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="goHome">Go home</SelectItem>
-            <SelectItem value="autoLand">Auto land</SelectItem>
-            <SelectItem value="gotoFirstWaypoint">Go to first WP</SelectItem>
-            <SelectItem value="noAction">No action (hover)</SelectItem>
+            <SelectItem value="goHome">Návrat domů</SelectItem>
+            <SelectItem value="autoLand">Automatické přistání</SelectItem>
+            <SelectItem value="gotoFirstWaypoint">
+              Přejít na první WP
+            </SelectItem>
+            <SelectItem value="noAction">Bez akce (viset)</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <Label className="text-xs">RC lost action</Label>
+        <Label className="text-xs">Akce při ztrátě signálu RC</Label>
         <Select
           value={config.executeRCLostAction}
           onValueChange={(v) =>
@@ -250,16 +250,16 @@ export function MissionConfig() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="goBack">Go back (RTH)</SelectItem>
-            <SelectItem value="landing">Land</SelectItem>
-            <SelectItem value="hover">Hover</SelectItem>
+            <SelectItem value="goBack">Návrat (RTH)</SelectItem>
+            <SelectItem value="landing">Přistát</SelectItem>
+            <SelectItem value="hover">Viset</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <div>
         <Label className="text-xs">
-          Transit speed ({speedLabel(unitSystem)})
+          Přeletová rychlost ({speedLabel(unitSystem)})
         </Label>
         <Input
           type="number"
@@ -278,7 +278,7 @@ export function MissionConfig() {
           className="h-8 text-xs"
         />
         <div className="text-[10px] text-muted-foreground mt-0.5">
-          Speed to fly to first waypoint
+          Rychlost letu k prvnímu bodu trasy
         </div>
       </div>
     </div>

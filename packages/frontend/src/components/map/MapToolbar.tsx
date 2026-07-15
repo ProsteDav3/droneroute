@@ -36,39 +36,39 @@ const TEMPLATE_OPTIONS: {
     label: "Orbit",
     shortLabel: "Orbit",
     icon: Orbit,
-    description: "Circle around a point",
+    description: "Kruh kolem bodu",
     key: "O",
   },
   {
     type: "grid",
-    label: "Grid survey",
-    shortLabel: "Grid",
+    label: "Mřížkový průzkum",
+    shortLabel: "Mřížka",
     icon: Grid3X3,
-    description: "Lawn-mower scan area",
+    description: "Skenování plochy po řádcích",
     key: "G",
   },
   {
     type: "facade",
-    label: "Facade scan",
-    shortLabel: "Facade",
+    label: "Sken fasády",
+    shortLabel: "Fasáda",
     icon: Building2,
-    description: "Vertical wall scan",
+    description: "Svislé skenování stěny",
     key: "F",
   },
   {
     type: "pencil",
-    label: "Pencil path",
-    shortLabel: "Pencil",
+    label: "Volná křivka",
+    shortLabel: "Křivka",
     icon: PenLine,
-    description: "Draw a freehand path",
+    description: "Nakreslete trasu od ruky",
     key: "Z",
   },
   {
     type: "solar",
-    label: "Solar panel survey",
-    shortLabel: "Solar",
+    label: "Solární panelový průzkum",
+    shortLabel: "Solární",
     icon: Sun,
-    description: "Trace panel array + row direction, clipped scan",
+    description: "Obkreslete pole panelů a směr řad, oříznuté skenování",
     key: "S",
   },
 ];
@@ -122,12 +122,12 @@ export function MapToolbar() {
         variant={isAddingWaypoint ? "default" : "outline"}
         size="sm"
         onClick={() => setIsAddingWaypoint(true)}
-        title="Click on map to add waypoints (W)"
+        title="Klikněte na mapu pro přidání bodů trasy (W)"
         className={`justify-between ${isAddingWaypoint ? activeClass : inactiveClass}`}
       >
         <span className="flex items-center gap-1.5">
           <MousePointerClick className="h-4 w-4" />
-          <span className="text-xs">Add WP</span>
+          <span className="text-xs">Přidat WP</span>
         </span>
         <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
           W
@@ -137,12 +137,12 @@ export function MapToolbar() {
         variant={isAddingPoi ? "default" : "outline"}
         size="sm"
         onClick={() => setIsAddingPoi(true)}
-        title="Click on map to add POI (P)"
+        title="Klikněte na mapu pro přidání POI (P)"
         className={`justify-between ${isAddingPoi ? activeClass : inactiveClass}`}
       >
         <span className="flex items-center gap-1.5">
           <Crosshair className="h-4 w-4" />
-          <span className="text-xs">Add POI</span>
+          <span className="text-xs">Přidat POI</span>
         </span>
         <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
           P
@@ -152,12 +152,12 @@ export function MapToolbar() {
         variant={isDrawingObstacle ? "default" : "outline"}
         size="sm"
         onClick={() => setIsDrawingObstacle(!isDrawingObstacle)}
-        title="Draw obstacle polygon (B)"
+        title="Nakreslit polygon překážky (B)"
         className={`justify-between ${isDrawingObstacle ? activeClass : inactiveClass}`}
       >
         <span className="flex items-center gap-1.5">
           <Triangle className="h-4 w-4" />
-          <span className="text-xs">Obstacle</span>
+          <span className="text-xs">Překážka</span>
         </span>
         <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
           B
@@ -167,12 +167,12 @@ export function MapToolbar() {
         variant={isDrawingBuilding ? "default" : "outline"}
         size="sm"
         onClick={() => setIsDrawingBuilding(!isDrawingBuilding)}
-        title="Draw a building footprint (H)"
+        title="Nakreslit půdorys budovy (H)"
         className={`justify-between ${isDrawingBuilding ? activeClass : inactiveClass}`}
       >
         <span className="flex items-center gap-1.5">
           <Warehouse className="h-4 w-4" />
-          <span className="text-xs">Building</span>
+          <span className="text-xs">Budova</span>
         </span>
         <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
           H
@@ -184,17 +184,17 @@ export function MapToolbar() {
             variant={buildingDrawMode === "rectangle" ? "default" : "outline"}
             size="sm"
             onClick={() => setBuildingDrawMode("rectangle")}
-            title="Draw a 2-corner rectangle"
+            title="Nakreslit obdélník ze 2 rohů"
             className={`flex-1 ${buildingDrawMode === "rectangle" ? activeClass : inactiveClass}`}
           >
             <Square className="h-3.5 w-3.5" />
-            <span className="text-xs">Rect</span>
+            <span className="text-xs">Obdélník</span>
           </Button>
           <Button
             variant={buildingDrawMode === "polygon" ? "default" : "outline"}
             size="sm"
             onClick={() => setBuildingDrawMode("polygon")}
-            title="Click to trace an irregular footprint"
+            title="Klikáním obkreslete nepravidelný půdorys"
             className={`flex-1 ${buildingDrawMode === "polygon" ? activeClass : inactiveClass}`}
           >
             <Spline className="h-3.5 w-3.5" />
@@ -209,7 +209,7 @@ export function MapToolbar() {
           variant={templateMode ? "default" : "outline"}
           size="sm"
           onClick={() => setShowTemplateMenu(!showTemplateMenu)}
-          title="Insert a mission template"
+          title="Vložit šablonu mise"
           className={`justify-between w-full ${templateMode ? activeClass : inactiveClass}`}
         >
           <span className="flex items-center gap-1.5">
@@ -230,7 +230,7 @@ export function MapToolbar() {
               {templateMode
                 ? TEMPLATE_OPTIONS.find((t) => t.type === templateMode)
                     ?.shortLabel
-                : "Template"}
+                : "Šablona"}
             </span>
           </span>
           <ChevronDown className="h-3 w-3 ml-1" />
@@ -277,12 +277,12 @@ export function MapToolbar() {
           setIsDrawingBuilding(false);
           setTemplateMode(null);
         }}
-        title="Pan / select mode (Esc)"
+        title="Posun / výběr (Esc)"
         className={`justify-between ${isPanning ? activeClass : inactiveClass}`}
       >
         <span className="flex items-center gap-1.5">
           <Hand className="h-4 w-4" />
-          <span className="text-xs">Pan</span>
+          <span className="text-xs">Posun</span>
         </span>
         <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
           Esc
@@ -296,14 +296,14 @@ export function MapToolbar() {
           variant="outline"
           size="sm"
           onClick={() => {
-            if (confirm("Clear all waypoints, POIs, obstacles, and buildings?"))
+            if (confirm("Smazat všechny body trasy, POI, překážky a budovy?"))
               clearMission();
           }}
-          title="Clear all waypoints, POIs, obstacles, and buildings"
+          title="Smazat všechny body trasy, POI, překážky a budovy"
           className="bg-background/90 backdrop-blur-sm text-destructive hover:text-destructive"
         >
           <Trash2 className="h-4 w-4" />
-          <span className="text-xs">Clear</span>
+          <span className="text-xs">Smazat vše</span>
         </Button>
       )}
     </div>

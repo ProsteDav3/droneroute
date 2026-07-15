@@ -80,7 +80,7 @@ describe("POST /api/auth/login — failure paths", () => {
       .post("/api/auth/login")
       .send({ email: "login@test.dev", password: "wrongpass" });
     expect(res.status).toBe(401);
-    expect(res.body.error).toBe("Invalid email or password");
+    expect(res.body.error).toBe("Neplatný e-mail nebo heslo");
   });
 
   it("does not leak account existence: nonexistent email matches wrong-password response", async () => {

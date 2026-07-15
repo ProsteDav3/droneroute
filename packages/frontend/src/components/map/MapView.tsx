@@ -161,7 +161,7 @@ function GeocoderControl() {
       mapboxgl: mapboxgl as any,
       marker: false,
       collapsed: true,
-      placeholder: "Search location...",
+      placeholder: "Hledat místo...",
     });
 
     m.addControl(geocoder, "top-left");
@@ -673,15 +673,21 @@ export function MapView() {
           >
             <div className="flex flex-col gap-2 p-1 min-w-[160px]">
               <div className="text-xs text-zinc-300">
-                <strong className="text-white">Building</strong>
+                <strong className="text-white">Budova</strong>
                 {buildingPopup.height != null && (
                   <span className="ml-2 text-zinc-400">
-                    {buildingPopup.height}m tall
+                    výška {buildingPopup.height}m
                   </span>
                 )}
               </div>
               <div className="text-[10px] text-zinc-500">
-                {buildingPopup.vertices.length} vertices
+                {buildingPopup.vertices.length}{" "}
+                {buildingPopup.vertices.length === 1
+                  ? "vrchol"
+                  : buildingPopup.vertices.length >= 2 &&
+                      buildingPopup.vertices.length <= 4
+                    ? "vrcholy"
+                    : "vrcholů"}
               </div>
               <Button
                 size="sm"
@@ -693,7 +699,7 @@ export function MapView() {
                 }}
               >
                 <Triangle className="h-3 w-3" />
-                Convert to obstacle
+                Převést na překážku
               </Button>
             </div>
           </Popup>
@@ -706,7 +712,7 @@ export function MapView() {
           className={`px-2 py-1 text-xs rounded ${mapStyle.includes("dark") ? "bg-primary text-primary-foreground" : "bg-background/90 text-foreground border border-border"}`}
           onClick={() => setMapStyle("mapbox://styles/mapbox/dark-v11")}
         >
-          Street
+          Mapa ulic
         </button>
         <button
           className={`px-2 py-1 text-xs rounded ${mapStyle.includes("satellite") ? "bg-primary text-primary-foreground" : "bg-background/90 text-foreground border border-border"}`}
@@ -714,7 +720,7 @@ export function MapView() {
             setMapStyle("mapbox://styles/mapbox/satellite-streets-v12")
           }
         >
-          Satellite
+          Satelitní
         </button>
         <div className="w-px bg-border mx-1" />
         <button

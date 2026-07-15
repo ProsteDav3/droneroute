@@ -55,11 +55,11 @@ templatePresetRoutes.put("/:id", authMiddleware, (req: AuthRequest, res) => {
     .get(req.params.id) as any;
 
   if (!existing) {
-    res.status(404).json({ error: "Preset not found" });
+    res.status(404).json({ error: "Šablona nebyla nalezena" });
     return;
   }
   if (existing.user_id !== req.userId) {
-    res.status(403).json({ error: "Not authorized" });
+    res.status(403).json({ error: "Nemáte oprávnění" });
     return;
   }
 
@@ -99,11 +99,11 @@ templatePresetRoutes.delete("/:id", authMiddleware, (req: AuthRequest, res) => {
     .get(req.params.id) as any;
 
   if (!existing) {
-    res.status(404).json({ error: "Preset not found" });
+    res.status(404).json({ error: "Šablona nebyla nalezena" });
     return;
   }
   if (existing.user_id !== req.userId) {
-    res.status(403).json({ error: "Not authorized" });
+    res.status(403).json({ error: "Nemáte oprávnění" });
     return;
   }
 

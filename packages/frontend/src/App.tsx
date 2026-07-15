@@ -212,14 +212,14 @@ export default function App() {
       result.push({
         id: "obstacle",
         type: "obstacle",
-        message: `${obstacleWarnings.length} obstacle warning${obstacleWarnings.length > 1 ? "s" : ""} — waypoints conflict with restricted zones`,
+        message: `${obstacleWarnings.length} upozornění na překážky — body trasy zasahují do zakázaných zón`,
       });
     }
     if (flightStats && flightStats.time > config.maxBatteryMinutes * 60) {
       result.push({
         id: "battery",
         type: "battery",
-        message: `Flight time (${formatDuration(flightStats.time)}) exceeds max battery (${config.maxBatteryMinutes}min)`,
+        message: `Doba letu (${formatDuration(flightStats.time)}) přesahuje maximální kapacitu baterie (${config.maxBatteryMinutes} min)`,
       });
     }
     // Airspace zone warnings
@@ -233,14 +233,14 @@ export default function App() {
       result.push({
         id: "airspace-prohibited",
         type: "airspace",
-        message: `Flight path enters ${prohibitedCount} prohibited airspace zone${prohibitedCount > 1 ? "s" : ""} — flight is not allowed`,
+        message: `Trasa letu vstupuje do ${prohibitedCount} ${prohibitedCount === 1 ? "zakázané vzdušné zóny" : "zakázaných vzdušných zón"} — let není povolen`,
       });
     }
     if (restrictedCount > 0) {
       result.push({
         id: "airspace-restricted",
         type: "airspace",
-        message: `Flight path enters ${restrictedCount} restricted airspace zone${restrictedCount > 1 ? "s" : ""} — authorization may be required`,
+        message: `Trasa letu vstupuje do ${restrictedCount} ${restrictedCount === 1 ? "omezené vzdušné zóny" : "omezených vzdušných zón"} — může být vyžadováno povolení`,
       });
     }
     return result;
@@ -275,7 +275,7 @@ export default function App() {
 
   const handleExport = async () => {
     if (waypoints.length < 2) {
-      toast.warning("Need at least 2 waypoints to export");
+      toast.warning("Pro export je potřeba alespoň 2 body trasy");
       return;
     }
 
@@ -295,7 +295,7 @@ export default function App() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      toast.error(`Export failed: ${err.message}`);
+      toast.error(`Export selhal: ${err.message}`);
     } finally {
       setExporting(false);
     }
@@ -303,7 +303,7 @@ export default function App() {
 
   const handleExportSegments = async () => {
     if (waypoints.length < 2) {
-      toast.warning("Need at least 2 waypoints to export segments");
+      toast.warning("Pro export segmentů je potřeba alespoň 2 body trasy");
       return;
     }
 
@@ -323,7 +323,7 @@ export default function App() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
-      toast.error(`Segment export failed: ${err.message}`);
+      toast.error(`Export segmentů selhal: ${err.message}`);
     } finally {
       setExportingSegments(false);
     }
@@ -335,7 +335,7 @@ export default function App() {
       return;
     }
     if (!missionName.trim()) {
-      toast.warning("Please enter a mission name before saving");
+      toast.warning("Před uložením zadejte název mise");
       return;
     }
     setSaving(true);
@@ -364,7 +364,7 @@ export default function App() {
       }
       setDirty(false);
     } catch (err: any) {
-      toast.error(`Save failed: ${err.message}`);
+      toast.error(`Uložení selhalo: ${err.message}`);
     } finally {
       setSaving(false);
     }
@@ -390,7 +390,7 @@ export default function App() {
         pois: result.pois,
       });
     } catch (err: any) {
-      toast.error(`Import failed: ${err.message}`);
+      toast.error(`Import selhal: ${err.message}`);
     }
 
     // Reset file input
@@ -493,7 +493,7 @@ export default function App() {
             e.preventDefault();
             if (selectedWaypointIndices.size > 1) {
               if (
-                confirm(`Delete ${selectedWaypointIndices.size} waypoints?`)
+                confirm(`Smazat ${selectedWaypointIndices.size} bodů trasy?`)
               ) {
                 removeSelectedWaypoints();
               }
@@ -564,7 +564,7 @@ export default function App() {
                 size="icon"
                 onClick={() => setShowAbout(true)}
                 className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                title="Help & shortcuts"
+                title="Nápověda a klávesové zkratky"
               >
                 <CircleHelp className="h-4 w-4" />
               </Button>
@@ -573,7 +573,7 @@ export default function App() {
                 size="icon"
                 onClick={() => setCurrentPage("routes")}
                 className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                title="My routes"
+                title="Moje trasy"
               >
                 <FolderOpen className="h-4 w-4" />
               </Button>
@@ -586,7 +586,7 @@ export default function App() {
                     setCurrentPage("admin");
                   }}
                   className="h-7 w-7 text-purple-400 hover:text-purple-300"
-                  title="User management"
+                  title="Správa uživatelů"
                 >
                   <Shield className="h-4 w-4" />
                 </Button>
@@ -597,8 +597,8 @@ export default function App() {
             value={missionName}
             onChange={(e) => setMissionName(e.target.value)}
             className="h-8 text-xs font-medium border-blue-500/30 bg-blue-500/5 focus-visible:ring-blue-500/40"
-            placeholder="Mission name"
-            title="Name your mission for easy identification"
+            placeholder="Název mise"
+            title="Pojmenujte misi pro snadnou identifikaci"
           />
         </div>
 
@@ -610,10 +610,10 @@ export default function App() {
             onClick={handleSave}
             disabled={saving}
             className="flex-1 text-xs h-7 border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 hover:text-blue-300"
-            title="Save mission to your account"
+            title="Uložit misi do vašeho účtu"
           >
             <Save className="h-3 w-3" />
-            {saving ? "..." : "Save"}
+            {saving ? "..." : "Uložit"}
           </Button>
           <Button
             variant="outline"
@@ -623,8 +623,8 @@ export default function App() {
             className="flex-1 text-xs h-7 border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 hover:text-blue-300"
             title={
               waypoints.length < 2
-                ? "Add at least 2 waypoints to export"
-                : "Export mission as DJI KMZ file"
+                ? "Pro export přidejte alespoň 2 body trasy"
+                : "Exportovat misi jako soubor DJI KMZ"
             }
           >
             <Download className="h-3 w-3" />
@@ -635,7 +635,7 @@ export default function App() {
             size="sm"
             onClick={() => fileInputRef.current?.click()}
             className="flex-1 text-xs h-7 border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 hover:text-blue-300"
-            title="Import a DJI KMZ file"
+            title="Importovat soubor DJI KMZ"
           >
             <Upload className="h-3 w-3" />
             Import KMZ
@@ -657,12 +657,12 @@ export default function App() {
             className="flex-1 text-xs h-7 border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 hover:text-blue-300"
             title={
               waypoints.length < 2
-                ? "Add at least 2 waypoints to export segments"
-                : "Split the route into one-leg missions (WP1→WP2, WP2→WP3, ...) and download them all as a zip of .kmz files"
+                ? "Pro export segmentů přidejte alespoň 2 body trasy"
+                : "Rozdělit trasu na jednotlivé úseky (WP1→WP2, WP2→WP3, ...) a stáhnout je všechny jako zip souborů .kmz"
             }
           >
             <Scissors className="h-3 w-3" />
-            {exportingSegments ? "..." : "Export segments (.zip)"}
+            {exportingSegments ? "..." : "Export segmentů (.zip)"}
           </Button>
         </div>
 
@@ -673,7 +673,7 @@ export default function App() {
             <button
               className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-blue-500/10 hover:bg-blue-500/15 text-blue-400"
               onClick={() => toggleSection("waypoints")}
-              title="Flight path coordinates — click on the map to add"
+              title="Souřadnice letové trasy — přidáte kliknutím na mapu"
             >
               {expandedSections.waypoints ? (
                 <ChevronDown className="h-3 w-3" />
@@ -681,7 +681,7 @@ export default function App() {
                 <ChevronRight className="h-3 w-3" />
               )}
               <MapPin className="h-3 w-3" />
-              Waypoints ({waypoints.length})
+              Body trasy ({waypoints.length})
             </button>
             {expandedSections.waypoints && (
               <div className="max-h-[40vh] overflow-y-auto section-expand">
@@ -695,7 +695,7 @@ export default function App() {
             <button
               className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-amber-500/10 hover:bg-amber-500/15 text-amber-400"
               onClick={() => toggleSection("pois")}
-              title="Targets the drone can point its camera at"
+              title="Cíle, na které může dron namířit kameru"
             >
               {expandedSections.pois ? (
                 <ChevronDown className="h-3 w-3" />
@@ -703,7 +703,7 @@ export default function App() {
                 <ChevronRight className="h-3 w-3" />
               )}
               <Crosshair className="h-3 w-3" />
-              Points of interest ({pois.length})
+              Body zájmu (POI) ({pois.length})
             </button>
             {expandedSections.pois && (
               <div className="max-h-[30vh] overflow-y-auto section-expand">
@@ -717,7 +717,7 @@ export default function App() {
             <button
               className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-red-500/10 hover:bg-red-500/15 text-red-400"
               onClick={() => toggleSection("obstacles")}
-              title="No-fly zones to avoid during the mission"
+              title="Zakázané zóny, kterým se má mise vyhnout"
             >
               {expandedSections.obstacles ? (
                 <ChevronDown className="h-3 w-3" />
@@ -725,7 +725,7 @@ export default function App() {
                 <ChevronRight className="h-3 w-3" />
               )}
               <Triangle className="h-3 w-3" />
-              Obstacles ({obstacles.length})
+              Překážky ({obstacles.length})
             </button>
             {expandedSections.obstacles && (
               <div className="max-h-[30vh] overflow-y-auto section-expand">
@@ -739,7 +739,7 @@ export default function App() {
             <button
               className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-blue-500/10 hover:bg-blue-500/15 text-blue-400"
               onClick={() => toggleSection("buildings")}
-              title="Building footprints — helps recommend orbit settings when a POI is placed on one"
+              title="Půdorysy budov — pomáhají doporučit nastavení orbitu při umístění POI na budovu"
             >
               {expandedSections.buildings ? (
                 <ChevronDown className="h-3 w-3" />
@@ -747,7 +747,7 @@ export default function App() {
                 <ChevronRight className="h-3 w-3" />
               )}
               <Warehouse className="h-3 w-3" />
-              Buildings ({buildings.length})
+              Budovy ({buildings.length})
             </button>
             {expandedSections.buildings && (
               <div className="max-h-[30vh] overflow-y-auto section-expand">
@@ -761,7 +761,7 @@ export default function App() {
             <button
               className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-indigo-500/10 hover:bg-indigo-500/15 text-indigo-400"
               onClick={() => toggleSection("presets")}
-              title="Saved template settings, reusable across missions"
+              title="Uložená nastavení šablon, znovupoužitelná napříč misemi"
             >
               {expandedSections.presets ? (
                 <ChevronDown className="h-3 w-3" />
@@ -769,7 +769,7 @@ export default function App() {
                 <ChevronRight className="h-3 w-3" />
               )}
               <Bookmark className="h-3 w-3" />
-              Template presets ({presets.length})
+              Přednastavené šablony ({presets.length})
             </button>
             {expandedSections.presets && (
               <div className="max-h-[30vh] overflow-y-auto section-expand">
@@ -783,7 +783,7 @@ export default function App() {
             <button
               className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-sky-500/10 hover:bg-sky-500/15 text-sky-400"
               onClick={() => toggleSection("weather")}
-              title="Wind and precipitation forecast for the mission's location"
+              title="Předpověď větru a srážek pro místo mise"
             >
               {expandedSections.weather ? (
                 <ChevronDown className="h-3 w-3" />
@@ -791,7 +791,7 @@ export default function App() {
                 <ChevronRight className="h-3 w-3" />
               )}
               <CloudSun className="h-3 w-3" />
-              Weather forecast
+              Předpověď počasí
             </button>
             {expandedSections.weather && (
               <div className="max-h-[30vh] overflow-y-auto section-expand">
@@ -805,7 +805,7 @@ export default function App() {
             <button
               className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-purple-500/10 hover:bg-purple-500/15 text-purple-400"
               onClick={() => toggleSection("config")}
-              title="Drone model, speed, altitude and flight behavior"
+              title="Model dronu, rychlost, výška a chování letu"
             >
               {expandedSections.config ? (
                 <ChevronDown className="h-3 w-3" />
@@ -813,7 +813,7 @@ export default function App() {
                 <ChevronRight className="h-3 w-3" />
               )}
               <Settings className="h-3 w-3" />
-              Mission settings
+              Nastavení mise
             </button>
             {expandedSections.config && (
               <div className="max-h-[40vh] overflow-y-auto section-expand">
@@ -848,7 +848,7 @@ export default function App() {
                   {photoCount > 0 && (
                     <span
                       className="flex items-center gap-1 text-[11px]"
-                      title="Photo actions"
+                      title="Akce fotografování"
                     >
                       <Camera className="h-3 w-3 text-sky-400" />
                       <span className="text-sky-300 font-medium">
@@ -859,7 +859,7 @@ export default function App() {
                   {videoCount > 0 && (
                     <span
                       className="flex items-center gap-1 text-[11px]"
-                      title="Video actions"
+                      title="Akce natáčení videa"
                     >
                       <Video className="h-3 w-3 text-red-400" />
                       <span className="text-red-300 font-medium">
@@ -886,7 +886,7 @@ export default function App() {
                       {elevGain > 0 && (
                         <span
                           className="flex items-center gap-1 text-[11px]"
-                          title="Elevation gain"
+                          title="Převýšení"
                         >
                           <TrendingUp className="h-3 w-3 text-orange-400" />
                           <span className="text-orange-300 font-medium">
@@ -896,7 +896,7 @@ export default function App() {
                       )}
                       <span
                         className="flex items-center gap-1 text-[11px]"
-                        title="Total distance"
+                        title="Celková vzdálenost"
                       >
                         <Route className="h-3 w-3 text-emerald-400" />
                         <span className="text-emerald-300 font-medium">
@@ -907,8 +907,8 @@ export default function App() {
                         className="flex items-center gap-1 text-[11px]"
                         title={
                           exceedsBattery
-                            ? `Exceeds max battery (${config.maxBatteryMinutes}min)`
-                            : "Estimated flight time"
+                            ? `Přesahuje maximální kapacitu baterie (${config.maxBatteryMinutes} min)`
+                            : "Odhadovaný čas letu"
                         }
                       >
                         <Clock
@@ -956,7 +956,7 @@ export default function App() {
                   size="icon"
                   onClick={() => setShowAccountMenu(true)}
                   className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                  title="Account settings"
+                  title="Nastavení účtu"
                 >
                   <UserCog className="h-3.5 w-3.5" />
                 </Button>
@@ -965,7 +965,7 @@ export default function App() {
                   size="icon"
                   onClick={logout}
                   className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                  title="Sign out"
+                  title="Odhlásit se"
                 >
                   <LogOut className="h-3.5 w-3.5" />
                 </Button>
@@ -981,7 +981,7 @@ export default function App() {
               <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center shrink-0">
                 <User className="h-3 w-3 text-muted-foreground" />
               </div>
-              Guest mode. Sign in to save missions
+              Nepřihlášeno. Přihlaste se pro uložení misí
             </Button>
           )}
         </div>

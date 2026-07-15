@@ -100,7 +100,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
     setSuccess(false);
 
     if (newPassword !== confirmPassword) {
-      setError("New passwords don't match");
+      setError("Nová hesla se neshodují");
       return;
     }
 
@@ -112,7 +112,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
       setNewPassword("");
       setConfirmPassword("");
     } catch (err: any) {
-      setError(err.message || "Failed to change password");
+      setError(err.message || "Změna hesla se nezdařila");
     } finally {
       setSaving(false);
     }
@@ -153,7 +153,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
-          <h2 className="text-sm font-semibold">Settings</h2>
+          <h2 className="text-sm font-semibold">Nastavení</h2>
           <button
             onClick={onClose}
             className="text-muted-foreground hover:text-foreground transition-colors"
@@ -166,13 +166,13 @@ export function AccountModal({ onClose }: AccountModalProps) {
           <div className="px-5 pt-4 shrink-0">
             <TabsList className="w-full">
               <TabsTrigger value="account" className="flex-1">
-                Account
+                Účet
               </TabsTrigger>
               <TabsTrigger value="visualization" className="flex-1">
-                Visualization
+                Zobrazení
               </TabsTrigger>
               <TabsTrigger value="mission-defaults" className="flex-1">
-                Mission defaults
+                Výchozí nastavení mise
               </TabsTrigger>
             </TabsList>
           </div>
@@ -184,7 +184,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
           >
             <div className="space-y-5 pt-2">
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Email</Label>
+                <Label className="text-xs text-muted-foreground">E-mail</Label>
                 <p className="text-sm">{email}</p>
               </div>
 
@@ -192,11 +192,11 @@ export function AccountModal({ onClose }: AccountModalProps) {
                 <form onSubmit={handleChangePassword} className="space-y-3">
                   <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                     <KeyRound className="h-3 w-3" />
-                    Change password
+                    Změna hesla
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="currentPassword" className="text-xs">
-                      Current password
+                      Současné heslo
                     </Label>
                     <Input
                       id="currentPassword"
@@ -209,14 +209,14 @@ export function AccountModal({ onClose }: AccountModalProps) {
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="newPassword" className="text-xs">
-                      New password
+                      Nové heslo
                     </Label>
                     <Input
                       id="newPassword"
                       type="password"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="Min 6 characters"
+                      placeholder="Min. 6 znaků"
                       className="h-9 text-sm"
                       required
                       minLength={6}
@@ -224,7 +224,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="confirmPassword" className="text-xs">
-                      Confirm new password
+                      Potvrzení nového hesla
                     </Label>
                     <Input
                       id="confirmPassword"
@@ -239,7 +239,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
                   {error && <p className="text-xs text-destructive">{error}</p>}
                   {success && (
                     <p className="text-xs text-emerald-400">
-                      Password updated successfully
+                      Heslo bylo úspěšně změněno
                     </p>
                   )}
                   <Button
@@ -247,7 +247,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
                     className="w-full h-9 text-sm"
                     disabled={saving}
                   >
-                    {saving ? "Updating..." : "Update password"}
+                    {saving ? "Ukládání..." : "Změnit heslo"}
                   </Button>
                 </form>
               )}
@@ -261,7 +261,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
           >
             <div className="space-y-4 pt-2">
               <div>
-                <Label className="text-xs">View mode</Label>
+                <Label className="text-xs">Režim zobrazení</Label>
                 <Select
                   value={vizPrefs.viewMode}
                   onValueChange={(v) =>
@@ -282,7 +282,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
               </div>
 
               <div>
-                <Label className="text-xs">Map style</Label>
+                <Label className="text-xs">Styl mapy</Label>
                 <Select
                   value={vizPrefs.mapStyle}
                   onValueChange={(v) =>
@@ -296,14 +296,14 @@ export function AccountModal({ onClose }: AccountModalProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="satellite">Satellite</SelectItem>
-                    <SelectItem value="street">Street</SelectItem>
+                    <SelectItem value="satellite">Satelitní</SelectItem>
+                    <SelectItem value="street">Mapa ulic</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label className="text-xs">Unit system</Label>
+                <Label className="text-xs">Jednotky</Label>
                 <Select
                   value={unitSystem}
                   onValueChange={(v) => setUnitSystem(v as UnitSystem)}
@@ -312,9 +312,11 @@ export function AccountModal({ onClose }: AccountModalProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="metric">Metric (m, m/s, km)</SelectItem>
+                    <SelectItem value="metric">
+                      Metrické (m, m/s, km)
+                    </SelectItem>
                     <SelectItem value="imperial">
-                      Imperial (ft, mph, mi)
+                      Imperiální (ft, mph, mi)
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -323,7 +325,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
               {/* Extra layers */}
               <div>
                 <Label className="text-xs font-medium text-muted-foreground mb-2 block">
-                  Extra layers
+                  Další vrstvy
                 </Label>
                 <div className="space-y-2">
                   {AIRSPACE_PROVIDERS.map((provider) => (
@@ -356,10 +358,10 @@ export function AccountModal({ onClose }: AccountModalProps) {
                 disabled={prefsSaving}
               >
                 {prefsSaving
-                  ? "Saving..."
+                  ? "Ukládání..."
                   : prefsSaved
-                    ? "Saved!"
-                    : "Save preferences"}
+                    ? "Uloženo!"
+                    : "Uložit předvolby"}
               </Button>
             </div>
           </TabsContent>
@@ -371,11 +373,11 @@ export function AccountModal({ onClose }: AccountModalProps) {
           >
             <div className="space-y-3 pt-2">
               <p className="text-[10px] text-muted-foreground">
-                These defaults will be applied when creating new missions.
+                Tyto výchozí hodnoty se použijí při vytváření nových misí.
               </p>
 
               <div>
-                <Label className="text-xs">Drone model</Label>
+                <Label className="text-xs">Model dronu</Label>
                 <Select
                   value={`${missionDefaults.droneEnumValue}-${missionDefaults.droneSubEnumValue}`}
                   onValueChange={(v) => {
@@ -413,7 +415,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
 
               {selectedDrone && selectedDrone.payloads.length > 1 && (
                 <div>
-                  <Label className="text-xs">Payload</Label>
+                  <Label className="text-xs">Náklad</Label>
                   <Select
                     value={String(missionDefaults.payloadEnumValue)}
                     onValueChange={(v) =>
@@ -440,7 +442,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="text-xs">
-                    Flight speed ({speedLabel(unitSystem)})
+                    Rychlost letu ({speedLabel(unitSystem)})
                   </Label>
                   <Input
                     type="number"
@@ -464,7 +466,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
                 </div>
                 <div>
                   <Label className="text-xs">
-                    Takeoff height ({heightLabel(unitSystem)})
+                    Výška vzletu ({heightLabel(unitSystem)})
                   </Label>
                   <Input
                     type="number"
@@ -488,7 +490,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
               </div>
 
               <div>
-                <Label className="text-xs">Max battery (min)</Label>
+                <Label className="text-xs">Max. baterie (min)</Label>
                 <Input
                   type="number"
                   value={missionDefaults.maxBatteryMinutes}
@@ -508,7 +510,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
               </div>
 
               <div>
-                <Label className="text-xs">Height reference</Label>
+                <Label className="text-xs">Reference výšky</Label>
                 <Select
                   value={missionDefaults.heightMode}
                   onValueChange={(v) =>
@@ -520,17 +522,17 @@ export function AccountModal({ onClose }: AccountModalProps) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="relativeToStartPoint">
-                      Relative to start
+                      Relativně od startu
                     </SelectItem>
                     <SelectItem value="aboveGroundLevel">
-                      Above ground level
+                      Nad terénem (AGL)
                     </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label className="text-xs">Heading mode</Label>
+                <Label className="text-xs">Režim natočení</Label>
                 <Select
                   value={missionDefaults.globalHeadingMode}
                   onValueChange={(v) =>
@@ -541,21 +543,19 @@ export function AccountModal({ onClose }: AccountModalProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="followWayline">
-                      Follow wayline
-                    </SelectItem>
-                    <SelectItem value="manually">Manual</SelectItem>
-                    <SelectItem value="fixed">Fixed</SelectItem>
+                    <SelectItem value="followWayline">Podle trasy</SelectItem>
+                    <SelectItem value="manually">Ruční</SelectItem>
+                    <SelectItem value="fixed">Pevné</SelectItem>
                     <SelectItem value="smoothTransition">
-                      Smooth transition
+                      Plynulý přechod
                     </SelectItem>
-                    <SelectItem value="towardPOI">Toward POI</SelectItem>
+                    <SelectItem value="towardPOI">Směrem k POI</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label className="text-xs">Fly-to mode</Label>
+                <Label className="text-xs">Režim přeletu</Label>
                 <Select
                   value={missionDefaults.flyToWaylineMode}
                   onValueChange={(v) =>
@@ -569,17 +569,17 @@ export function AccountModal({ onClose }: AccountModalProps) {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="safely">
-                      Safely (climb then fly)
+                      Bezpečně (nejdřív stoupání)
                     </SelectItem>
                     <SelectItem value="pointToPoint">
-                      Point to point (direct)
+                      Přímo (bod k bodu)
                     </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label className="text-xs">Finish action</Label>
+                <Label className="text-xs">Akce po dokončení</Label>
                 <Select
                   value={missionDefaults.finishAction}
                   onValueChange={(v) =>
@@ -590,18 +590,20 @@ export function AccountModal({ onClose }: AccountModalProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="goHome">Go home</SelectItem>
-                    <SelectItem value="autoLand">Auto land</SelectItem>
-                    <SelectItem value="gotoFirstWaypoint">
-                      Go to first WP
+                    <SelectItem value="goHome">Návrat domů</SelectItem>
+                    <SelectItem value="autoLand">
+                      Automatické přistání
                     </SelectItem>
-                    <SelectItem value="noAction">No action (hover)</SelectItem>
+                    <SelectItem value="gotoFirstWaypoint">
+                      Přejít na první WP
+                    </SelectItem>
+                    <SelectItem value="noAction">Bez akce (viset)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
-                <Label className="text-xs">RC lost action</Label>
+                <Label className="text-xs">Akce při ztrátě signálu RC</Label>
                 <Select
                   value={missionDefaults.executeRCLostAction}
                   onValueChange={(v) =>
@@ -614,16 +616,16 @@ export function AccountModal({ onClose }: AccountModalProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="goBack">Go back (RTH)</SelectItem>
-                    <SelectItem value="landing">Land</SelectItem>
-                    <SelectItem value="hover">Hover</SelectItem>
+                    <SelectItem value="goBack">Návrat (RTH)</SelectItem>
+                    <SelectItem value="landing">Přistát</SelectItem>
+                    <SelectItem value="hover">Viset</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div>
                 <Label className="text-xs">
-                  Transit speed ({speedLabel(unitSystem)})
+                  Přeletová rychlost ({speedLabel(unitSystem)})
                 </Label>
                 <Input
                   type="number"
@@ -645,7 +647,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
                   className="h-8 text-xs"
                 />
                 <div className="text-[10px] text-muted-foreground mt-0.5">
-                  Speed to fly to first waypoint
+                  Rychlost letu k prvnímu bodu trasy
                 </div>
               </div>
 
@@ -655,10 +657,10 @@ export function AccountModal({ onClose }: AccountModalProps) {
                 disabled={prefsSaving}
               >
                 {prefsSaving
-                  ? "Saving..."
+                  ? "Ukládání..."
                   : prefsSaved
-                    ? "Saved!"
-                    : "Save defaults"}
+                    ? "Uloženo!"
+                    : "Uložit výchozí nastavení"}
               </Button>
             </div>
           </TabsContent>

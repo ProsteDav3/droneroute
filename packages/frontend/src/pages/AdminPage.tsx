@@ -125,9 +125,9 @@ export function AdminPage() {
       setNewPassword("");
       setShowCreateForm(false);
       await loadUsers();
-      toast.success(`Account created for ${newEmail}`);
+      toast.success(`Účet vytvořen pro ${newEmail}`);
     } catch (err: any) {
-      setCreateError(err.message || "Something went wrong");
+      setCreateError(err.message || "Něco se pokazilo");
     } finally {
       setCreating(false);
     }
@@ -145,7 +145,7 @@ export function AdminPage() {
   };
 
   const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "Never";
+    if (!dateStr) return "Nikdy";
     const d = new Date(dateStr + "Z");
     return d.toLocaleDateString(undefined, {
       year: "numeric",
@@ -200,10 +200,15 @@ export function AdminPage() {
             </Button>
             <div className="flex items-center gap-2">
               <Users className="h-5 w-5 text-purple-400" />
-              <h1 className="text-lg font-semibold">User management</h1>
+              <h1 className="text-lg font-semibold">Správa uživatelů</h1>
             </div>
             <span className="text-xs text-muted-foreground">
-              {total} user{total !== 1 ? "s" : ""}
+              {total}{" "}
+              {total === 1
+                ? "uživatel"
+                : total >= 2 && total <= 4
+                  ? "uživatelé"
+                  : "uživatelů"}
             </span>
           </div>
         </div>
@@ -216,7 +221,7 @@ export function AdminPage() {
               <div className="relative flex-1 max-w-xs">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
-                  placeholder="Search by email..."
+                  placeholder="Hledat podle e-mailu..."
                   className="pl-8 h-8 text-sm"
                   defaultValue={search}
                   onChange={handleSearchInput}
@@ -227,13 +232,13 @@ export function AdminPage() {
                 onValueChange={handleStatusChange}
               >
                 <SelectTrigger className="w-[130px] h-8 text-sm">
-                  <SelectValue placeholder="All statuses" />
+                  <SelectValue placeholder="Všechny stavy" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="banned">Banned</SelectItem>
+                  <SelectItem value="all">Všechny stavy</SelectItem>
+                  <SelectItem value="active">Aktivní</SelectItem>
+                  <SelectItem value="admin">Administrátoři</SelectItem>
+                  <SelectItem value="banned">Zablokovaní</SelectItem>
                 </SelectContent>
               </Select>
               <Button
@@ -243,7 +248,7 @@ export function AdminPage() {
                 onClick={() => setShowCreateForm((v) => !v)}
               >
                 <UserPlus className="h-3.5 w-3.5 mr-1.5" />
-                Add user
+                Přidat uživatele
               </Button>
             </div>
 
@@ -254,7 +259,7 @@ export function AdminPage() {
               >
                 <div className="space-y-1.5">
                   <Label htmlFor="new-user-email" className="text-xs">
-                    Email
+                    E-mail
                   </Label>
                   <Input
                     id="new-user-email"
@@ -269,14 +274,14 @@ export function AdminPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="new-user-password" className="text-xs">
-                    Password
+                    Heslo
                   </Label>
                   <Input
                     id="new-user-password"
                     type="password"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Min 6 characters"
+                    placeholder="Min. 6 znaků"
                     className="h-8 text-sm w-48"
                     required
                     minLength={6}
@@ -288,7 +293,7 @@ export function AdminPage() {
                   className="h-8 text-sm"
                   disabled={creating}
                 >
-                  {creating ? "..." : "Create"}
+                  {creating ? "..." : "Vytvořit"}
                 </Button>
                 {createError && (
                   <p className="text-xs text-destructive">{createError}</p>
@@ -311,7 +316,7 @@ export function AdminPage() {
                   className="mt-4"
                   onClick={loadUsers}
                 >
-                  Retry
+                  Zkusit znovu
                 </Button>
               </div>
             )}
@@ -319,7 +324,9 @@ export function AdminPage() {
             {!loading && !error && users.length === 0 && (
               <div className="flex flex-col items-center justify-center py-20">
                 <Users className="h-8 w-8 text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">No users found</p>
+                <p className="text-sm text-muted-foreground">
+                  Nenalezeni žádní uživatelé
+                </p>
               </div>
             )}
 
@@ -329,19 +336,19 @@ export function AdminPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-muted/50 border-b border-border">
-                        <SortHeader field="email">Email</SortHeader>
-                        <SortHeader field="created_at">Signed up</SortHeader>
+                        <SortHeader field="email">E-mail</SortHeader>
+                        <SortHeader field="created_at">Registrace</SortHeader>
                         <SortHeader field="last_login_at">
-                          Last login
+                          Poslední přihlášení
                         </SortHeader>
                         <SortHeader field="mission_count" align="center">
-                          Routes
+                          Trasy
                         </SortHeader>
                         <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                          Status
+                          Stav
                         </th>
                         <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                          Actions
+                          Akce
                         </th>
                       </tr>
                     </thead>
@@ -358,7 +365,7 @@ export function AdminPage() {
                                 <span className="text-sm">{user.email}</span>
                                 {isSelf && (
                                   <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                    you
+                                    vy
                                   </span>
                                 )}
                               </div>
@@ -377,18 +384,18 @@ export function AdminPage() {
                                 {user.isAdmin && (
                                   <span className="inline-flex items-center gap-1 text-[10px] font-medium text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded-full">
                                     <Shield className="h-3 w-3" />
-                                    Admin
+                                    Administrátor
                                   </span>
                                 )}
                                 {user.isBanned && (
                                   <span className="inline-flex items-center gap-1 text-[10px] font-medium text-red-400 bg-red-400/10 px-2 py-0.5 rounded-full">
                                     <Ban className="h-3 w-3" />
-                                    Banned
+                                    Zablokován
                                   </span>
                                 )}
                                 {!user.isAdmin && !user.isBanned && (
                                   <span className="text-[10px] text-muted-foreground">
-                                    Active
+                                    Aktivní
                                   </span>
                                 )}
                               </div>
@@ -408,10 +415,10 @@ export function AdminPage() {
                                           adminApi.unbanUser(user.id),
                                         );
                                       }}
-                                      title="Unban user"
+                                      title="Odblokovat uživatele"
                                     >
                                       <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                                      Unban
+                                      Odblokovat
                                     </Button>
                                   ) : (
                                     <Button
@@ -422,14 +429,14 @@ export function AdminPage() {
                                       onClick={() => {
                                         setActionLoading(user.id);
                                         confirmAction(
-                                          `Ban ${user.email}? They will no longer be able to access their account.`,
+                                          `Zablokovat uživatele ${user.email}? Ztratí přístup ke svému účtu.`,
                                           () => adminApi.banUser(user.id),
                                         );
                                       }}
-                                      title="Ban user"
+                                      title="Zablokovat uživatele"
                                     >
                                       <Ban className="h-3.5 w-3.5 mr-1" />
-                                      Ban
+                                      Zablokovat
                                     </Button>
                                   )}
                                   {user.isAdmin ? (
@@ -441,14 +448,14 @@ export function AdminPage() {
                                       onClick={() => {
                                         setActionLoading(user.id);
                                         confirmAction(
-                                          `Demote ${user.email} from admin? They will lose admin privileges.`,
+                                          `Odebrat uživateli ${user.email} administrátorská práva? Přijde o administrátorská oprávnění.`,
                                           () => adminApi.demoteUser(user.id),
                                         );
                                       }}
-                                      title="Demote from admin"
+                                      title="Odebrat administrátorská práva"
                                     >
                                       <ShieldOff className="h-3.5 w-3.5 mr-1" />
-                                      Demote
+                                      Odebrat práva
                                     </Button>
                                   ) : (
                                     <Button
@@ -462,10 +469,10 @@ export function AdminPage() {
                                           adminApi.promoteUser(user.id),
                                         );
                                       }}
-                                      title="Promote to admin"
+                                      title="Povýšit na administrátora"
                                     >
                                       <Shield className="h-3.5 w-3.5 mr-1" />
-                                      Promote
+                                      Povýšit
                                     </Button>
                                   )}
                                 </div>
@@ -482,7 +489,7 @@ export function AdminPage() {
                 {totalPages > 1 && (
                   <div className="flex items-center justify-between mt-4">
                     <span className="text-xs text-muted-foreground">
-                      Page {page} of {totalPages}
+                      Stránka {page} z {totalPages}
                     </span>
                     <div className="flex items-center gap-1">
                       <Button

@@ -49,7 +49,7 @@ export function LoginGate() {
         await login(email, password);
       }
     } catch (err: any) {
-      setError(err.message || "Something went wrong");
+      setError(err.message || "Něco se pokazilo");
     }
   };
 
@@ -58,7 +58,7 @@ export function LoginGate() {
     try {
       await googleLogin(credentialResponse.credential);
     } catch (err: any) {
-      setError(err.message || "Google sign-in failed");
+      setError(err.message || "Přihlášení přes Google se nezdařilo");
     }
   };
 
@@ -77,15 +77,15 @@ export function LoginGate() {
         <div className="bg-card border border-border rounded-lg shadow-[0_0_60px_rgba(59,130,246,0.3)] p-5 space-y-4">
           <h2 className="text-sm font-semibold text-center">
             {isBootstrap
-              ? "Create the admin account"
+              ? "Vytvořit administrátorský účet"
               : selfHosted
-                ? "Sign in"
-                : "Sign in with Google"}
+                ? "Přihlásit se"
+                : "Přihlásit se přes Google"}
           </h2>
           {isBootstrap && (
             <p className="text-xs text-muted-foreground text-center">
-              No account exists yet. The first account you create here becomes
-              the admin, and registration closes afterward.
+              Zatím neexistuje žádný účet. První účet, který zde vytvoříte, se
+              stane administrátorským a registrace se poté uzavře.
             </p>
           )}
 
@@ -93,7 +93,7 @@ export function LoginGate() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="gate-email" className="text-xs">
-                  Email
+                  E-mail
                 </Label>
                 <Input
                   id="gate-email"
@@ -108,14 +108,14 @@ export function LoginGate() {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="gate-password" className="text-xs">
-                  Password
+                  Heslo
                 </Label>
                 <Input
                   id="gate-password"
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={isBootstrap ? "Min 6 characters" : ""}
+                  placeholder={isBootstrap ? "Min. 6 znaků" : ""}
                   className="h-9 text-sm"
                   required
                   minLength={isBootstrap ? 6 : undefined}
@@ -145,18 +145,24 @@ export function LoginGate() {
                 className="w-full h-9 text-sm"
                 disabled={isLoading}
               >
-                {isLoading ? "..." : isBootstrap ? "Create account" : "Sign in"}
+                {isLoading
+                  ? "..."
+                  : isBootstrap
+                    ? "Vytvořit účet"
+                    : "Přihlásit se"}
               </Button>
             </form>
           ) : (
             <>
               <p className="text-xs text-muted-foreground text-center">
-                Sign in using your Google account.
+                Přihlaste se pomocí účtu Google.
               </p>
               <div className="flex justify-center">
                 <GoogleLogin
                   onSuccess={handleGoogleSuccess}
-                  onError={() => setError("Google sign-in failed")}
+                  onError={() =>
+                    setError("Přihlášení přes Google se nezdařilo")
+                  }
                   theme="filled_black"
                   size="large"
                   width="320"

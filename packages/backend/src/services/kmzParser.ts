@@ -201,7 +201,7 @@ export async function parseKmz(buffer: Buffer): Promise<{
     return {
       ...DEFAULT_WAYPOINT,
       index: wpIndex,
-      name: `Waypoint ${wpIndex + 1}`,
+      name: `Bod trasy ${wpIndex + 1}`,
       latitude: coords.latitude,
       longitude: coords.longitude,
       height,

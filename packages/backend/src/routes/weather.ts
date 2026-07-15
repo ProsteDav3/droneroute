@@ -23,7 +23,7 @@ weatherRoutes.get("/forecast", weatherLimiter, async (req, res) => {
     lng < -180 ||
     lng > 180
   ) {
-    res.status(400).json({ error: "Invalid lat/lng" });
+    res.status(400).json({ error: "Neplatné lat/lng" });
     return;
   }
 
@@ -34,6 +34,6 @@ weatherRoutes.get("/forecast", weatherLimiter, async (req, res) => {
     console.error("Weather fetch error:", err);
     res
       .status(502)
-      .json({ error: "Failed to fetch weather data from upstream provider" });
+      .json({ error: "Načtení dat o počasí od poskytovatele selhalo" });
   }
 });

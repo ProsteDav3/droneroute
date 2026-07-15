@@ -38,9 +38,9 @@ export interface TemplatePresetPayload {
 export function validateTemplatePresetCreate(
   body: TemplatePresetPayload,
 ): string | null {
-  if (!isValidName(body.name)) return "invalid preset name";
-  if (!isValidType(body.type)) return "invalid preset type";
-  if (!isValidParams(body.params)) return "invalid preset params";
+  if (!isValidName(body.name)) return "neplatný název šablony";
+  if (!isValidType(body.type)) return "neplatný typ šablony";
+  if (!isValidParams(body.params)) return "neplatné parametry šablony";
   return null;
 }
 
@@ -52,10 +52,10 @@ export function validateTemplatePresetUpdate(
   body: TemplatePresetPayload,
 ): string | null {
   if (body.name !== undefined && !isValidName(body.name)) {
-    return "invalid preset name";
+    return "neplatný název šablony";
   }
   if (body.params !== undefined && !isValidParams(body.params)) {
-    return "invalid preset params";
+    return "neplatné parametry šablony";
   }
   return null;
 }

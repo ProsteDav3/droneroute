@@ -47,14 +47,14 @@ authRoutes.get("/status", (_req, res) => {
 authRoutes.post("/google", authLimiter, async (req, res) => {
   if (isSelfHosted()) {
     res.status(404).json({
-      error: "Google authentication is not available in self-hosted mode",
+      error: "Přihlášení přes Google není v self-hosted režimu dostupné",
     });
     return;
   }
 
   const { credential } = req.body;
   if (!credential) {
-    res.status(400).json({ error: "Missing Google credential" });
+    res.status(400).json({ error: "Chybí přihlašovací údaje Google" });
     return;
   }
 
@@ -62,12 +62,14 @@ authRoutes.post("/google", authLimiter, async (req, res) => {
   try {
     verified = await verifyGoogleToken(credential);
   } catch {
-    res.status(500).json({ error: "Google authentication is not configured" });
+    res
+      .status(500)
+      .json({ error: "Přihlášení přes Google není nakonfigurováno" });
     return;
   }
 
   if (!verified) {
-    res.status(401).json({ error: "Invalid Google credential" });
+    res.status(401).json({ error: "Neplatné přihlašovací údaje Google" });
     return;
   }
 
@@ -83,9 +85,7 @@ authRoutes.post("/google", authLimiter, async (req, res) => {
 
   if (existingByGoogle) {
     if (existingByGoogle.is_banned) {
-      res
-        .status(403)
-        .json({ error: "Your account has been suspended", banned: true });
+      res.status(403).json({ error: "Váš účet byl pozastaven", banned: true });
       return;
     }
     db.prepare(
@@ -113,9 +113,7 @@ authRoutes.post("/google", authLimiter, async (req, res) => {
 
   if (existingByEmail) {
     if (existingByEmail.is_banned) {
-      res
-        .status(403)
-        .json({ error: "Your account has been suspended", banned: true });
+      res.status(403).json({ error: "Váš účet byl pozastaven", banned: true });
       return;
     }
     // Link Google account and verify email
@@ -155,24 +153,24 @@ authRoutes.post("/google", authLimiter, async (req, res) => {
 authRoutes.post("/register", authLimiter, (req, res) => {
   if (!isSelfHosted()) {
     res.status(410).json({
-      error: "Password registration is disabled. Use Google sign-in.",
+      error: "Registrace heslem je vypnutá. Použijte přihlášení přes Google.",
     });
     return;
   }
 
   const { email, password, bootstrapToken: providedToken } = req.body;
   if (!email || !password) {
-    res.status(400).json({ error: "Email and password are required" });
+    res.status(400).json({ error: "E-mail a heslo jsou povinné" });
     return;
   }
   if (password.length < 6) {
-    res.status(400).json({ error: "Password must be at least 6 characters" });
+    res.status(400).json({ error: "Heslo musí mít alespoň 6 znaků" });
     return;
   }
 
   const requiredToken = bootstrapToken();
   if (requiredToken && providedToken !== requiredToken) {
-    res.status(403).json({ error: "Invalid bootstrap token" });
+    res.status(403).json({ error: "Neplatný bootstrap token" });
     return;
   }
 
@@ -197,7 +195,7 @@ authRoutes.post("/register", authLimiter, (req, res) => {
 
   if (!registerFounder.immediate()) {
     res.status(403).json({
-      error: "Registration is closed. Ask the site owner for an account.",
+      error: "Registrace je uzavřená. Požádejte provozovatele webu o účet.",
     });
     return;
   }
@@ -208,15 +206,15 @@ authRoutes.post("/register", authLimiter, (req, res) => {
 
 authRoutes.post("/login", authLimiter, (req, res) => {
   if (!isSelfHosted()) {
-    res
-      .status(410)
-      .json({ error: "Password login is disabled. Use Google sign-in." });
+    res.status(410).json({
+      error: "Přihlášení heslem je vypnuté. Použijte přihlášení přes Google.",
+    });
     return;
   }
 
   const { email, password } = req.body;
   if (!email || !password) {
-    res.status(400).json({ error: "Email and password are required" });
+    res.status(400).json({ error: "E-mail a heslo jsou povinné" });
     return;
   }
 
@@ -232,14 +230,12 @@ authRoutes.post("/login", authLimiter, (req, res) => {
     !user.password_hash ||
     !comparePassword(password, user.password_hash)
   ) {
-    res.status(401).json({ error: "Invalid email or password" });
+    res.status(401).json({ error: "Neplatný e-mail nebo heslo" });
     return;
   }
 
   if (user.is_banned) {
-    res
-      .status(403)
-      .json({ error: "Your account has been suspended", banned: true });
+    res.status(403).json({ error: "Váš účet byl pozastaven", banned: true });
     return;
   }
 
@@ -277,7 +273,7 @@ authRoutes.post(
     if (!isSelfHosted()) {
       res
         .status(410)
-        .json({ error: "Password management is disabled in cloud mode." });
+        .json({ error: "Správa hesla je v cloud režimu vypnutá." });
       return;
     }
 
@@ -285,13 +281,11 @@ authRoutes.post(
     if (!currentPassword || !newPassword) {
       res
         .status(400)
-        .json({ error: "Current password and new password are required" });
+        .json({ error: "Současné heslo a nové heslo jsou povinné" });
       return;
     }
     if (newPassword.length < 6) {
-      res
-        .status(400)
-        .json({ error: "New password must be at least 6 characters" });
+      res.status(400).json({ error: "Nové heslo musí mít alespoň 6 znaků" });
       return;
     }
 
@@ -305,7 +299,7 @@ authRoutes.post(
       !user.password_hash ||
       !comparePassword(currentPassword, user.password_hash)
     ) {
-      res.status(401).json({ error: "Current password is incorrect" });
+      res.status(401).json({ error: "Současné heslo je nesprávné" });
       return;
     }
 
@@ -315,6 +309,6 @@ authRoutes.post(
       req.userId,
     );
 
-    res.json({ message: "Password updated" });
+    res.json({ message: "Heslo bylo změněno" });
   },
 );

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { X, BookOpen } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const STORAGE_KEY = "droneroute_welcome_dismissed";
@@ -36,14 +36,14 @@ export function WelcomeDialog() {
       onClick={dismiss}
     >
       <div
-        className="bg-card border border-border rounded-lg shadow-[0_0_60px_rgba(59,130,246,0.3)] w-full max-w-md mx-4"
+        className="bg-card border border-border rounded-lg shadow-[0_0_60px_rgba(0,194,255,0.25)] w-full max-w-md mx-4"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-0">
           <div className="flex items-center gap-2.5">
-            <img src="/droneroute.png" alt="DroneRoute" className="h-7 w-7" />
-            <h2 className="text-base font-bold">Vítejte v DroneRoute</h2>
+            <img src="/skyroute-icon.svg" alt="SkyRoute" className="h-7 w-7" />
+            <h2 className="text-base font-bold">Vítejte v SkyRoute</h2>
           </div>
           <button
             onClick={dismiss}

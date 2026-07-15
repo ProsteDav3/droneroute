@@ -1,6 +1,6 @@
-# DroneRoute specs
+# SkyRoute specs
 
-Everything DroneRoute can do, explained in plain language.
+Everything SkyRoute can do, explained in plain language.
 
 ## Contents
 
@@ -16,5 +16,5 @@ Everything DroneRoute can do, explained in plain language.
 - [Import and export](import-export.md) — bring in existing missions or export for DJI drones
 - [Upload to controller](upload-to-controller.md) — send missions directly to a connected DJI controller
 - [Accounts](accounts.md) — sign up, log in, and manage your account
-- [Privacy & data](privacy.md) — what DroneRoute stores about you and where it lives
+- [Privacy & data](privacy.md) — what SkyRoute stores about you and where it lives
 - [Keyboard shortcuts](keyboard-shortcuts.md) — quick reference for all shortcuts

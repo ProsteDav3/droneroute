@@ -555,8 +555,12 @@ export default function App() {
         <div className="p-3 border-b border-border">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <img src="/droneroute.png" alt="DroneRoute" className="h-5 w-5" />
-              <span className="font-bold text-sm">DroneRoute</span>
+              <img
+                src="/skyroute-icon.svg"
+                alt="SkyRoute"
+                className="h-5 w-5"
+              />
+              <span className="font-bold text-sm">SkyRoute</span>
             </div>
             <div className="flex items-center gap-1">
               <Button
@@ -596,7 +600,7 @@ export default function App() {
           <Input
             value={missionName}
             onChange={(e) => setMissionName(e.target.value)}
-            className="h-8 text-xs font-medium border-blue-500/30 bg-blue-500/5 focus-visible:ring-blue-500/40"
+            className="h-8 text-xs font-medium border-[#00c2ff]/30 bg-[#00c2ff]/5 focus-visible:ring-[#00c2ff]/40"
             placeholder="Název mise"
             title="Pojmenujte misi pro snadnou identifikaci"
           />
@@ -609,7 +613,7 @@ export default function App() {
             size="sm"
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 text-xs h-7 border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 hover:text-blue-300"
+            className="flex-1 text-xs h-7 border-[#00c2ff]/30 bg-[#00c2ff]/5 hover:bg-[#00c2ff]/15 hover:text-[#33cfff]"
             title="Uložit misi do vašeho účtu"
           >
             <Save className="h-3 w-3" />
@@ -620,7 +624,7 @@ export default function App() {
             size="sm"
             onClick={handleExport}
             disabled={exporting || waypoints.length < 2}
-            className="flex-1 text-xs h-7 border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 hover:text-blue-300"
+            className="flex-1 text-xs h-7 border-[#00c2ff]/30 bg-[#00c2ff]/5 hover:bg-[#00c2ff]/15 hover:text-[#33cfff]"
             title={
               waypoints.length < 2
                 ? "Pro export přidejte alespoň 2 body trasy"
@@ -634,7 +638,7 @@ export default function App() {
             variant="outline"
             size="sm"
             onClick={() => fileInputRef.current?.click()}
-            className="flex-1 text-xs h-7 border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 hover:text-blue-300"
+            className="flex-1 text-xs h-7 border-[#00c2ff]/30 bg-[#00c2ff]/5 hover:bg-[#00c2ff]/15 hover:text-[#33cfff]"
             title="Importovat soubor DJI KMZ"
           >
             <Upload className="h-3 w-3" />
@@ -654,7 +658,7 @@ export default function App() {
             size="sm"
             onClick={handleExportSegments}
             disabled={exportingSegments || waypoints.length < 2}
-            className="flex-1 text-xs h-7 border-blue-500/30 bg-blue-500/5 hover:bg-blue-500/15 hover:text-blue-300"
+            className="flex-1 text-xs h-7 border-[#00c2ff]/30 bg-[#00c2ff]/5 hover:bg-[#00c2ff]/15 hover:text-[#33cfff]"
             title={
               waypoints.length < 2
                 ? "Pro export segmentů přidejte alespoň 2 body trasy"
@@ -668,10 +672,10 @@ export default function App() {
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto">
-          {/* Waypoints section — BLUE accent */}
-          <div className="border-l-2 border-blue-500/70 bg-blue-500/[0.03]">
+          {/* Waypoints section — brand cyan accent */}
+          <div className="border-l-2 border-[#00c2ff]/70 bg-[#00c2ff]/[0.03]">
             <button
-              className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-blue-500/10 hover:bg-blue-500/15 text-blue-400"
+              className="flex items-center gap-2 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wider bg-[#00c2ff]/10 hover:bg-[#00c2ff]/15 text-[#33cfff]"
               onClick={() => toggleSection("waypoints")}
               title="Souřadnice letové trasy — přidáte kliknutím na mapu"
             >

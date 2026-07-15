@@ -1,13 +1,5 @@
 import { useEffect } from "react";
-import {
-  X,
-  BookOpen,
-  Terminal,
-  Lightbulb,
-  ShieldCheck,
-  TriangleAlert,
-} from "lucide-react";
-import { GithubIcon } from "@/components/icons/GithubIcon";
+import { X, BookOpen, ShieldCheck, TriangleAlert, Globe } from "lucide-react";
 
 interface AboutDialogProps {
   onClose: () => void;
@@ -37,14 +29,14 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
       onClick={onClose}
     >
       <div
-        className="bg-card border border-border rounded-lg shadow-[0_0_60px_rgba(59,130,246,0.3)] w-full max-w-sm mx-4"
+        className="bg-card border border-border rounded-lg shadow-[0_0_60px_rgba(0,194,255,0.25)] w-full max-w-sm mx-4"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 pt-5 pb-0">
           <div className="flex items-center gap-2.5">
-            <img src="/droneroute.png" alt="DroneRoute" className="h-7 w-7" />
-            <h2 className="text-base font-bold">DroneRoute</h2>
+            <img src="/skyroute-icon.svg" alt="SkyRoute" className="h-7 w-7" />
+            <h2 className="text-base font-bold">SkyRoute</h2>
           </div>
           <button
             onClick={onClose}
@@ -57,45 +49,35 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
         {/* Body */}
         <div className="px-5 pt-4 pb-2 space-y-4">
           <p className="text-sm text-muted-foreground leading-relaxed">
-            Plánovač misí pro drony DJI. Umísťujte body trasy na mapě,
-            nastavujte parametry letu a exportujte soubory KMZ připravené k
-            letu.
+            Plánovač misí pro drony DJI od firmy SkyData. Umísťujte body trasy
+            na mapě, nastavujte parametry letu a exportujte soubory KMZ
+            připravené k letu.
           </p>
 
           {/* Version */}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span>Verze</span>
-            <a
-              href={`https://github.com/fcsonline/droneroute/releases/tag/v${version}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono bg-muted px-1.5 py-0.5 rounded border border-border hover:text-foreground transition-colors"
-            >
+            <span className="font-mono bg-muted px-1.5 py-0.5 rounded border border-border">
               v{version}
-            </a>
-            <a
-              href={`https://github.com/fcsonline/droneroute/commit/${sha}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-mono bg-muted px-1.5 py-0.5 rounded border border-border hover:text-foreground transition-colors"
-            >
+            </span>
+            <span className="font-mono bg-muted px-1.5 py-0.5 rounded border border-border">
               {sha}
-            </a>
+            </span>
           </div>
 
           {/* Links */}
           <div className="flex flex-col gap-2 pt-1">
             <a
-              href="https://github.com/fcsonline/droneroute"
+              href="https://www.skydata.cz"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              <GithubIcon className="h-4 w-4 shrink-0" />
-              GitHub — hvězdička, nahlášení chyb, příspěvky
+              <Globe className="h-4 w-4 shrink-0" />
+              skydata.cz — web firmy SkyData
             </a>
             <a
-              href="https://github.com/fcsonline/droneroute/blob/main/GUIDE.md"
+              href="https://github.com/ProsteDav3/droneroute/blob/main/GUIDE.md"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -104,25 +86,7 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
               Uživatelská příručka — funkce, zkratky a tipy
             </a>
             <a
-              href="https://www.npmjs.com/package/droneroute"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Terminal className="h-4 w-4 shrink-0" />
-              Nahrát do RC — npx droneroute mission.kmz
-            </a>
-            <a
-              href="https://github.com/fcsonline/droneroute/issues?q=is%3Aissue%20state%3Aopen%20label%3Aenhancement"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <Lightbulb className="h-4 w-4 shrink-0" />
-              Návrhy funkcí — hlasujte a navrhujte nápady
-            </a>
-            <a
-              href="https://github.com/fcsonline/droneroute/blob/main/PRIVACY.md"
+              href="https://github.com/ProsteDav3/droneroute/blob/main/PRIVACY.md"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -130,24 +94,6 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
               <ShieldCheck className="h-4 w-4 shrink-0" />
               Soukromí a data — co ukládáme a kde
             </a>
-            <div className="mt-2 pt-2 border-t border-border">
-              <p className="text-xs text-muted-foreground mb-2">
-                DroneRoute je zdarma a s otevřeným zdrojovým kódem. Pokud ho
-                shledáte užitečným, zvažte podporu jeho vývoje:
-              </p>
-              <a
-                href="https://www.buymeacoffee.com/fcsonline"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block"
-              >
-                <img
-                  src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png"
-                  alt="Buy Me a Coffee"
-                  className="h-8"
-                />
-              </a>
-            </div>
           </div>
 
           {/* Disclaimer */}

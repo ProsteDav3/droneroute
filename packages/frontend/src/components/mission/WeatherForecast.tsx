@@ -32,14 +32,16 @@ const CAUTION_WIND_MS = 8;
 
 const MAX_DAYS_SHOWN = 5;
 
+// Formatted manually (rather than via toLocaleDateString) so the label is
+// always Czech regardless of the browser's locale, and reads as the
+// familiar "den. měsíc." format instead of Intl's abbreviated Czech month
+// names (e.g. "čvc" for July), which are correct but less recognizable.
+const CZECH_WEEKDAYS_SHORT = ["Ne", "Po", "Út", "St", "Čt", "Pá", "So"];
+
 function dayLabel(dateStr: string): string {
   const date = new Date(`${dateStr}T12:00:00Z`);
-  return date.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+  const weekday = CZECH_WEEKDAYS_SHORT[date.getUTCDay()];
+  return `${weekday} ${date.getUTCDate()}. ${date.getUTCMonth() + 1}.`;
 }
 
 export function WeatherForecast() {

@@ -1,32 +1,33 @@
 @import "tailwindcss";
 
+/* SkyData brand: navy + cyan, matching skydata.cz's own design tokens. */
 @theme {
-  --color-background: #09090b;
-  --color-foreground: #fafafa;
-  --color-card: #09090b;
-  --color-card-foreground: #fafafa;
-  --color-popover: #09090b;
-  --color-popover-foreground: #fafafa;
-  --color-primary: #3b82f6;
-  --color-primary-foreground: #fafafa;
-  --color-secondary: #27272a;
-  --color-secondary-foreground: #fafafa;
-  --color-muted: #27272a;
-  --color-muted-foreground: #a1a1aa;
-  --color-accent: #27272a;
-  --color-accent-foreground: #fafafa;
+  --color-background: #0a1628;
+  --color-foreground: #ffffff;
+  --color-card: #0f2847;
+  --color-card-foreground: #ffffff;
+  --color-popover: #0f2847;
+  --color-popover-foreground: #ffffff;
+  --color-primary: #00c2ff;
+  --color-primary-foreground: #0a1628;
+  --color-secondary: #1b3a6b;
+  --color-secondary-foreground: #ffffff;
+  --color-muted: #0f2847;
+  --color-muted-foreground: rgba(255, 255, 255, 0.72);
+  --color-accent: rgba(0, 194, 255, 0.1);
+  --color-accent-foreground: #00c2ff;
   --color-destructive: #ef4444;
-  --color-destructive-foreground: #fafafa;
-  --color-border: #27272a;
-  --color-input: #27272a;
-  --color-ring: #3b82f6;
+  --color-destructive-foreground: #ffffff;
+  --color-border: rgba(255, 255, 255, 0.1);
+  --color-input: rgba(255, 255, 255, 0.16);
+  --color-ring: #00c2ff;
   --radius: 0.5rem;
 }
 
 body {
   @apply bg-background text-foreground;
   font-family:
-    "Switzer",
+    "Inter",
     system-ui,
     -apple-system,
     sans-serif;
@@ -43,36 +44,36 @@ body {
 
 /* Dark theme for mapbox popups */
 .building-popup .mapboxgl-popup-content {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: #0f2847;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   padding: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 .building-popup .mapboxgl-popup-tip {
-  border-top-color: #18181b;
+  border-top-color: #0f2847;
 }
 .building-popup .mapboxgl-popup-close-button {
-  color: #a1a1aa;
+  color: rgba(255, 255, 255, 0.72);
   font-size: 16px;
   padding: 2px 6px;
 }
 .building-popup .mapboxgl-popup-close-button:hover {
-  color: #fafafa;
+  color: #ffffff;
   background: transparent;
 }
 
 /* Airspace zone tooltip */
 .airspace-tooltip .mapboxgl-popup-content {
-  background: #18181b;
-  border: 1px solid #27272a;
+  background: #0f2847;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   padding: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
-  color: #fafafa;
+  color: #ffffff;
 }
 .airspace-tooltip .mapboxgl-popup-tip {
-  border-top-color: #18181b;
+  border-top-color: #0f2847;
 }
 
 /* Sidebar section expand animation */
@@ -92,8 +93,8 @@ body {
 
 /* Geocoder search — match app dark theme */
 .mapboxgl-ctrl-geocoder {
-  background-color: rgba(9, 9, 11, 0.9) !important;
-  border: 1px solid #27272a !important;
+  background-color: rgba(10, 22, 40, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-radius: 0.375rem !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
   font-family: inherit !important;
@@ -109,7 +110,7 @@ body {
   width: 260px !important;
 }
 .mapboxgl-ctrl-geocoder--icon-search {
-  fill: #a1a1aa !important;
+  fill: rgba(255, 255, 255, 0.72) !important;
   width: 16px !important;
   height: 16px !important;
   top: 6px !important;
@@ -120,43 +121,43 @@ body {
   left: 6px !important;
 }
 .mapboxgl-ctrl-geocoder--icon-close {
-  fill: #a1a1aa !important;
+  fill: rgba(255, 255, 255, 0.72) !important;
   width: 14px !important;
   height: 14px !important;
 }
 .mapboxgl-ctrl-geocoder--icon-close:hover {
-  fill: #fafafa !important;
+  fill: #ffffff !important;
 }
 .mapboxgl-ctrl-geocoder--icon-loading {
-  fill: #a1a1aa !important;
+  fill: rgba(255, 255, 255, 0.72) !important;
 }
 .mapboxgl-ctrl-geocoder--input {
-  color: #fafafa !important;
+  color: #ffffff !important;
   font-size: 12px !important;
   height: 28px !important;
   padding: 4px 28px 4px 28px !important;
 }
 .mapboxgl-ctrl-geocoder--input::placeholder {
-  color: #71717a !important;
+  color: rgba(255, 255, 255, 0.5) !important;
 }
 .mapboxgl-ctrl-geocoder--input:focus {
   outline: none !important;
 }
 .mapboxgl-ctrl-geocoder .suggestions {
-  background-color: rgba(9, 9, 11, 0.95) !important;
-  border: 1px solid #27272a !important;
+  background-color: rgba(10, 22, 40, 0.96) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
   border-radius: 0.375rem !important;
   margin-top: 4px !important;
   font-size: 12px !important;
 }
 .mapboxgl-ctrl-geocoder .suggestions > li > a {
-  color: #a1a1aa !important;
+  color: rgba(255, 255, 255, 0.72) !important;
   padding: 6px 10px !important;
 }
 .mapboxgl-ctrl-geocoder .suggestions > .active > a,
 .mapboxgl-ctrl-geocoder .suggestions > li > a:hover {
-  color: #fafafa !important;
-  background-color: #27272a !important;
+  color: #ffffff !important;
+  background-color: #1b3a6b !important;
 }
 .mapboxgl-ctrl-geocoder--button {
   background: none !important;

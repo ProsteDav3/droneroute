@@ -70,11 +70,14 @@ export function LoginGate() {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-background px-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center gap-2 mb-6">
-          <img src="/droneroute.png" alt="DroneRoute" className="h-8 w-8" />
-          <h1 className="text-lg font-semibold">DroneRoute</h1>
+          <img src="/skyroute-icon.svg" alt="SkyRoute" className="h-10 w-10" />
+          <h1 className="text-lg font-semibold">SkyRoute</h1>
+          <p className="text-xs text-muted-foreground">
+            Plánovač misí firmy SkyData
+          </p>
         </div>
 
-        <div className="bg-card border border-border rounded-lg shadow-[0_0_60px_rgba(59,130,246,0.3)] p-5 space-y-4">
+        <div className="bg-card border border-border rounded-lg shadow-[0_0_60px_rgba(0,194,255,0.25)] p-5 space-y-4">
           <h2 className="text-sm font-semibold text-center">
             {isBootstrap
               ? "Vytvořit administrátorský účet"

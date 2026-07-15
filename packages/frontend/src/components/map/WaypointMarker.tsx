@@ -112,8 +112,8 @@ export function WaypointMarker({ waypoint, is3D }: WaypointMarkerProps) {
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
   const isSelected = selectedWaypointIndices.has(waypoint.index);
 
-  const bg = isSelected ? "#3b82f6" : "#1e293b";
-  const border = isSelected ? "#93c5fd" : "#64748b";
+  const bg = isSelected ? "#00c2ff" : "#1e293b";
+  const border = isSelected ? "#33cfff" : "#64748b";
   const actionIcons = useMemo(
     () => getActionIconsHtml(waypoint),
     [

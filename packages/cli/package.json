@@ -1,5 +1,5 @@
 {
-  "name": "droneroute",
+  "name": "@prostedav3/droneroute",
   "version": "0.7.3",
   "description": "Upload DJI waypoint mission KMZ files to RC controllers via USB",
   "type": "module",
@@ -26,10 +26,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/fcsonline/droneroute",
+    "url": "https://github.com/ProsteDav3/droneroute",
     "directory": "packages/cli"
   },
-  "homepage": "https://droneroute.io",
+  "homepage": "https://skyroute.skydata.cz",
   "scripts": {
     "build": "tsc"
   },

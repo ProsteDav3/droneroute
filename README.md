@@ -22,7 +22,7 @@ A free, open-source mission planner for DJI drones. Plan waypoint missions on an
 - **Smart gimbal pitch** — Automatically calculates the optimal gimbal angle based on distance and height to a POI
 - **Waypoint actions** — Add photo, video, gimbal rotate, yaw, hover, zoom, and focus actions
 - **KMZ export & import** — Generates DJI WPML-compliant KMZ files, or load existing ones
-- **Upload to controller** — Push KMZ files directly to USB-connected DJI RC controllers with `npx droneroute`
+- **Upload to controller** — Push KMZ files directly to USB-connected DJI RC controllers with `npx @prostedav3/droneroute`
 - **Save & load** — Persist missions to a local database with user accounts
 - **Share missions** — Generate a read-only link to share any saved route; recipients can preview stats, open in the editor, clone to their account, or export the KMZ directly
 - **Mission templates** — Orbit, grid survey, facade scan, and pencil path presets to get you flying faster
@@ -80,7 +80,7 @@ By default the map opens centered on Barcelona. Set `DEFAULT_MAP_VIEW` (in your 
 After exporting a KMZ file, push it directly to a USB-connected DJI RC controller:
 
 ```bash
-npx droneroute mission.kmz
+npx @prostedav3/droneroute mission.kmz
 ```
 
 The CLI detects connected controllers (via adb or mounted SD cards), creates a new mission slot, and places the file. See the [droneroute CLI docs](packages/cli/README.md) for details and prerequisites.

@@ -348,7 +348,7 @@ Click the **KMZ** button in the toolbar to download a `.kmz` file. This file fol
 Use the `droneroute` CLI to upload a KMZ file directly to a USB-connected DJI controller:
 
 ```bash
-npx droneroute mission.kmz
+npx @prostedav3/droneroute mission.kmz
 ```
 
 The tool automatically detects connected DJI RC controllers (via USB or mounted SD cards), creates a new mission slot, and places the KMZ file in the correct location. If multiple controllers are connected, it will ask you to choose one.

@@ -12,15 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Check,
-  X,
-  MapPin,
-  Lock,
-  Unlock,
-  Save,
-  GripHorizontal,
-} from "lucide-react";
+import { Check, X, MapPin, Lock, Unlock, Save } from "lucide-react";
 import { LocationSearch } from "@/components/ui/location-search";
 import { useMissionStore } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
@@ -369,7 +361,6 @@ export function TemplateConfigPanel({
         onDragStart={(e) => e.preventDefault()}
       >
         <div className="flex items-center gap-2">
-          <GripHorizontal className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
           <span className="text-xs font-semibold uppercase tracking-wider text-purple-400">
             {title}
           </span>

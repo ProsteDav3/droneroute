@@ -19,6 +19,12 @@ export interface MissionReportInput {
 /** Cap the per-waypoint table to keep the report a reasonable length for very dense surveys (hundreds/thousands of points). */
 const MAX_WAYPOINT_ROWS = 200;
 
+/** `jspdf-autotable` augments `jsPDF` with `lastAutoTable` at runtime, with no official type for it. */
+function getLastAutoTableY(doc: jsPDF): number {
+  return (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable
+    .finalY;
+}
+
 function describeActions(wp: Waypoint): string {
   if (wp.actions.length === 0) return "";
   const labels: Record<string, string> = {
@@ -80,9 +86,7 @@ export function generateMissionReportPdf({
     columnStyles: { 0: { fontStyle: "bold", cellWidth: 50 } },
   });
 
-  const afterOverviewY =
-    (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable
-      .finalY + 10;
+  const afterOverviewY = getLastAutoTableY(doc) + 10;
 
   const rows = waypoints
     .slice(0, MAX_WAYPOINT_ROWS)
@@ -103,8 +107,7 @@ export function generateMissionReportPdf({
   });
 
   if (waypoints.length > MAX_WAYPOINT_ROWS) {
-    const finalY = (doc as unknown as { lastAutoTable: { finalY: number } })
-      .lastAutoTable.finalY;
+    const finalY = getLastAutoTableY(doc);
     doc.setFontSize(8);
     doc.setTextColor(120);
     doc.text(

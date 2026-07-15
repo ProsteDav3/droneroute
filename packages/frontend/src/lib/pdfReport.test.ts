@@ -54,4 +54,29 @@ describe("generateMissionReportPdf", () => {
     });
     expect(doc.output("blob").size).toBeGreaterThan(0);
   });
+
+  it("does not throw exactly at the 200-waypoint truncation boundary", () => {
+    const exactlyAtCap = Array.from({ length: 200 }, (_, i) =>
+      wp(i, 50.06 + i * 0.0001, 14.43),
+    );
+    const oneOverCap = Array.from({ length: 201 }, (_, i) =>
+      wp(i, 50.06 + i * 0.0001, 14.43),
+    );
+    expect(() =>
+      generateMissionReportPdf({
+        missionName: "Přesně na hranici",
+        config: DEFAULT_MISSION_CONFIG,
+        waypoints: exactlyAtCap,
+        unitSystem: "metric",
+      }),
+    ).not.toThrow();
+    expect(() =>
+      generateMissionReportPdf({
+        missionName: "Těsně nad hranicí",
+        config: DEFAULT_MISSION_CONFIG,
+        waypoints: oneOverCap,
+        unitSystem: "metric",
+      }),
+    ).not.toThrow();
+  });
 });

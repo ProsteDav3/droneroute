@@ -420,14 +420,15 @@ export function computeFramedForRadius(
  * Inverse of `computeFramedForRadius`: radius (and centering gimbal pitch)
  * needed so the same ground-to-poiHeight object fits inside `vfovDeg` while
  * flying at a fixed `altitude`. Targets `FOV_SAFETY_MARGIN` of the camera's
- * FOV when achievable at this altitude; otherwise targets the maximum span
- * this altitude can ever achieve (see `maxSpanForAltitude`) instead of
- * failing — a real solution always exists whenever `altitude > poiHeight`
- * (the camera is above the object's top; the common case). Returns `null`
- * when `poiHeight`/`altitude` aren't positive, or `altitude <= poiHeight`
- * (camera at or below the object's own top — a fundamentally different,
- * rare geometry not solved here) — callers must fall back to
- * `computeGimbalPitch`-based linking in that case. See
+ * FOV when achievable at this altitude; when `altitude > poiHeight` (camera
+ * above the object's top) and that target isn't reachable, targets the
+ * maximum span this altitude can ever achieve instead (see
+ * `maxSpanForAltitude`) rather than failing. When `0 < altitude <=
+ * poiHeight` (camera at or below the object's own top), the desired span is
+ * always achievable for *some* radius — as radius shrinks toward 0 the span
+ * approaches a full 180° — so no capping is needed there either; a real
+ * solution always exists for any `altitude > 0` and `poiHeight > 0`.
+ * Returns `null` only when `poiHeight`/`altitude` aren't positive. See
  * `computeFramedForRadius` for the root-selection rules; `prevRadius`
  * absent defaults to the smaller (closer) radius root, since callers
  * editing altitude virtually always already have a current radius to pass
@@ -439,11 +440,18 @@ export function computeFramedForAltitude(
   vfovDeg: number,
   prevRadius?: number,
 ): { radiusM: number; gimbalPitchDeg: number } | null {
-  if (poiHeight <= 0 || altitude <= poiHeight) return null;
+  if (poiHeight <= 0 || altitude <= 0) return null;
   const desiredSpanRad = (vfovDeg * FOV_SAFETY_MARGIN * Math.PI) / 180;
-  const maxSpanRad =
-    maxSpanForAltitude(altitude, poiHeight) * MAX_SPAN_SAFETY_FACTOR;
-  const targetSpanRad = Math.min(desiredSpanRad, maxSpanRad);
+  // maxSpanForAltitude's derivation assumes altitude > poiHeight (it takes
+  // sqrt(altitude*(altitude-poiHeight))) — below/at that line, the desired
+  // span is unconditionally achievable (see doc comment), so skip the cap.
+  const targetSpanRad =
+    altitude > poiHeight
+      ? Math.min(
+          desiredSpanRad,
+          maxSpanForAltitude(altitude, poiHeight) * MAX_SPAN_SAFETY_FACTOR,
+        )
+      : desiredSpanRad;
   const T = Math.tan(targetSpanRad);
   if (!(T > 0)) return null;
   // T*r^2 - poiHeight*r + T*altitude*(altitude-poiHeight) = 0

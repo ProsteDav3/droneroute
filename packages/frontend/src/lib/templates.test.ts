@@ -249,9 +249,15 @@ describe("computeFramedForRadius / computeFramedForAltitude", () => {
     expect(computeFramedForAltitude(60, 0, VFOV)).toBeNull();
   });
 
-  it("returns null when altitude is at or below poiHeight (camera not above the object's top — a different, unsolved geometry)", () => {
-    expect(computeFramedForAltitude(25, 25, VFOV)).toBeNull();
-    expect(computeFramedForAltitude(20, 25, VFOV)).toBeNull();
+  it("returns null only when altitude/poiHeight aren't positive — NOT for altitude at or below poiHeight, which is also always solvable (regression — an earlier version of this fix wrongly returned null for that whole range)", () => {
+    expect(computeFramedForAltitude(0, 25, VFOV)).toBeNull();
+    expect(computeFramedForAltitude(-5, 25, VFOV)).toBeNull();
+    // altitude === poiHeight and altitude < poiHeight must both still
+    // resolve — the camera is at or below the object's own top, but the
+    // desired span is unconditionally achievable there (see doc comment on
+    // computeFramedForAltitude), so no capping/null is needed.
+    expect(computeFramedForAltitude(25, 25, VFOV)).not.toBeNull();
+    expect(computeFramedForAltitude(20, 25, VFOV)).not.toBeNull();
   });
 
   it("computeFramedForRadius: for a radius far too large to ever reach the aspirational target, still returns the best achievable framing instead of null (regression — this used to silently fall back to gimbal-only linking for any realistically large radius)", () => {
@@ -265,21 +271,29 @@ describe("computeFramedForRadius / computeFramedForAltitude", () => {
     expect(span).toBeLessThan(1);
   });
 
-  it("computeFramedForRadius: a large but realistic radius (further than the building is tall) still returns a solution, not null (regression for the reported bug)", () => {
+  it("computeFramedForRadius: a large but realistic radius (further than the building is tall) frames at the capped achievable maximum instead of returning null (regression for the reported bug)", () => {
     // Matches the real-world report: radius grown to 105m for a 40m-tall
     // building — comfortably beyond the 79m point where the old fixed
     // 28.4° target became unreachable and silently stopped updating.
     const result = computeFramedForRadius(105, 40, VFOV, 32);
     expect(result).not.toBeNull();
-    expect(result!.altitude).toBeGreaterThan(0);
+    const span = verticalSpanDeg(result!.altitude, 40, 105);
+    const expectedMaxSpanDeg =
+      ((2 * Math.atan(40 / (2 * 105))) / Math.PI) * 180 * 0.98;
+    expect(span).toBeCloseTo(expectedMaxSpanDeg, 0);
   });
 
-  it("computeFramedForAltitude: a high altitude relative to a modest poiHeight still returns a solution, not null (regression for the reported bug)", () => {
+  it("computeFramedForAltitude: a high altitude relative to a modest poiHeight frames at the capped achievable maximum instead of returning null (regression for the reported bug)", () => {
     // Matches the real-world report: altitude raised to 150m for a 40m-tall
     // building — the old fixed 28.4° target was unreachable there too.
     const result = computeFramedForAltitude(150, 40, VFOV, 55);
     expect(result).not.toBeNull();
-    expect(result!.radiusM).toBeGreaterThan(0);
+    const span = verticalSpanDeg(150, 40, result!.radiusM);
+    const expectedMaxSpanDeg =
+      (Math.atan(40 / (2 * Math.sqrt(150 * (150 - 40)))) / Math.PI) *
+      180 *
+      0.98;
+    expect(span).toBeCloseTo(expectedMaxSpanDeg, 0);
   });
 
   it("picks the root closest to a given previous value instead of jumping", () => {

@@ -1096,7 +1096,7 @@ function averageBearing(b1: number, b2: number): number {
 /** Local tangent bearing at each point of a path: the single segment's bearing at the endpoints, the circular mean of the incoming/outgoing segment bearings at interior points. */
 function pathTangents(path: [number, number][]): number[] {
   const n = path.length;
-  if (n < 2) return new Array(n).fill(0);
+  if (n < 2) return Array.from({ length: n }, () => 0);
   const tangents: number[] = [];
   for (let i = 0; i < n; i++) {
     if (i === 0) {

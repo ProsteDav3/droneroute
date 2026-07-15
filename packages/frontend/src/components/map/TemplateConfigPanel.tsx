@@ -276,45 +276,49 @@ export function TemplateConfigPanel({
 
     const handlePointerDown = (e: PointerEvent) => {
       e.preventDefault();
-      // Viewport-relative (position: fixed) math throughout, deliberately
-      // avoiding anything relative to `offsetParent`/a parent's
-      // getBoundingClientRect(). This panel is rendered as a child of the
-      // Map component (react-map-gl portals it into Mapbox's own internal
-      // container), so its offsetParent is Mapbox's DOM structure, not this
-      // app's own wrapper div — and at non-100% OS display scaling
-      // (confirmed 125%+ on the machine that hit this), that indirection
-      // was enough to throw the panel's drag position off by a large,
-      // seemingly arbitrary amount. `clientX`/`clientY` and `position:
-      // fixed` coordinates are both defined directly against the viewport
-      // by spec, with no intermediate container's box model to agree with.
+      // Diagnostics on a real machine (125% Windows display scaling, but
+      // reporting devicePixelRatio: 1) showed clientX jumping ~360px
+      // between pointerdown and the very next pointermove for what the
+      // user described as a small mouse movement — a real browser-level
+      // clientX/clientY inconsistency under this OS scaling configuration,
+      // not a bug in the position math itself (the arithmetic checked out
+      // exactly against the bad clientX values). Tracking via `movementX`/
+      // `movementY` (a per-event relative delta) instead of absolute
+      // clientX avoids relying on that seemingly-unreliable absolute
+      // coordinate — only the drag's starting position comes from
+      // getBoundingClientRect(), which is unaffected by the clientX bug.
       const panelRect = panel.getBoundingClientRect();
-      const grabOffsetX = panelRect.left - e.clientX;
-      const grabOffsetY = panelRect.top - e.clientY;
+      let currentLeft = panelRect.left;
+      let currentTop = panelRect.top;
       setDragDebug({
         dpr: window.devicePixelRatio,
         downClientX: e.clientX,
         downClientY: e.clientY,
         panelRectLeft: panelRect.left,
         panelRectTop: panelRect.top,
-        grabOffsetX,
-        grabOffsetY,
       });
 
       const handlePointerMove = (moveEvent: PointerEvent) => {
         moveEvent.preventDefault();
-        let left = moveEvent.clientX + grabOffsetX;
-        let top = moveEvent.clientY + grabOffsetY;
+        currentLeft += moveEvent.movementX;
+        currentTop += moveEvent.movementY;
+        // Clamp the accumulator itself, not just what gets rendered —
+        // otherwise it keeps summing past the visual edge while the panel
+        // looks stuck there, and reversing direction wouldn't move it again
+        // until the accumulator drifted back past the boundary.
         const maxLeft = Math.max(window.innerWidth - panel.offsetWidth, 0);
         const maxTop = Math.max(window.innerHeight - panel.offsetHeight, 0);
-        left = Math.min(Math.max(left, 0), maxLeft);
-        top = Math.min(Math.max(top, 0), maxTop);
-        setDragPosition({ left, top });
+        currentLeft = Math.min(Math.max(currentLeft, 0), maxLeft);
+        currentTop = Math.min(Math.max(currentTop, 0), maxTop);
+        setDragPosition({ left: currentLeft, top: currentTop });
         setDragDebug((prev) => ({
           ...prev,
           moveClientX: moveEvent.clientX,
           moveClientY: moveEvent.clientY,
-          computedLeft: left,
-          computedTop: top,
+          movementX: moveEvent.movementX,
+          movementY: moveEvent.movementY,
+          computedLeft: currentLeft,
+          computedTop: currentTop,
           innerWidth: window.innerWidth,
           innerHeight: window.innerHeight,
         }));

@@ -251,6 +251,14 @@ export function TemplateConfigPanel({
     left: number;
     top: number;
   } | null>(null);
+  // TEMPORARY diagnostic overlay — remove once the drag jump bug is
+  // actually root-caused. Three prior fix attempts (native-drag
+  // suppression, viewport-vs-offsetParent coordinate rewrite) didn't
+  // resolve the reported jump, so this surfaces the raw numbers instead of
+  // guessing at a fourth theory blind.
+  const [dragDebug, setDragDebug] = useState<Record<string, number> | null>(
+    null,
+  );
 
   useEffect(() => {
     const handle = dragHandleRef.current;
@@ -282,6 +290,15 @@ export function TemplateConfigPanel({
       const panelRect = panel.getBoundingClientRect();
       const grabOffsetX = panelRect.left - e.clientX;
       const grabOffsetY = panelRect.top - e.clientY;
+      setDragDebug({
+        dpr: window.devicePixelRatio,
+        downClientX: e.clientX,
+        downClientY: e.clientY,
+        panelRectLeft: panelRect.left,
+        panelRectTop: panelRect.top,
+        grabOffsetX,
+        grabOffsetY,
+      });
 
       const handlePointerMove = (moveEvent: PointerEvent) => {
         moveEvent.preventDefault();
@@ -292,6 +309,15 @@ export function TemplateConfigPanel({
         left = Math.min(Math.max(left, 0), maxLeft);
         top = Math.min(Math.max(top, 0), maxTop);
         setDragPosition({ left, top });
+        setDragDebug((prev) => ({
+          ...prev,
+          moveClientX: moveEvent.clientX,
+          moveClientY: moveEvent.clientY,
+          computedLeft: left,
+          computedTop: top,
+          innerWidth: window.innerWidth,
+          innerHeight: window.innerHeight,
+        }));
       };
 
       const handlePointerUp = () => {
@@ -343,6 +369,17 @@ export function TemplateConfigPanel({
       style={positionStyle}
       className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-card/95 backdrop-blur-sm border border-border rounded-lg shadow-2xl p-3 min-w-[320px] max-w-[420px]"
     >
+      {/* TEMPORARY diagnostic overlay — see the comment by dragDebug's declaration */}
+      {dragDebug && (
+        <div
+          className="fixed top-1 left-1 z-50 bg-black/90 text-lime-400 text-[10px] font-mono p-2 rounded whitespace-pre pointer-events-none"
+          style={{ position: "fixed" }}
+        >
+          {Object.entries(dragDebug)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join("\n")}
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between mb-1">
         <div

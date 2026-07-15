@@ -7,6 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Check, X } from "lucide-react";
 import { heightLabel, toDisplayHeight, fromDisplayHeight } from "@/lib/units";
+import { EdgeLengthLabels } from "./EdgeLengthLabels";
+
+const BUILDING_EDGE_LABEL_CLASS_NAME =
+  "pointer-events-none px-1 py-0.5 rounded bg-blue-950/70 border border-blue-400/50 text-[10px] font-mono text-blue-200 whitespace-nowrap";
 
 const DEFAULT_BUILDING_HEIGHT_M = 20;
 
@@ -247,52 +251,81 @@ export function BuildingDrawHandler() {
         ))}
 
       {dragGuideGeojson && (
-        <Source id="building-drag-guide" type="geojson" data={dragGuideGeojson}>
-          <Layer
-            id="building-drag-guide-layer"
-            type="line"
-            paint={{
-              "line-color": "#3b82f6",
-              "line-width": 2,
-              "line-opacity": 0.6,
-              "line-dasharray": [3, 2],
-            }}
-          />
-        </Source>
+        <>
+          <Source
+            id="building-drag-guide"
+            type="geojson"
+            data={dragGuideGeojson}
+          >
+            <Layer
+              id="building-drag-guide-layer"
+              type="line"
+              paint={{
+                "line-color": "#3b82f6",
+                "line-width": 2,
+                "line-opacity": 0.6,
+                "line-dasharray": [3, 2],
+              }}
+            />
+          </Source>
+          {dragState && (
+            <EdgeLengthLabels
+              vertices={rectangleVertices(dragState.start, dragState.end)}
+              closed
+              labelClassName={BUILDING_EDGE_LABEL_CLASS_NAME}
+            />
+          )}
+        </>
       )}
 
       {polygonGuideGeojson && (
-        <Source
-          id="building-polygon-guide"
-          type="geojson"
-          data={polygonGuideGeojson}
-        >
-          <Layer
-            id="building-polygon-guide-layer"
-            type="line"
-            paint={{
-              "line-color": "#3b82f6",
-              "line-width": 2,
-              "line-opacity": 0.8,
-              "line-dasharray": [3, 2],
-            }}
+        <>
+          <Source
+            id="building-polygon-guide"
+            type="geojson"
+            data={polygonGuideGeojson}
+          >
+            <Layer
+              id="building-polygon-guide-layer"
+              type="line"
+              paint={{
+                "line-color": "#3b82f6",
+                "line-width": 2,
+                "line-opacity": 0.8,
+                "line-dasharray": [3, 2],
+              }}
+            />
+          </Source>
+          <EdgeLengthLabels
+            vertices={drawingBuildingVertices}
+            closed={false}
+            labelClassName={BUILDING_EDGE_LABEL_CLASS_NAME}
           />
-        </Source>
+        </>
       )}
 
       {pendingGeojson && (
-        <Source id="building-pending" type="geojson" data={pendingGeojson}>
-          <Layer
-            id="building-pending-fill-layer"
-            type="fill"
-            paint={{ "fill-color": "#3b82f6", "fill-opacity": 0.15 }}
-          />
-          <Layer
-            id="building-pending-line-layer"
-            type="line"
-            paint={{ "line-color": "#3b82f6", "line-width": 2 }}
-          />
-        </Source>
+        <>
+          <Source id="building-pending" type="geojson" data={pendingGeojson}>
+            <Layer
+              id="building-pending-fill-layer"
+              type="fill"
+              paint={{ "fill-color": "#3b82f6", "fill-opacity": 0.15 }}
+            />
+            <Layer
+              id="building-pending-line-layer"
+              type="line"
+              paint={{ "line-color": "#3b82f6", "line-width": 2 }}
+            />
+          </Source>
+          {pendingVertices && (
+            <EdgeLengthLabels
+              vertices={pendingVertices}
+              closed
+              labelClassName={BUILDING_EDGE_LABEL_CLASS_NAME}
+            />
+          )}
+        </>
       )}
 
       {pendingVertices && (

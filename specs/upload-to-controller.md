@@ -13,7 +13,7 @@ Send a mission file directly to a DJI controller connected to your computer.
 ## How it works
 
 1. Connect your DJI remote controller to your computer via USB.
-2. Open a terminal and run `npx droneroute mission.kmz` (replacing `mission.kmz` with your file name).
+2. Open a terminal and run `npx @prostedav3/droneroute mission.kmz` (replacing `mission.kmz` with your file name).
 3. The tool detects the controller and uploads the mission.
 4. On DJI Fly controllers, the mission appears as a new route, ready to
    fly. On DJI Pilot 2 controllers, open Pilot 2's import/route-library

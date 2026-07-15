@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/fcsonline/droneroute/main/droneroute.png" alt="DroneRoute" width="120" />
+  <img src="https://raw.githubusercontent.com/ProsteDav3/droneroute/main/droneroute.png" alt="DroneRoute" width="120" />
 </p>
 
 # droneroute
@@ -7,7 +7,7 @@
 Upload DJI waypoint mission KMZ files to RC controllers via USB.
 
 ```bash
-npx droneroute mission.kmz
+npx @prostedav3/droneroute mission.kmz
 ```
 
 ## What it does
@@ -106,13 +106,13 @@ than expecting it to appear automatically.
 Upload a mission to the only connected controller:
 
 ```bash
-npx droneroute my-survey.kmz
+npx @prostedav3/droneroute my-survey.kmz
 ```
 
 If multiple controllers are connected, an interactive prompt appears:
 
 ```
-$ npx droneroute my-survey.kmz
+$ npx @prostedav3/droneroute my-survey.kmz
 
 Searching for DJI controllers...
 

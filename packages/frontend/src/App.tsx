@@ -27,6 +27,7 @@ import {
   Bookmark,
   CloudSun,
   BatteryFull,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,7 +60,11 @@ import { formatDistance } from "@/lib/units";
 import { useAirspaceStore } from "@/store/airspaceStore";
 import { api } from "@/lib/api";
 import { getObstacleWarnings, getAirspaceWarnings } from "@/lib/geo";
-import { estimateFlightStats, formatFlightDuration } from "@/lib/flightStats";
+import {
+  estimateFlightStats,
+  formatFlightDuration,
+  countCaptureActions,
+} from "@/lib/flightStats";
 
 type SidebarSection =
   | "waypoints"
@@ -356,6 +361,33 @@ export default function App() {
       toast.error(`Export segmentů selhal: ${err.message}`);
     } finally {
       setExportingSegments(false);
+    }
+  };
+
+  const [generatingReport, setGeneratingReport] = useState(false);
+
+  const handleDownloadReport = async () => {
+    if (waypoints.length < 2) {
+      toast.warning("Pro report je potřeba alespoň 2 body trasy");
+      return;
+    }
+    setGeneratingReport(true);
+    try {
+      // Dynamically imported: jsPDF (+ jspdf-autotable) pulls in ~400kb of
+      // dependencies the app otherwise never needs, so it's excluded from
+      // the main bundle and only fetched when a report is actually requested.
+      const { generateMissionReportPdf } = await import("@/lib/pdfReport");
+      const doc = generateMissionReportPdf({
+        missionName,
+        config,
+        waypoints,
+        unitSystem,
+      });
+      doc.save(`${missionName.replace(/[^a-zA-Z0-9_-]/g, "_")}-report.pdf`);
+    } catch (err: any) {
+      toast.error(`Vytvoření reportu selhalo: ${err.message}`);
+    } finally {
+      setGeneratingReport(false);
     }
   };
 
@@ -722,6 +754,21 @@ export default function App() {
           <Button
             variant="outline"
             size="sm"
+            onClick={handleDownloadReport}
+            disabled={generatingReport || waypoints.length < 2}
+            className="w-full text-xs h-7 border-[#00c2ff]/30 bg-[#00c2ff]/5 hover:bg-[#00c2ff]/15 hover:text-[#33cfff]"
+            title={
+              waypoints.length < 2
+                ? "Pro report přidejte alespoň 2 body trasy"
+                : "Stáhnout přehledný PDF report mise pro klienta (dron, statistiky letu, seznam bodů trasy)"
+            }
+          >
+            <FileText className="h-3 w-3" />
+            {generatingReport ? "..." : "Stáhnout PDF report"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleExportSegments}
             disabled={exportingSegments || waypoints.length < 2}
             className="w-full text-xs h-7 border-[#00c2ff]/30 bg-[#00c2ff]/5 hover:bg-[#00c2ff]/15 hover:text-[#33cfff]"
@@ -941,19 +988,7 @@ export default function App() {
         <div className="px-3 py-2 border-t border-border flex items-center justify-between">
           <div className="flex items-center gap-3">
             {(() => {
-              const photoCount = waypoints.reduce(
-                (sum, wp) =>
-                  sum +
-                  wp.actions.filter((a) => a.actionType === "takePhoto").length,
-                0,
-              );
-              const videoCount = waypoints.reduce(
-                (sum, wp) =>
-                  sum +
-                  wp.actions.filter((a) => a.actionType === "startRecord")
-                    .length,
-                0,
-              );
+              const { photoCount, videoCount } = countCaptureActions(waypoints);
               return (
                 <>
                   {photoCount > 0 && (

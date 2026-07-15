@@ -23,6 +23,8 @@
     "@react-oauth/google": "^0.13.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.17.0",
     "mapbox-gl": "^3.24.0",
     "react": "^19.2.7",

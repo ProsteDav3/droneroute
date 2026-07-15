@@ -4,7 +4,15 @@ export interface PhotogrammetryExportRow {
   name: string;
   latitude: number;
   longitude: number;
-  /** Altitude in meters, exactly as configured in the mission (whatever height reference the mission uses — AGL, above-start, or EGM96) — always metric regardless of the app's display unit preference, since Pix4D/Metashape both expect SI units. */
+  /**
+   * Altitude in meters, always metric regardless of the app's display unit
+   * preference (Pix4D/Metashape both expect SI units). NOT necessarily a
+   * true/absolute (geodetic) altitude — it is `wp.height` exactly as
+   * configured on the mission, which in practice is almost always relative
+   * (above ground level or above the start point), since the UI only
+   * exposes those two relative modes. Callers must warn the user which
+   * height reference this reflects before it's used for georeferencing.
+   */
   altitude: number;
 }
 

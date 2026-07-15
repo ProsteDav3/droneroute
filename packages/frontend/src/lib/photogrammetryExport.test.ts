@@ -93,6 +93,27 @@ describe("buildPhotogrammetryExportRows", () => {
     const rows = buildPhotogrammetryExportRows(waypoints);
     expect(rows[9].name).toBe("photo_0010");
   });
+
+  it("does not pad beyond 4 digits when the sequence exceeds 9999", () => {
+    const waypoints = Array.from({ length: 10001 }, (_, i) =>
+      wp(i, 50.06 + i * 0.0001, 14.43, { actions: [takePhoto] }),
+    );
+    const rows = buildPhotogrammetryExportRows(waypoints);
+    expect(rows[9999].name).toBe("photo_10000");
+  });
+
+  it("returns an empty array for an empty waypoint list", () => {
+    expect(buildPhotogrammetryExportRows([])).toEqual([]);
+  });
+
+  it("returns a single row for a single waypoint with one photo action", () => {
+    const rows = buildPhotogrammetryExportRows([
+      wp(0, 50.06, 14.43, { actions: [takePhoto] }),
+    ]);
+    expect(rows).toEqual([
+      { name: "photo_0001", latitude: 50.06, longitude: 14.43, altitude: 30 },
+    ]);
+  });
 });
 
 describe("generatePhotogrammetryCsv", () => {
@@ -112,5 +133,15 @@ describe("generatePhotogrammetryCsv", () => {
   it("produces just the header when there are no photo waypoints", () => {
     const csv = generatePhotogrammetryCsv([wp(0, 50.06, 14.43)]);
     expect(csv).toBe("Name,Latitude,Longitude,Altitude(m)\r\n");
+  });
+
+  it("formats negative and large altitudes without losing precision", () => {
+    const waypoints = [
+      wp(0, 50.06, 14.43, { height: -12.345, actions: [takePhoto] }),
+      wp(1, 50.061, 14.431, { height: 8848.86, actions: [takePhoto] }),
+    ];
+    const lines = generatePhotogrammetryCsv(waypoints).split("\r\n");
+    expect(lines[1]).toBe("photo_0001,50.06000000,14.43000000,-12.35");
+    expect(lines[2]).toBe("photo_0002,50.06100000,14.43100000,8848.86");
   });
 });

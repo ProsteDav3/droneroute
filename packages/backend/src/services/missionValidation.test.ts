@@ -104,6 +104,21 @@ describe("validateMissionCreate", () => {
     ).toBe("neplatná výška bodu trasy");
   });
 
+  it("rejects out-of-range heights", () => {
+    expect(
+      validateMissionCreate({
+        ...validCreate,
+        waypoints: [{ ...validWaypoint, height: 9001 }],
+      }),
+    ).toBe("neplatná výška bodu trasy");
+    expect(
+      validateMissionCreate({
+        ...validCreate,
+        waypoints: [{ ...validWaypoint, height: -501 }],
+      }),
+    ).toBe("neplatná výška bodu trasy");
+  });
+
   it("rejects too many waypoints (DoS guard)", () => {
     const waypoints = Array.from({ length: 5001 }, (_, i) => ({
       ...validWaypoint,

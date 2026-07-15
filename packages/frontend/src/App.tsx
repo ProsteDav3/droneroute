@@ -57,7 +57,7 @@ import { useMissionStore } from "@/store/missionStore";
 import { useAuthStore } from "@/store/authStore";
 import { useConfigStore } from "@/store/configStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
-import { formatDistance } from "@/lib/units";
+import { formatDistance, heightModeLabel } from "@/lib/units";
 import { useAirspaceStore } from "@/store/airspaceStore";
 import { api } from "@/lib/api";
 import { getObstacleWarnings, getAirspaceWarnings } from "@/lib/geo";
@@ -418,6 +418,10 @@ export default function App() {
     a.download = `${missionName.replace(/[^a-zA-Z0-9_-]/g, "_")}-pix4d-metashape.csv`;
     a.click();
     URL.revokeObjectURL(url);
+    toast.info(
+      `Sloupec Altitude(m) je výška ${heightModeLabel(config.heightMode)}, ne nadmořská výška — než použijete export pro georeferencování, ověřte, že to odpovídá očekávání Pix4D/Metashape.`,
+      { duration: 8000 },
+    );
   };
 
   const handleSaveSegments = async () => {

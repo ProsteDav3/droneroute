@@ -39,6 +39,16 @@ function isLongitude(v: unknown): boolean {
   return isFiniteNumber(v) && v >= -180 && v <= 180;
 }
 
+// Generous bound covering any real-world height reference (AGL, above
+// start point, or EGM96/MSL) from below the Dead Sea to above Everest —
+// just enough to reject typos/garbage, not to constrain legitimate flights.
+const MIN_HEIGHT_M = -500;
+const MAX_HEIGHT_M = 9000;
+
+function isHeight(v: unknown): boolean {
+  return isFiniteNumber(v) && v >= MIN_HEIGHT_M && v <= MAX_HEIGHT_M;
+}
+
 function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
@@ -61,7 +71,7 @@ function validateWaypoints(value: unknown): string | null {
     if (!isLatitude(wp.latitude) || !isLongitude(wp.longitude)) {
       return "souřadnice bodu trasy mimo rozsah";
     }
-    if (!isFiniteNumber(wp.height)) return "neplatná výška bodu trasy";
+    if (!isHeight(wp.height)) return "neplatná výška bodu trasy";
     if (!isOptionalName(wp.name)) return "neplatný název bodu trasy";
   }
   return null;
@@ -76,7 +86,7 @@ function validatePois(value: unknown): string | null {
     if (!isLatitude(poi.latitude) || !isLongitude(poi.longitude)) {
       return "souřadnice POI mimo rozsah";
     }
-    if (!isFiniteNumber(poi.height)) return "neplatná výška POI";
+    if (!isHeight(poi.height)) return "neplatná výška POI";
     if (!isOptionalName(poi.name)) return "neplatný název POI";
   }
   return null;

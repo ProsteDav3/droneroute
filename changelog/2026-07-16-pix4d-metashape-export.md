@@ -26,3 +26,8 @@ every photo the mission will capture, in flight order.
   drone actually captures, so rows are meant to be matched to the real
   files by capture order after the flight — documented in `specs/import-export.md`
   so this limitation is clear up front rather than discovered by trial and error.
+- The altitude column reflects the mission's configured height mode
+  (AGL or above the start point, in practice), not necessarily true
+  altitude — a toast notice names the active height mode at export time,
+  and the backend now rejects waypoint/POI heights outside a sane
+  -500..9000 m range as an extra data-quality guard.

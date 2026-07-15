@@ -47,6 +47,9 @@ import {
   recommendSolarSpacing,
   recommendGridSpacing,
   computeGsdCm,
+  isMultispectralPayload,
+  NDVI_RECOMMENDED_FRONT_OVERLAP_PCT,
+  NDVI_RECOMMENDED_SIDE_OVERLAP_PCT,
   THERMAL_CAMERA_FOV,
   WIDE_CAMERA_FOV,
 } from "@/lib/solarCamera";
@@ -877,6 +880,42 @@ export function TemplateConfigPanel({
               </div>
             );
           })()}
+          {isMultispectralPayload(payloadEnumValue) && (
+            <div className="col-span-2 flex flex-col gap-1 text-[10px] text-muted-foreground bg-muted/20 rounded-md px-2 py-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-foreground">
+                  Multispektrální snímkování (NDVI)
+                </span>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-5 text-[10px] px-2 shrink-0"
+                  onClick={() => {
+                    setGridFrontOverlapPct(NDVI_RECOMMENDED_FRONT_OVERLAP_PCT);
+                    setGridSideOverlapPct(NDVI_RECOMMENDED_SIDE_OVERLAP_PCT);
+                  }}
+                >
+                  Použít doporučený překryv
+                </Button>
+              </div>
+              <div>
+                Vegetační indexy (NDVI) potřebují větší redundanci mezi snímky
+                než běžná RGB fotogrammetrie — doporučeno{" "}
+                {NDVI_RECOMMENDED_FRONT_OVERLAP_PCT}% podélný /{" "}
+                {NDVI_RECOMMENDED_SIDE_OVERLAP_PCT}% boční překryv.
+              </div>
+              <ul className="list-disc pl-4 space-y-0.5">
+                <li>
+                  Vyfoťte kalibrační panel před vzletem a po přistání pro
+                  radiometrickou kalibraci.
+                </li>
+                <li>
+                  Létejte za stálého osvětlení (ideálně kolem slunečního poledne
+                  ±2 h), vyhněte se proměnlivé oblačnosti během letu.
+                </li>
+              </ul>
+            </div>
+          )}
           <div>
             <CaptureModeToggle
               value={gridParams.captureMode === "video" ? "video" : "photo"}

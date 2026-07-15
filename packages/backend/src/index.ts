@@ -12,6 +12,7 @@ import { airspaceRoutes } from "./routes/airspace.js";
 import { adminRoutes } from "./routes/admin.js";
 import { preferencesRoutes } from "./routes/preferences.js";
 import { templatePresetRoutes } from "./routes/templatePresets.js";
+import { weatherRoutes } from "./routes/weather.js";
 import { globalLimiter } from "./middleware/rateLimit.js";
 import { resolveDefaultMapView } from "./lib/config.js";
 
@@ -65,6 +66,7 @@ app.use("/api/kmz", kmzRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/preferences", preferencesRoutes);
 app.use("/api/template-presets", templatePresetRoutes);
+app.use("/api/weather", weatherRoutes);
 app.use("/api/airspace", airspaceRoutes);
 app.use("/api", sharedRoutes);
 

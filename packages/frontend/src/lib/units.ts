@@ -74,6 +74,10 @@ export function distanceLabel(unitSystem: UnitSystem = "metric"): string {
   return unitSystem === "imperial" ? "ft" : "m";
 }
 
+export function temperatureLabel(unitSystem: UnitSystem = "metric"): string {
+  return unitSystem === "imperial" ? "°F" : "°C";
+}
+
 // ── Bidirectional conversion for form inputs ────────────
 // Internal storage is always metric (m, m/s).
 // These convert between internal values and display values.
@@ -124,6 +128,15 @@ export function fromDisplayDistance(
 ): number {
   if (unitSystem === "imperial") return +(value / M_TO_FT).toFixed(2);
   return value;
+}
+
+/** Display-only (weather data isn't user-editable, so no inverse conversion needed). */
+export function toDisplayTemperature(
+  celsius: number,
+  unitSystem: UnitSystem = "metric",
+): number {
+  if (unitSystem === "imperial") return Math.round((celsius * 9) / 5 + 32);
+  return Math.round(celsius);
 }
 
 // ── Speed range conversion for input min/max ────────────

@@ -257,6 +257,15 @@ export function TemplateConfigPanel({
     const panel = panelRef.current;
     if (!handle || !panel) return;
 
+    // Tracks the in-progress drag's own listeners so they can be torn down
+    // if the panel unmounts mid-drag (e.g. Apply/Cancel fires while the
+    // pointer is still down) — otherwise they'd linger on `window` until
+    // the next pointerup, harmlessly but needlessly.
+    let activeDrag: {
+      move: (e: PointerEvent) => void;
+      up: () => void;
+    } | null = null;
+
     const handlePointerDown = (e: PointerEvent) => {
       e.preventDefault();
       const parent = panel.offsetParent as HTMLElement | null;
@@ -283,14 +292,22 @@ export function TemplateConfigPanel({
       const handlePointerUp = () => {
         window.removeEventListener("pointermove", handlePointerMove);
         window.removeEventListener("pointerup", handlePointerUp);
+        activeDrag = null;
       };
 
+      activeDrag = { move: handlePointerMove, up: handlePointerUp };
       window.addEventListener("pointermove", handlePointerMove);
       window.addEventListener("pointerup", handlePointerUp);
     };
 
     handle.addEventListener("pointerdown", handlePointerDown);
-    return () => handle.removeEventListener("pointerdown", handlePointerDown);
+    return () => {
+      handle.removeEventListener("pointerdown", handlePointerDown);
+      if (activeDrag) {
+        window.removeEventListener("pointermove", activeDrag.move);
+        window.removeEventListener("pointerup", activeDrag.up);
+      }
+    };
   }, []);
 
   const positionStyle: CSSProperties = dragPosition

@@ -94,6 +94,16 @@ function circleGeoJson(center: [number, number], radiusM: number) {
  * center after the fact — e.g. a searched address puts you close but not
  * exactly on the spot — without having to cancel and re-drag from scratch.
  * Only active while the config panel is open, before Apply.
+ *
+ * Explicit `zIndex` (higher than OrbitPoiHandle's) via the Marker's own
+ * `style` prop — not JSX/mount order — is what guarantees this handle stays
+ * grabbable when it overlaps OrbitPoiHandle right after locking the POI.
+ * The two markers are independent mapbox-gl `Marker` instances, each
+ * appended to the shared canvas container at its OWN mount time (see
+ * `@vis.gl/react-mapbox`'s Marker component) — OrbitPoiHandle only mounts
+ * the moment "Uzamknout POI" is checked, i.e. strictly after this handle,
+ * so relying on JSX order for stacking would put the newer POI marker on
+ * top regardless of where it appears in this file.
  */
 function OrbitCenterHandle({
   center,
@@ -118,6 +128,7 @@ function OrbitCenterHandle({
       anchor="center"
       draggable
       onDrag={handleDrag}
+      style={{ zIndex: 10 }}
     >
       <div
         title="Přetažením posunete střed orbitu"
@@ -140,7 +151,7 @@ function OrbitCenterHandle({
  * point (`OrbitParams.poiCenter`), only rendered once that field is set (see
  * the "Uzamknout POI" toggle in TemplateConfigPanel). Deliberately not
  * draggable: the whole point of locking the POI is that it stays put while
- * `OrbitCenterHandle` (rendered after this one, so it sits on top when the
+ * `OrbitCenterHandle` (given a higher `zIndex`, so it stays on top when the
  * two overlap right after locking) is used to resize/move the orbit circle
  * — previously both handles were draggable and overlapped exactly at lock
  * time, so grabbing "the orbit handle" often grabbed this one instead,
@@ -150,7 +161,12 @@ function OrbitPoiHandle({ poiCenter }: { poiCenter: [number, number] }) {
   const [lat, lng] = poiCenter;
 
   return (
-    <Marker longitude={lng} latitude={lat} anchor="center">
+    <Marker
+      longitude={lng}
+      latitude={lat}
+      anchor="center"
+      style={{ zIndex: 5 }}
+    >
       <div
         title="Cíl kamery (POI je uzamčen na tomto místě, odděleně od středu orbitu)"
         style={{

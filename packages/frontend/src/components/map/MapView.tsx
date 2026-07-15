@@ -21,6 +21,7 @@ import { MapToolbar } from "./MapToolbar";
 import { TemplateDrawHandler } from "./TemplateDrawHandler";
 import { PencilDrawHandler } from "./PencilDrawHandler";
 import { SolarDrawHandler } from "./SolarDrawHandler";
+import { CorridorDrawHandler } from "./CorridorDrawHandler";
 import { ObstacleDrawHandler } from "./ObstacleDrawHandler";
 import { ObstaclePolygon } from "./ObstaclePolygon";
 import { BuildingDrawHandler } from "./BuildingDrawHandler";
@@ -516,7 +517,7 @@ export function MapView() {
   );
 
   const cursorClass =
-    templateMode === "pencil"
+    templateMode === "pencil" || templateMode === "corridor"
       ? "map-tool-pencil"
       : templateMode
         ? "map-tool-template"
@@ -637,6 +638,7 @@ export function MapView() {
         <TemplateDrawHandler />
         <PencilDrawHandler />
         <SolarDrawHandler />
+        <CorridorDrawHandler />
         <ObstacleDrawHandler />
         <BuildingDrawHandler />
         <AirspaceOverlay />

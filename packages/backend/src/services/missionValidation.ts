@@ -23,6 +23,7 @@ const VALID_TEMPLATE_GROUP_TYPES = [
   "facade",
   "pencil",
   "solar",
+  "corridor",
 ];
 
 function isFiniteNumber(v: unknown): v is number {

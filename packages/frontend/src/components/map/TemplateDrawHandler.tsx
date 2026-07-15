@@ -382,7 +382,13 @@ export function TemplateDrawHandler() {
 
   // Map mouse events for drag-to-draw
   useEffect(() => {
-    if (!map || !templateMode || templateMode === "pencil") return;
+    if (
+      !map ||
+      !templateMode ||
+      templateMode === "pencil" ||
+      templateMode === "corridor"
+    )
+      return;
 
     let isDragging = false;
     let currentDrag: DragState | null = null;
@@ -558,7 +564,8 @@ export function TemplateDrawHandler() {
     return null;
   }, [dragging, dragState, templateMode]);
 
-  if (!templateMode || templateMode === "pencil") return null;
+  if (!templateMode || templateMode === "pencil" || templateMode === "corridor")
+    return null;
 
   const handleApply = () => {
     if (!preview) {

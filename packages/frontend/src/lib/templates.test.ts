@@ -16,6 +16,8 @@ import {
   DEFAULT_FACADE_PARAMS,
   generatePencil,
   DEFAULT_PENCIL_PARAMS,
+  generateCorridor,
+  DEFAULT_CORRIDOR_PARAMS,
   bearing,
   destinationPoint,
 } from "./templates";
@@ -24,6 +26,7 @@ import type {
   SolarParams,
   GridParams,
   FacadeParams,
+  CorridorParams,
 } from "./templates";
 import {
   recommendSolarSpacing,
@@ -836,6 +839,113 @@ describe("capture mode (photo/video)", () => {
     expect(
       result.waypoints[result.waypoints.length - 1].actions[0]?.actionType,
     ).toBe("stopRecord");
+  });
+
+  it("generateCorridor: returns empty for a path with fewer than 2 points or numPoints < 2", () => {
+    expect(
+      generateCorridor({
+        ...DEFAULT_CORRIDOR_PARAMS,
+        path: [CENTER],
+      } satisfies CorridorParams).waypoints,
+    ).toEqual([]);
+    expect(
+      generateCorridor({
+        ...DEFAULT_CORRIDOR_PARAMS,
+        path: [CENTER, destinationPoint(CENTER[0], CENTER[1], 100, 90)],
+        numPoints: 1,
+      } satisfies CorridorParams).waypoints,
+    ).toEqual([]);
+  });
+
+  it("generateCorridor: a single pass (numPasses=1) flies directly along the drawn centerline", () => {
+    const path: [number, number][] = [
+      CENTER,
+      destinationPoint(CENTER[0], CENTER[1], 100, 90),
+    ];
+    const result = generateCorridor({
+      ...DEFAULT_CORRIDOR_PARAMS,
+      path,
+      numPoints: 5,
+      numPasses: 1,
+    } satisfies CorridorParams);
+
+    expect(result.waypoints).toHaveLength(5);
+    // Every waypoint should sit almost exactly on the original straight line
+    // (no lateral offset applied for a single centerline pass).
+    for (const wp of result.waypoints) {
+      expect(Math.abs(wp.latitude - CENTER[0])).toBeLessThan(1e-6);
+    }
+  });
+
+  it("generateCorridor: two passes straddle the centerline, offsetM apart", () => {
+    const path: [number, number][] = [
+      CENTER,
+      destinationPoint(CENTER[0], CENTER[1], 100, 90), // heading east
+    ];
+    const offsetM = 20;
+    const result = generateCorridor({
+      ...DEFAULT_CORRIDOR_PARAMS,
+      path,
+      numPoints: 3,
+      numPasses: 2,
+      offsetM,
+    } satisfies CorridorParams);
+
+    expect(result.waypoints).toHaveLength(6);
+    // First waypoint of pass 1 and last waypoint of pass 2 correspond to the
+    // same original path position (index 0) on opposite passes — lawn-mower
+    // ordering reverses every other pass, so pass 2 starts where pass 1 (in
+    // physical position) ends. Compare the two passes' waypoints at the
+    // same original index instead of relying on array position.
+    const pass1Start = result.waypoints[0];
+    const pass2End = result.waypoints[5];
+    const dist = haversineDistance(
+      pass1Start.latitude,
+      pass1Start.longitude,
+      pass2End.latitude,
+      pass2End.longitude,
+    );
+    expect(dist).toBeCloseTo(offsetM, 0);
+  });
+
+  it("generateCorridor: video mode puts startRecord/stopRecord only on the first/last waypoint", () => {
+    const path: [number, number][] = [
+      CENTER,
+      destinationPoint(CENTER[0], CENTER[1], 100, 90),
+    ];
+    const result = generateCorridor({
+      ...DEFAULT_CORRIDOR_PARAMS,
+      path,
+      numPoints: 4,
+      numPasses: 2,
+      captureMode: "video",
+    } satisfies CorridorParams);
+
+    expect(result.waypoints[0].actions[0]?.actionType).toBe("startRecord");
+    expect(
+      result.waypoints[result.waypoints.length - 1].actions[0]?.actionType,
+    ).toBe("stopRecord");
+  });
+
+  it("generateCorridor: photo mode puts a takePhoto action on every waypoint", () => {
+    const path: [number, number][] = [
+      CENTER,
+      destinationPoint(CENTER[0], CENTER[1], 100, 90),
+    ];
+    const result = generateCorridor({
+      ...DEFAULT_CORRIDOR_PARAMS,
+      path,
+      numPoints: 4,
+      numPasses: 3,
+      captureMode: "photo",
+    } satisfies CorridorParams);
+
+    expect(
+      result.waypoints.every(
+        (wp) =>
+          wp.actions.length === 1 && wp.actions[0].actionType === "takePhoto",
+      ),
+    ).toBe(true);
   });
 
   it("generateFacade: legacy addPhotos:true with no captureMode still behaves as photo mode (regression)", () => {

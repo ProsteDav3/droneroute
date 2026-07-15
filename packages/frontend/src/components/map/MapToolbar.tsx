@@ -13,6 +13,7 @@ import {
   Warehouse,
   Square,
   Spline,
+  Cable,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,14 @@ const TEMPLATE_OPTIONS: {
     icon: Sun,
     description: "Obkreslete pole panelů a směr řad, oříznuté skenování",
     key: "S",
+  },
+  {
+    type: "corridor",
+    label: "Liniová stavba",
+    shortLabel: "Liniová",
+    icon: Cable,
+    description: "Most, potrubí, vedení — souběžné průlety podél trasy",
+    key: "L",
   },
 ];
 
@@ -223,6 +232,8 @@ export function MapToolbar() {
               <PenLine className="h-4 w-4" />
             ) : templateMode === "solar" ? (
               <Sun className="h-4 w-4" />
+            ) : templateMode === "corridor" ? (
+              <Cable className="h-4 w-4" />
             ) : (
               <Grid3X3 className="h-4 w-4" />
             )}

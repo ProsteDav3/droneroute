@@ -11,6 +11,7 @@ const TYPE_LABELS: Record<string, string> = {
   facade: "Sken fasády",
   pencil: "Volná křivka",
   solar: "Solární panelový průzkum",
+  corridor: "Liniová stavba",
 };
 
 export function TemplatePresetList() {

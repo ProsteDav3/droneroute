@@ -72,7 +72,13 @@ function haversine(
 
 // ── Template Types ───────────────────────────────────────
 
-export type TemplateType = "orbit" | "grid" | "facade" | "pencil" | "solar";
+export type TemplateType =
+  | "orbit"
+  | "grid"
+  | "facade"
+  | "pencil"
+  | "solar"
+  | "corridor";
 
 /**
  * "photo" takes a photo at every waypoint (the original behavior). "video"
@@ -172,6 +178,21 @@ export interface PencilParams {
   captureMode?: CaptureMode;
 }
 
+export interface CorridorParams {
+  /** Drawn centerline of the structure — a bridge span, pipeline, power line row, road, or railway — [lat, lng][]. */
+  path: [number, number][];
+  numPoints: number; // target waypoint count per pass
+  altitude: number;
+  /** Lateral spacing (m) between adjacent parallel passes offset from the centerline. */
+  offsetM: number;
+  /** How many parallel passes to fly. 1 = centerline only; odd counts include an exact centerline pass, even counts straddle it symmetrically. */
+  numPasses: number;
+  speed: number;
+  gimbalPitchAngle: number;
+  reverse: boolean;
+  captureMode?: CaptureMode;
+}
+
 export interface SolarParams {
   /** Polygon boundary traced around the panel array, [lat, lng][], 3+ points. */
   vertices: [number, number][];
@@ -191,7 +212,8 @@ export type TemplateParams =
   | GridParams
   | FacadeParams
   | PencilParams
-  | SolarParams;
+  | SolarParams
+  | CorridorParams;
 
 export interface TemplateResult {
   waypoints: Omit<Waypoint, "index" | "name">[];
@@ -238,6 +260,17 @@ export const DEFAULT_PENCIL_PARAMS: Omit<PencilParams, "path"> = {
   altitude: 30,
   speed: 7,
   gimbalPitchAngle: -45,
+  reverse: false,
+  captureMode: "photo",
+};
+
+export const DEFAULT_CORRIDOR_PARAMS: Omit<CorridorParams, "path"> = {
+  numPoints: 20,
+  altitude: 40,
+  offsetM: 10,
+  numPasses: 2,
+  speed: 5,
+  gimbalPitchAngle: -30,
   reverse: false,
   captureMode: "photo",
 };
@@ -1037,6 +1070,133 @@ export function generatePencil(params: PencilParams): TemplateResult {
           : [],
     }),
   );
+
+  if (reverse) {
+    waypoints.reverse();
+  }
+
+  if (captureMode === "video") {
+    applyVideoCaptureActions(waypoints);
+  }
+
+  return { waypoints, pois: [] };
+}
+
+// ── Corridor (bridges, pipelines, power lines, linear structures) ─
+
+/** Circular mean of two bearings (degrees, 0=N) — used to get a smoothed local tangent direction at an interior path vertex, so an offset pass doesn't kink at every drawn point. */
+function averageBearing(b1: number, b2: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const toDeg = (r: number) => (r * 180) / Math.PI;
+  const x = Math.cos(toRad(b1)) + Math.cos(toRad(b2));
+  const y = Math.sin(toRad(b1)) + Math.sin(toRad(b2));
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+/** Local tangent bearing at each point of a path: the single segment's bearing at the endpoints, the circular mean of the incoming/outgoing segment bearings at interior points. */
+function pathTangents(path: [number, number][]): number[] {
+  const n = path.length;
+  if (n < 2) return new Array(n).fill(0);
+  const tangents: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (i === 0) {
+      tangents.push(bearing(path[0][0], path[0][1], path[1][0], path[1][1]));
+    } else if (i === n - 1) {
+      tangents.push(
+        bearing(path[i - 1][0], path[i - 1][1], path[i][0], path[i][1]),
+      );
+    } else {
+      const incoming = bearing(
+        path[i - 1][0],
+        path[i - 1][1],
+        path[i][0],
+        path[i][1],
+      );
+      const outgoing = bearing(
+        path[i][0],
+        path[i][1],
+        path[i + 1][0],
+        path[i + 1][1],
+      );
+      tangents.push(averageBearing(incoming, outgoing));
+    }
+  }
+  return tangents;
+}
+
+/**
+ * Generates parallel passes offset from a drawn centerline — for
+ * inspecting a bridge, pipeline, power line row, road, or railway from
+ * multiple lateral positions (e.g. both sides of a bridge deck) instead of
+ * just flying directly over it once. Passes alternate direction
+ * (lawn-mower style) so the aircraft doesn't need a long non-flying
+ * transit back to the start between passes.
+ */
+export function generateCorridor(params: CorridorParams): TemplateResult {
+  const {
+    path,
+    numPoints,
+    altitude,
+    offsetM,
+    numPasses,
+    speed,
+    gimbalPitchAngle,
+    reverse,
+    captureMode,
+  } = params;
+
+  if (path.length < 2 || numPoints < 2) return { waypoints: [], pois: [] };
+
+  const resampled = resamplePath(path, numPoints);
+  const tangents = pathTangents(resampled);
+  const safeNumPasses = Math.max(1, Math.round(numPasses));
+
+  const takePhotoAction: WaypointAction = {
+    actionId: 0,
+    actionType: "takePhoto",
+    params: { payloadPositionIndex: 0 },
+  };
+
+  const waypoints: TemplateResult["waypoints"] = [];
+
+  for (let pass = 0; pass < safeNumPasses; pass++) {
+    // Centered on the drawn centerline: odd pass counts include an exact
+    // centerline pass (offset 0), even counts straddle it symmetrically.
+    const lateralOffsetM = (pass - (safeNumPasses - 1) / 2) * offsetM;
+    const passReversed = pass % 2 === 1;
+    const indices = passReversed
+      ? [...resampled.keys()].reverse()
+      : [...resampled.keys()];
+
+    for (const i of indices) {
+      const [lat, lng] = resampled[i];
+      // destinationPoint tolerates a negative distance (equivalent to the
+      // reverse bearing) and a zero distance (returns the input point
+      // unchanged), so no special-casing is needed for the centerline
+      // pass or for offsetting to either side.
+      const [offLat, offLng] = destinationPoint(
+        lat,
+        lng,
+        lateralOffsetM,
+        tangents[i] + 90,
+      );
+
+      waypoints.push({
+        ...DEFAULT_WAYPOINT,
+        latitude: offLat,
+        longitude: offLng,
+        height: altitude,
+        speed,
+        useGlobalSpeed: false,
+        useGlobalHeadingParam: false,
+        headingMode: "followWayline" as const,
+        gimbalPitchAngle,
+        turnMode: "toPointAndPassWithContinuityCurvature" as const,
+        useGlobalTurnParam: false,
+        actions: captureMode === "photo" ? [{ ...takePhotoAction }] : [],
+      });
+    }
+  }
 
   if (reverse) {
     waypoints.reverse();

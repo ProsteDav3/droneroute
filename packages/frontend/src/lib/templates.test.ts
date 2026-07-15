@@ -979,7 +979,8 @@ describe("capture mode (photo/video)", () => {
     expect(result.waypoints).toHaveLength(3 * 2 * 10);
   });
 
-  it("generateTurbineInspection: a vertical blade (angle 0) climbs from hub height to hub height + blade length, at a constant lateral position", () => {
+  it("generateTurbineInspection: a vertical blade (angle 0) climbs from hub height to hub height + blade length, at a constant lateral position exactly standoffM from the hub", () => {
+    const standoffM = 12;
     const result = generateTurbineInspection({
       ...DEFAULT_TURBINE_PARAMS,
       hubCenter: CENTER,
@@ -990,6 +991,7 @@ describe("capture mode (photo/video)", () => {
       numPointsPerBlade: 5,
       rotorYawDeg: 0,
       blade1AngleDeg: 0,
+      standoffM,
     } satisfies TurbineParams);
 
     expect(result.waypoints[0].height).toBeCloseTo(90, 5);
@@ -999,6 +1001,16 @@ describe("capture mode (photo/video)", () => {
     for (const wp of result.waypoints) {
       expect(wp.latitude).toBeCloseTo(lat0, 6);
       expect(wp.longitude).toBeCloseTo(lng0, 6);
+      // The blade has zero chordwise offset at this angle, so the only
+      // horizontal displacement from the hub is the standoff itself — a
+      // regression that dropped or zeroed that offset must fail this.
+      const distFromHub = haversineDistance(
+        CENTER[0],
+        CENTER[1],
+        wp.latitude,
+        wp.longitude,
+      );
+      expect(distFromHub).toBeCloseTo(standoffM, 0);
     }
   });
 

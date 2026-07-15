@@ -140,7 +140,7 @@ function SharedMissionMap({
       return {
         type: "Feature" as const,
         properties: {
-          color: warningSegments.has(wp.index) ? "#ef4444" : "#3b82f6",
+          color: warningSegments.has(wp.index) ? "#ef4444" : "#00c2ff",
         },
         geometry: {
           type: "LineString" as const,
@@ -281,8 +281,8 @@ function SharedMissionMap({
                     ? "#22c55e"
                     : i === waypoints.length - 1
                       ? "#ef4444"
-                      : "#3b82f6",
-                border: "2px solid #3b82f6",
+                      : "#00c2ff",
+                border: "2px solid #00c2ff",
               }}
             />
           </Marker>
@@ -407,7 +407,7 @@ export function SharedMissionPage({
     try {
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return dateStr;
-      return d.toLocaleDateString(undefined, {
+      return d.toLocaleDateString("cs-CZ", {
         year: "numeric",
         month: "short",
         day: "numeric",

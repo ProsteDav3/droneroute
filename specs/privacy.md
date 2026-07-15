@@ -1,6 +1,6 @@
 # Privacy & data
 
-Understand what DroneRoute stores about you and where it lives.
+Understand what SkyRoute stores about you and where it lives.
 
 ## What you can do
 
@@ -9,15 +9,16 @@ Understand what DroneRoute stores about you and where it lives.
 
 ## How it works
 
-1. Open the about dialog (DroneRoute logo / about).
+1. Open the about dialog (SkyRoute logo / about).
 2. Click "Privacy & data — what we store and where".
 3. The privacy policy opens, describing the data collected, where it's stored,
    and which third-party services are involved.
 
 ## Good to know
 
-- DroneRoute is self-hosted first: in the default setup, your account and mission
-  data never leave the server you run and is never sent to the DroneRoute authors.
+- SkyRoute is self-hosted first: in the default setup, your account and mission
+  data never leave the server you run and is never sent to the underlying
+  open-source project's authors.
 - Passwords are stored only as bcrypt hashes, never in plain text.
 - The app uses no analytics or tracking. Map tiles and location search go to
   Mapbox, and airspace lookups go to national providers, only as needed to draw

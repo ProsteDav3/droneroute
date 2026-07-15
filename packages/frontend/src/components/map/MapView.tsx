@@ -279,7 +279,7 @@ function FlightPath({ is3D }: { is3D: boolean }) {
       return {
         type: "Feature" as const,
         properties: {
-          color: warningSegments.has(wp.index) ? "#ef4444" : "#3b82f6",
+          color: warningSegments.has(wp.index) ? "#ef4444" : "#00c2ff",
           zStart: wp.height,
           zEnd: next.height,
         },

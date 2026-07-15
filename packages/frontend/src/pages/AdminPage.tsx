@@ -147,7 +147,7 @@ export function AdminPage() {
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "Nikdy";
     const d = new Date(dateStr + "Z");
-    return d.toLocaleDateString(undefined, {
+    return d.toLocaleDateString("cs-CZ", {
       year: "numeric",
       month: "short",
       day: "numeric",

@@ -305,7 +305,7 @@ export function ElevationGraph() {
                 y1={seg.y1}
                 x2={seg.x2}
                 y2={seg.y2}
-                stroke="#60a5fa"
+                stroke="#33cfff"
                 strokeWidth={2}
                 strokeLinecap="round"
                 strokeDasharray="4,4"
@@ -340,17 +340,17 @@ export function ElevationGraph() {
                     r={r}
                     fill={
                       isDragging
-                        ? "#2563eb"
+                        ? "#0099cc"
                         : isSelected
-                          ? "#3b82f6"
-                          : "#1e3a5f"
+                          ? "#00c2ff"
+                          : "#1b3a6b"
                     }
                     stroke={
                       isDragging
-                        ? "#93c5fd"
+                        ? "#99e9ff"
                         : isSelected
-                          ? "#60a5fa"
-                          : "#3b82f6"
+                          ? "#33cfff"
+                          : "#00c2ff"
                     }
                     strokeWidth={isDragging ? 2 : 1.5}
                     style={{ cursor: isDragging ? "grabbing" : "grab" }}
@@ -363,7 +363,7 @@ export function ElevationGraph() {
                     y={cy}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    fill={isDragging || isSelected ? "#fff" : "#93c5fd"}
+                    fill={isDragging || isSelected ? "#fff" : "#99e9ff"}
                     fontSize={r > 11 ? 10 : 9}
                     fontWeight={600}
                     style={{
@@ -381,9 +381,9 @@ export function ElevationGraph() {
                     textAnchor="middle"
                     fill={
                       isDragging
-                        ? "#93c5fd"
+                        ? "#99e9ff"
                         : isSelected
-                          ? "#60a5fa"
+                          ? "#33cfff"
                           : "#94a3b8"
                     }
                     fontSize={9}

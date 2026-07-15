@@ -206,10 +206,12 @@ export const DRONE_MODELS: DroneModel[] = [
   {
     // droneEnumValue is NOT part of any DJI-published WPML spec as of this
     // writing (Matrice 4 Enterprise Series postdates the last public
-    // revision). This value is an unverified placeholder — treat every
-    // generated KMZ for this drone as untested until confirmed on real
-    // hardware (see GUIDE.md flight-test guidance before production use).
-    label: "DJI Matrice 4T (experimental)",
+    // revision) — it remains an unverified placeholder even though the
+    // drone's physical specs below (battery, speed, camera FOV) are
+    // confirmed against DJI's official spec sheet. Treat every generated
+    // KMZ for this drone as untested until confirmed on real hardware (see
+    // GUIDE.md flight-test guidance before production use).
+    label: "DJI Matrice 4T",
     droneEnumValue: 103,
     droneSubEnumValue: 0,
     payloads: [{ label: "Matrice 4T Camera", payloadEnumValue: 103 }],
@@ -415,9 +417,13 @@ export interface MapViewState {
 // ── Default Config ───────────────────────────────────────
 
 export const DEFAULT_MISSION_CONFIG: MissionConfig = {
-  droneEnumValue: 77,
+  // DJI Matrice 4T is the default drone. maxBatteryMinutes is intentionally
+  // well under its rated 46-49 min max flight time (DJI spec sheet,
+  // low-noise/standard propellers) to leave a safety margin for wind, cold,
+  // and RTH reserve rather than warning right at the theoretical limit.
+  droneEnumValue: 103,
   droneSubEnumValue: 0,
-  payloadEnumValue: 66,
+  payloadEnumValue: 103,
   flyToWaylineMode: "safely",
   finishAction: "goHome",
   exitOnRCLost: "executeLostAction",
@@ -425,7 +431,7 @@ export const DEFAULT_MISSION_CONFIG: MissionConfig = {
   takeOffSecurityHeight: 20,
   globalTransitionalSpeed: 10,
   autoFlightSpeed: 7,
-  maxBatteryMinutes: 25,
+  maxBatteryMinutes: 35,
   heightMode: "aboveGroundLevel",
   globalHeadingMode: "followWayline",
   globalTurnMode: "toPointAndStopWithDiscontinuityCurvature",

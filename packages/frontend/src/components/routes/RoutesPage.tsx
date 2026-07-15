@@ -270,7 +270,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
     try {
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return dateStr;
-      return d.toLocaleDateString(undefined, {
+      return d.toLocaleDateString("cs-CZ", {
         year: "numeric",
         month: "short",
         day: "numeric",

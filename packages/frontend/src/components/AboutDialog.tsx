@@ -77,7 +77,7 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
               skydata.cz — web firmy SkyData
             </a>
             <a
-              href="https://github.com/fcsonline/droneroute/blob/main/GUIDE.md"
+              href="https://github.com/ProsteDav3/droneroute/blob/main/GUIDE.md"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -86,7 +86,7 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
               Uživatelská příručka — funkce, zkratky a tipy
             </a>
             <a
-              href="https://github.com/fcsonline/droneroute/blob/main/PRIVACY.md"
+              href="https://github.com/ProsteDav3/droneroute/blob/main/PRIVACY.md"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors"

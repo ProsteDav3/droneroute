@@ -31,7 +31,11 @@ the default drone with real DJI-published specs.
   public open-source project: dropped the "star on GitHub", "vote on
   feature requests", and "buy me a coffee" donation links (not meaningful
   for an internal SkyData tool), kept the user guide and privacy-policy
-  references, and added a link to skydata.cz.
+  references — repointed from the upstream `fcsonline/droneroute` repo to
+  this fork's own `ProsteDav3/droneroute` copies of `GUIDE.md`/`PRIVACY.md`,
+  since this fork's privacy behavior (self-hosted, no data sent to the
+  upstream project) differs from upstream's — and added a link to
+  skydata.cz.
 - Map-canvas colors (waypoint markers, flight-path lines, elevation-graph
   node states) switched from the old brand blue to the new cyan, so the
   most visible surface of the app matches the rebrand. Building footprints
@@ -53,10 +57,10 @@ the default drone with real DJI-published specs.
 ## Known limitations
 
 - Internal identifiers (localStorage keys like `droneroute_token`, CSS
-  class names, the npm package/repo name, GitHub URLs for the guide and
-  privacy policy) intentionally keep the `droneroute` name — renaming
-  those would be a much larger, purely-cosmetic change with no user-facing
-  benefit and a real risk of orphaning existing sessions/data.
+  class names, the npm package/repo name) intentionally keep the
+  `droneroute` name — renaming those would be a much larger, purely-cosmetic
+  change with no user-facing benefit and a real risk of orphaning existing
+  sessions/data.
 - The sidebar's per-section accent colors are mostly unchanged (amber for
   POIs, red for obstacles, blue for buildings, indigo for presets, etc.) —
   they're a functional categorization scheme, not the primary brand color.

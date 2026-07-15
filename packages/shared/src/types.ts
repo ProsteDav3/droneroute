@@ -265,6 +265,17 @@ export interface TemplatePreset {
   createdAt: string;
 }
 
+/**
+ * Params of one applied template, keyed by the id tagged onto its
+ * waypoints/POIs (see `Waypoint.templateGroupId`) — lets a template be
+ * reopened and edited as a group after Apply instead of only being
+ * addable once. Same opaque-JSON-blob treatment as `TemplatePreset.params`.
+ */
+export interface TemplateGroupData {
+  type: string;
+  params: Record<string, unknown>;
+}
+
 // ── Waypoint ─────────────────────────────────────────────
 
 export interface Waypoint {
@@ -322,6 +333,7 @@ export interface Mission {
   pois: PointOfInterest[];
   obstacles: Obstacle[];
   buildings: Building[];
+  templateGroups: Record<string, TemplateGroupData>;
 }
 
 // ── Shared Mission ──────────────────────────────────────

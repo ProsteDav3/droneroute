@@ -15,6 +15,15 @@ const MAX_OBSTACLES = 1000;
 const MAX_VERTICES_PER_OBSTACLE = 5000;
 const MAX_BUILDINGS = 1000;
 const MAX_VERTICES_PER_BUILDING = 5000;
+const MAX_TEMPLATE_GROUPS = 500;
+const MAX_TEMPLATE_GROUP_PARAMS_JSON_LEN = 20000;
+const VALID_TEMPLATE_GROUP_TYPES = [
+  "orbit",
+  "grid",
+  "facade",
+  "pencil",
+  "solar",
+];
 
 function isFiniteNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v);
@@ -124,6 +133,36 @@ function validateBuildings(value: unknown): string | null {
   return null;
 }
 
+/**
+ * `templateGroups` is a map keyed by group id (not an array like obstacles/
+ * buildings) — `{type, params}` per applied template, so an already-applied
+ * template can be reopened and edited as a group. `params` is opaque to the
+ * backend (its shape depends on `type`); validated only for outer shape and
+ * size, the same rigor already applied to `MissionConfig`/`TemplatePreset`.
+ */
+function validateTemplateGroups(value: unknown): string | null {
+  if (value === undefined) return null;
+  if (!isPlainObject(value)) return "templateGroups must be an object";
+  const groups = Object.values(value);
+  if (groups.length > MAX_TEMPLATE_GROUPS) return "too many template groups";
+  for (const group of groups) {
+    if (!isPlainObject(group)) return "invalid template group";
+    if (
+      typeof group.type !== "string" ||
+      !VALID_TEMPLATE_GROUP_TYPES.includes(group.type)
+    ) {
+      return "invalid template group type";
+    }
+    if (!isPlainObject(group.params)) return "invalid template group params";
+    if (
+      JSON.stringify(group.params).length > MAX_TEMPLATE_GROUP_PARAMS_JSON_LEN
+    ) {
+      return "template group params too large";
+    }
+  }
+  return null;
+}
+
 export interface MissionPayload {
   name?: unknown;
   config?: unknown;
@@ -131,6 +170,7 @@ export interface MissionPayload {
   pois?: unknown;
   obstacles?: unknown;
   buildings?: unknown;
+  templateGroups?: unknown;
 }
 
 /** Validate a full mission-create payload. Returns an error message or null. */
@@ -141,7 +181,8 @@ export function validateMissionCreate(body: MissionPayload): string | null {
     validateWaypoints(body.waypoints) ??
     validatePois(body.pois) ??
     validateObstacles(body.obstacles) ??
-    validateBuildings(body.buildings)
+    validateBuildings(body.buildings) ??
+    validateTemplateGroups(body.templateGroups)
   );
 }
 
@@ -163,7 +204,8 @@ export function validateMissionUpdate(body: MissionPayload): string | null {
   return (
     validatePois(body.pois) ??
     validateObstacles(body.obstacles) ??
-    validateBuildings(body.buildings)
+    validateBuildings(body.buildings) ??
+    validateTemplateGroups(body.templateGroups)
   );
 }
 
@@ -176,6 +218,7 @@ export function validateMissionGeometry(body: MissionPayload): string | null {
     validateWaypoints(body.waypoints) ??
     validatePois(body.pois) ??
     validateObstacles(body.obstacles) ??
-    validateBuildings(body.buildings)
+    validateBuildings(body.buildings) ??
+    validateTemplateGroups(body.templateGroups)
   );
 }

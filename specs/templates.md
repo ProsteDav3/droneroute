@@ -35,7 +35,7 @@ Realized the orbit's radius was too small only after clicking Apply? You don't h
 3. Click it to reopen that template's settings panel with its original values — adjust radius, spacing, altitude, or any other field, and the preview updates live, just like when you first placed it.
 4. Click Apply again to replace the old waypoints with the updated ones (or Cancel to leave them as they were).
 
-This works for Orbit, Grid, Facade, Pencil, and Solar. It does **not** survive saving and reloading a mission yet — after a save/reload, template-generated waypoints behave like any manually placed ones (still fully editable individually, just not as a re-adjustable group).
+This works for Orbit, Grid, Facade, Pencil, and Solar, and survives saving and reloading a mission — reopen a saved mission later and "Edit template" still works on its templates exactly as it did before you saved.
 
 ## Reusable template presets
 

@@ -40,6 +40,7 @@ interface SavedMission {
   pois: string;
   obstacles: string;
   buildings: string;
+  template_groups: string;
   share_token: string | null;
 }
 
@@ -146,6 +147,9 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
       const pois = mission.pois ? JSON.parse(mission.pois) : [];
       const obstacles = mission.obstacles ? JSON.parse(mission.obstacles) : [];
       const buildings = mission.buildings ? JSON.parse(mission.buildings) : [];
+      const templateGroups = mission.template_groups
+        ? JSON.parse(mission.template_groups)
+        : {};
       loadMission({
         id: mission.id,
         name: mission.name,
@@ -154,6 +158,7 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
         pois,
         obstacles,
         buildings,
+        templateGroups,
       });
       setCurrentPage("editor");
     } catch (e) {

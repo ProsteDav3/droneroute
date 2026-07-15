@@ -77,3 +77,62 @@ describe("POST /api/missions — server-side validation", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("templateGroups persistence", () => {
+  it("round-trips templateGroups through create, get, and update", async () => {
+    const templateGroups = {
+      g1: { type: "orbit", params: { radiusM: 80, center: [50.06, 14.43] } },
+    };
+
+    const create = await request(app)
+      .post("/api/missions")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...validBody, templateGroups });
+    expect(create.status).toBe(201);
+
+    const get = await request(app)
+      .get(`/api/missions/${create.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(get.status).toBe(200);
+    expect(get.body.templateGroups).toEqual(templateGroups);
+
+    const updatedGroups = {
+      g1: { type: "orbit", params: { radiusM: 120, center: [50.06, 14.43] } },
+    };
+    const update = await request(app)
+      .put(`/api/missions/${create.body.id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ templateGroups: updatedGroups });
+    expect(update.status).toBe(200);
+
+    const getAfterUpdate = await request(app)
+      .get(`/api/missions/${create.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(getAfterUpdate.body.templateGroups).toEqual(updatedGroups);
+  });
+
+  it("defaults to an empty object when templateGroups is omitted", async () => {
+    const create = await request(app)
+      .post("/api/missions")
+      .set("Authorization", `Bearer ${token}`)
+      .send(validBody);
+    expect(create.status).toBe(201);
+
+    const get = await request(app)
+      .get(`/api/missions/${create.body.id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(get.body.templateGroups).toEqual({});
+  });
+
+  it("rejects an invalid templateGroups shape with 400", async () => {
+    const res = await request(app)
+      .post("/api/missions")
+      .set("Authorization", `Bearer ${token}`)
+      .send({
+        ...validBody,
+        templateGroups: { g1: { type: "not-a-real-type", params: {} } },
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid template group type");
+  });
+});

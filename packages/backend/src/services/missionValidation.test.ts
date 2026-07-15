@@ -146,6 +146,47 @@ describe("validateMissionCreate", () => {
       }),
     ).toBe("invalid building height");
   });
+
+  it("validates templateGroups", () => {
+    expect(
+      validateMissionCreate({
+        ...validCreate,
+        templateGroups: "not an object",
+      }),
+    ).toBe("templateGroups must be an object");
+
+    expect(
+      validateMissionCreate({
+        ...validCreate,
+        templateGroups: { g1: { type: "not-a-real-type", params: {} } },
+      }),
+    ).toBe("invalid template group type");
+
+    expect(
+      validateMissionCreate({
+        ...validCreate,
+        templateGroups: { g1: { type: "orbit", params: "not an object" } },
+      }),
+    ).toBe("invalid template group params");
+
+    expect(
+      validateMissionCreate({
+        ...validCreate,
+        templateGroups: {
+          g1: { type: "orbit", params: { blob: "x".repeat(30000) } },
+        },
+      }),
+    ).toBe("template group params too large");
+
+    expect(
+      validateMissionCreate({
+        ...validCreate,
+        templateGroups: {
+          g1: { type: "orbit", params: { radiusM: 80 } },
+        },
+      }),
+    ).toBeNull();
+  });
 });
 
 describe("validateMissionUpdate", () => {

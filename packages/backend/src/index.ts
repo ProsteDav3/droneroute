@@ -90,6 +90,20 @@ app.get("/api/config", (_req, res) => {
   });
 });
 
+// Embed widget page (public, read-only mission preview meant to be placed
+// in an <iframe> on a third-party site). Helmet's frameguard defaults to
+// `SAMEORIGIN`, which would block exactly that use case, so this route
+// explicitly removes the header before falling through to the same SPA
+// `index.html` the client-side router uses to render EmbedMissionPage.
+// NOTE for reviewers: if a future security-hardening pass adds a stricter
+// global frame-ancestors/X-Frame-Options policy, this route needs to stay
+// as (or become) the one deliberate exception — everything else should
+// keep the strict default.
+app.get("/embed/:token", (_req, res) => {
+  res.removeHeader("X-Frame-Options");
+  res.sendFile(path.join(frontendDist, "index.html"));
+});
+
 // SPA fallback (Express 5 syntax)
 app.get("/{*splat}", (_req, res) => {
   res.sendFile(path.join(frontendDist, "index.html"));

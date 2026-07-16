@@ -179,6 +179,7 @@ function validateTemplateGroups(value: unknown): string | null {
 export interface MissionPayload {
   name?: unknown;
   client?: unknown;
+  folder?: unknown;
   config?: unknown;
   waypoints?: unknown;
   pois?: unknown;
@@ -191,6 +192,7 @@ export interface MissionPayload {
 export function validateMissionCreate(body: MissionPayload): string | null {
   if (!isValidName(body.name)) return "neplatný název mise";
   if (!isOptionalName(body.client)) return "neplatný klient/zakázka";
+  if (!isOptionalName(body.folder)) return "neplatná složka";
   if (!isPlainObject(body.config)) return "neplatná konfigurace mise";
   return (
     validateWaypoints(body.waypoints) ??
@@ -212,6 +214,9 @@ export function validateMissionUpdate(body: MissionPayload): string | null {
   if (body.client !== undefined && !isOptionalName(body.client)) {
     return "neplatný klient/zakázka";
   }
+  if (body.folder !== undefined && !isOptionalName(body.folder)) {
+    return "neplatná složka";
+  }
   if (body.config !== undefined && !isPlainObject(body.config)) {
     return "neplatná konfigurace mise";
   }
@@ -225,6 +230,38 @@ export function validateMissionUpdate(body: MissionPayload): string | null {
     validateBuildings(body.buildings) ??
     validateTemplateGroups(body.templateGroups)
   );
+}
+
+// ── Mission comments ─────────────────────────────────────
+
+const MAX_COMMENT_AUTHOR_NAME_LEN = 80;
+const MAX_COMMENT_TEXT_LEN = 2000;
+
+/**
+ * Validate a visitor comment payload on a publicly shared mission (no
+ * account required to post — anonymous input, so this is deliberately
+ * strict: both fields are required non-empty strings within a bounded
+ * length, on top of the endpoint's rate limiting).
+ */
+export function validateMissionComment(body: {
+  authorName?: unknown;
+  text?: unknown;
+}): string | null {
+  if (
+    typeof body.authorName !== "string" ||
+    body.authorName.trim().length < 1 ||
+    body.authorName.length > MAX_COMMENT_AUTHOR_NAME_LEN
+  ) {
+    return "neplatné jméno autora";
+  }
+  if (
+    typeof body.text !== "string" ||
+    body.text.trim().length < 1 ||
+    body.text.length > MAX_COMMENT_TEXT_LEN
+  ) {
+    return "neplatný text komentáře";
+  }
+  return null;
 }
 
 /**

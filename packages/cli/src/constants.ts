@@ -59,3 +59,9 @@ export const DJI_PILOT2_MODEL_HINTS = ["RC PLUS", "RC-PLUS", "RCPLUS"];
 
 /** File extension used by DJI Fly / DJI Pilot 2 for waypoint missions. */
 export const KMZ_EXTENSION = ".KMZ";
+
+/**
+ * Default SkyRoute server used for `--cloud` uploads when neither
+ * `--server`, `DRONEROUTE_SERVER`, nor the config file specify one.
+ */
+export const DEFAULT_SERVER_URL = "https://skydata-droneroute-kcp.fly.dev";

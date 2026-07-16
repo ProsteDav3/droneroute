@@ -84,7 +84,7 @@ Bring in existing missions or export your planned flight as a file ready for DJI
 
 ## Good to know
 
-- The exported KMZ follows DJI's WPML standard, so it works with DJI's own flight apps too.
+- The exported KMZ follows DJI's WPML 1.0.6 standard in the exact structure DJI Pilot 2 itself generates (files nested under `wpmz/`), so it works with DJI's own flight apps too — including the strict validation DJI Pilot 2 applies to routes downloaded from a cloud platform, which rejects older/looser WPML files that manual import would still accept.
 - If the original mission used video capture mode (see [Templates](templates.md)),
   every exported/saved segment starts recording at its own first waypoint and
   stops at its own second waypoint — not just the first and last segment of

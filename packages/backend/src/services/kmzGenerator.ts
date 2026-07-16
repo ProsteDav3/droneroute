@@ -16,16 +16,15 @@ export function generateKmzBuffer(mission: Mission): Promise<Buffer> {
 
     archive.pipe(passthrough);
 
-    // Add template.kml
+    // Native DJI Pilot 2 layout: both files nested under wpmz/ (and no res/
+    // directory — native exports don't include one). Pilot 2's cloud
+    // download path validates this layout strictly; its manual import
+    // accepts it too, so this is the single most compatible shape.
     const templateKml = buildTemplateKml(mission);
-    archive.append(templateKml, { name: "template.kml" });
+    archive.append(templateKml, { name: "wpmz/template.kml" });
 
-    // Add waylines.wpml
     const waylinesWpml = buildWaylinesWpml(mission);
-    archive.append(waylinesWpml, { name: "waylines.wpml" });
-
-    // Add empty res/ directory
-    archive.append("", { name: "res/" });
+    archive.append(waylinesWpml, { name: "wpmz/waylines.wpml" });
 
     archive.finalize();
   });

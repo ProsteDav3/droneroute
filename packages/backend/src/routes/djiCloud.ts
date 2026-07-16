@@ -35,6 +35,47 @@ function buildMission(body: {
   };
 }
 
+/**
+ * @openapi
+ * /dji-cloud/upload:
+ *   post:
+ *     summary: Upload a mission directly into the configured DJI Cloud workspace
+ *     description: >
+ *       Requires sign-in — the server holds the cloud platform's service
+ *       credentials, so an anonymous endpoint would let anyone fill the
+ *       workspace with junk. Rate-limited (strictLimiter).
+ *     tags: [DJI Cloud]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [config, waypoints]
+ *             properties:
+ *               name: { type: string }
+ *               config: { type: object }
+ *               waypoints:
+ *                 type: array
+ *                 minItems: 2
+ *                 items: { type: object }
+ *               pois: { type: array, items: { type: object } }
+ *     responses:
+ *       200:
+ *         description: Uploaded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 waylineName: { type: string }
+ *       400:
+ *         description: Missing config/waypoints or invalid mission geometry
+ *       502:
+ *         description: Upload to the DJI Cloud platform failed
+ *       503:
+ *         description: DJI Cloud is not configured on this server
+ */
 // Upload the posted mission straight into the configured DJI Cloud
 // workspace's wayline library (so it shows up in Pilot 2's Cloud tab).
 // Requires login: the server holds service credentials for the cloud
@@ -84,6 +125,49 @@ djiCloudRoutes.post(
   },
 );
 
+/**
+ * @openapi
+ * /dji-cloud/upload-segments:
+ *   post:
+ *     summary: Split a mission into one-leg segments and upload each as its own wayline
+ *     description: >
+ *       Same auth/config/validation contract as `/dji-cloud/upload`. On a
+ *       partial failure, the error response includes how many legs already
+ *       uploaded so the client doesn't blindly retry and duplicate them.
+ *     tags: [DJI Cloud]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [config, waypoints]
+ *             properties:
+ *               name: { type: string }
+ *               config: { type: object }
+ *               waypoints:
+ *                 type: array
+ *                 minItems: 2
+ *                 items: { type: object }
+ *               pois: { type: array, items: { type: object } }
+ *     responses:
+ *       200:
+ *         description: All segments uploaded
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 count: { type: integer }
+ *       400:
+ *         description: Missing config/waypoints or invalid mission geometry
+ *       502:
+ *         description: >
+ *           Upload failed, possibly partially — response may include
+ *           `uploaded` and `total` counts.
+ *       503:
+ *         description: DJI Cloud is not configured on this server
+ */
 // Split the mission into consecutive one-leg segments (WP1→WP2, ...) and
 // upload every leg into the workspace as its own wayline — the cloud
 // equivalent of the "Export segmentů" download. Same auth/config/validation

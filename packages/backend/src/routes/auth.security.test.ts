@@ -239,6 +239,27 @@ describe("2FA (TOTP)", () => {
     expect(res.body.token).toBeUndefined();
   });
 
+  it("CRITICAL: a 2FA challenge token is rejected by a normal authenticated route, not just accepted-then-ignored", async () => {
+    // Regression test for a real bypass: the challenge token has no
+    // tokenVersion claim, and (before the audience-claim fix) authMiddleware
+    // never checked what the token was *for* — only that it verified with
+    // the shared secret. That let a correct email+password check alone
+    // yield a fully authenticated Bearer token on any route, skipping TOTP
+    // entirely. Proves the fix by hitting a real protected route (not
+    // /2fa/login) with a challenge token and confirming it's rejected.
+    const login = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "twofa@test.dev", password: "secret123" });
+    expect(login.body.requiresTwoFactor).toBe(true);
+    const challengeToken = login.body.challengeToken as string;
+    expect(challengeToken).toBeTruthy();
+
+    const res = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${challengeToken}`);
+    expect(res.status).toBe(401);
+  });
+
   it("rejects 2fa/login with a wrong code", async () => {
     const login = await request(app)
       .post("/api/auth/login")
@@ -247,6 +268,15 @@ describe("2FA (TOTP)", () => {
     const res = await request(app)
       .post("/api/auth/2fa/login")
       .send({ challengeToken: login.body.challengeToken, code: "000000" });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects 2fa/login given a normal session token instead of a challenge token", async () => {
+    // Symmetric case to the CRITICAL test above: the two token kinds must
+    // be rejected by *each other's* endpoint, not just accepted anywhere.
+    const res = await request(app)
+      .post("/api/auth/2fa/login")
+      .send({ challengeToken: token, code: "000000" });
     expect(res.status).toBe(401);
   });
 

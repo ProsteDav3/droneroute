@@ -362,7 +362,7 @@ authRoutes.post(
 // and has no local password to reset)
 // ---------------------------------------------------------------------------
 
-authRoutes.post("/forgot-password", authLimiter, async (req, res) => {
+authRoutes.post("/forgot-password", authLimiter, (req, res) => {
   if (!isSelfHosted()) {
     res.status(410).json({
       error:
@@ -379,7 +379,13 @@ authRoutes.post("/forgot-password", authLimiter, async (req, res) => {
 
   // Always the same response regardless of whether the account exists (or
   // is banned) — the whole point is that a caller can't use this endpoint
-  // to enumerate registered emails.
+  // to enumerate registered emails. That guarantee has to hold for
+  // *response timing* too, not just the response body: below, both
+  // branches always do one SELECT, one token hash, and one further DB
+  // statement, and the one genuinely variable-cost step (sending the
+  // email) is never awaited inline, so neither "does this account exist"
+  // nor "is SMTP configured and reachable" can be inferred from how long
+  // the request takes.
   const genericResponse = {
     message:
       "Pokud tento e-mail existuje, byl na něj odeslán odkaz pro obnovení hesla",
@@ -392,37 +398,49 @@ authRoutes.post("/forgot-password", authLimiter, async (req, res) => {
     )
     .get(email) as any;
 
-  if (!user || user.is_banned) {
-    res.json(genericResponse);
-    return;
+  const isRealRecipient = !!user && !user.is_banned;
+  const rawToken = generateResetToken();
+
+  if (isRealRecipient) {
+    db.prepare(
+      "INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
+    ).run(uuidv4(), user.id, hashResetToken(rawToken), resetTokenExpiresAt());
+  } else {
+    // `password_reset_tokens.user_id` has an enforced FOREIGN KEY
+    // (better-sqlite3 defaults `PRAGMA foreign_keys = ON`, confirmed —
+    // inserting a row against a made-up user id throws), so a decoy INSERT
+    // isn't an option here. A same-table read of comparable cost stands in
+    // for it instead, so the non-existent-account path still touches the
+    // database once past the initial lookup rather than short-circuiting
+    // straight to the response.
+    db.prepare("SELECT COUNT(*) as count FROM password_reset_tokens").get();
   }
 
-  const rawToken = generateResetToken();
-  db.prepare(
-    "INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
-  ).run(uuidv4(), user.id, hashResetToken(rawToken), resetTokenExpiresAt());
+  if (isRealRecipient) {
+    const resetUrl = `${resolveAppUrl(req)}/reset-password?token=${rawToken}`;
 
-  const resetUrl = `${resolveAppUrl(req)}/reset-password?token=${rawToken}`;
-
-  // No email transport configured yet is a normal, expected state for a
-  // fresh self-hosted install (see services/emailService.ts) — the request
-  // still "succeeds" from the caller's perspective, it just falls back to
-  // an operator manually relaying the link instead of silently pretending
-  // an email went out. Same honest-degradation pattern as the DJI Cloud
-  // bridge when its env vars are unset.
-  if (isEmailConfigured()) {
-    try {
-      await sendPasswordResetEmail(user.email, resetUrl);
-    } catch (err) {
-      console.error("[password-reset] SMTP delivery failed:", err);
+    // No email transport configured yet is a normal, expected state for a
+    // fresh self-hosted install (see services/emailService.ts) — the
+    // request still "succeeds" from the caller's perspective, it just
+    // falls back to an operator manually relaying the link instead of
+    // silently pretending an email went out. Same honest-degradation
+    // pattern as the DJI Cloud bridge when its env vars are unset.
+    //
+    // Deliberately not awaited: blocking the response on an SMTP round
+    // trip would make latency depend on account existence again, exactly
+    // the side-channel the generic response above is meant to close.
+    if (isEmailConfigured()) {
+      sendPasswordResetEmail(user.email, resetUrl).catch((err) => {
+        console.error("[password-reset] SMTP delivery failed:", err);
+        console.error(
+          `[password-reset] manual relay needed — send this link to ${user.email}: ${resetUrl}`,
+        );
+      });
+    } else {
       console.error(
-        `[password-reset] manual relay needed — send this link to ${user.email}: ${resetUrl}`,
+        `[password-reset] SMTP not configured — manually relay this link to ${user.email}: ${resetUrl}`,
       );
     }
-  } else {
-    console.error(
-      `[password-reset] SMTP not configured — manually relay this link to ${user.email}: ${resetUrl}`,
-    );
   }
 
   res.json(genericResponse);

@@ -3,16 +3,24 @@
 Enabled a real Content Security Policy instead of running with it disabled.
 Previously CSP was switched off entirely because Mapbox GL's web workers
 and, in cloud mode, Google Sign-In hadn't been reconciled with a strict
-policy — this replaces that with an allowlist scoped to exactly what the
-app needs.
+policy — this replaces that with an allowlist for the hosts the app
+actually talks to, tightened wherever the directive allows it.
 
 ## What changed
 
-- `script-src`, `connect-src`, `img-src`, `style-src`, `font-src`, and
-  `worker-src` now allowlist only: same-origin, Mapbox's tile/style/
-  geocoding/telemetry hosts, blob: workers (Mapbox GL's rendering workers),
-  Google's Identity Services script/iframe (cloud-mode Google sign-in), and
-  Google Fonts.
+- `script-src`, `connect-src`, `font-src`, and `worker-src` are scoped
+  tightly: same-origin, Mapbox's tile/style/geocoding/telemetry hosts,
+  blob: workers (Mapbox GL's rendering workers), Google's Identity
+  Services script/iframe (cloud-mode Google sign-in), and Google Fonts.
+- `style-src` still needs `'unsafe-inline'` (Tailwind and several UI
+  libraries set inline `style` attributes at runtime) alongside Google
+  Fonts' stylesheet host — not fully locked down, but scoped beyond the
+  previous "disabled entirely."
+- `img-src` allows `https:` broadly rather than an exact host list, since
+  Mapbox raster/vector tiles and marker/attribution imagery are served
+  from multiple Mapbox-operated subdomains that aren't practical to
+  enumerate exhaustively; `data:`/`blob:` are also allowed for
+  client-generated map imagery.
 - `object-src 'none'` and `base-uri 'self'` added as standard hardening.
 - Added `Permissions-Policy: camera=(), microphone=(), geolocation=()` —
   the app has no legitimate use for any of the three.

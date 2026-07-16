@@ -26,14 +26,18 @@ const PORT = process.env.PORT || 3001;
 // Trust reverse proxy (e.g. nginx, Docker) so rate limiting uses real client IP
 app.set("trust proxy", 1);
 
-// Security headers. CSP allowlists exactly what the SPA needs at runtime:
+// Security headers. CSP is scoped to the hosts the SPA actually talks to,
+// tightened wherever the directive allows it:
 // - Mapbox GL (tiles/styles/geocoding over `connect-src`, its web workers
-//   loaded from blob: URLs over `worker-src`, and raster/vector tile images
-//   over `img-src`).
+//   loaded from blob: URLs over `worker-src`). `img-src` allows `https:`
+//   broadly rather than an exact host list — Mapbox serves raster/vector
+//   tiles and marker imagery from several of its own subdomains that
+//   aren't practical to enumerate exhaustively.
 // - Google Identity Services (cloud mode's "Sign in with Google" button),
 //   which injects its own <script> from accounts.google.com and renders its
 //   button/One Tap prompt in a same-origin-adjacent iframe.
-// - Google Fonts (index.html's Inter stylesheet + font files).
+// - Google Fonts (index.html's Inter stylesheet + font files). `style-src`
+//   still needs 'unsafe-inline' for Tailwind/UI-library inline styles.
 // COEP stays disabled — it's unrelated to CSP and enabling it has previously
 // broken the Mapbox GL / Google OAuth combination in this app.
 app.use(

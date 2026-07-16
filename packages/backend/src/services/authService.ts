@@ -40,6 +40,17 @@ export function comparePassword(password: string, hash: string): boolean {
   return bcrypt.compareSync(password, hash);
 }
 
+// Both token kinds are signed with the same JWT_SECRET, so the `audience`
+// claim is what actually keeps them from being interchangeable — it's
+// enforced by `jwt.verify`'s own `audience` option (a mismatch throws),
+// not by application code remembering to check a convention-only field.
+// This matters specifically because a 2FA challenge token has no
+// `tokenVersion` claim, which would otherwise coincidentally satisfy
+// authMiddleware's `tokenVersion ?? 0 === token_version` check for any
+// account still at its default token_version.
+const SESSION_TOKEN_AUDIENCE = "session";
+const TWO_FACTOR_CHALLENGE_AUDIENCE = "2fa-challenge";
+
 /**
  * `tokenVersion` is embedded in every issued JWT and compared against the
  * user's current `token_version` column on every authenticated request
@@ -54,6 +65,7 @@ export function generateToken(
 ): string {
   return jwt.sign({ userId, isAdmin, tokenVersion }, JWT_SECRET, {
     expiresIn: TOKEN_EXPIRY,
+    audience: SESSION_TOKEN_AUDIENCE,
   });
 }
 
@@ -61,7 +73,9 @@ export function verifyToken(
   token: string,
 ): { userId: string; isAdmin: boolean; tokenVersion: number } | null {
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as {
+    const payload = jwt.verify(token, JWT_SECRET, {
+      audience: SESSION_TOKEN_AUDIENCE,
+    }) as {
       userId: string;
       isAdmin: boolean;
       tokenVersion?: number;
@@ -103,13 +117,16 @@ export function resetTokenExpiresAt(): string {
 
 /**
  * Issued after a correct email+password check on an account with 2FA
- * enabled, in place of a real session JWT. Carries a distinct `purpose`
- * claim so it can never be replayed as a normal auth token even though it's
- * signed with the same secret.
+ * enabled, in place of a real session JWT. Signed with a distinct
+ * `audience` claim (`2fa-challenge` vs. session tokens' `session`) so
+ * `jwt.verify` itself rejects it outright if presented anywhere except
+ * `verifyTwoFactorChallengeToken` — it is structurally, not just
+ * conventionally, unusable as a session token (see `verifyToken` above).
  */
 export function generateTwoFactorChallengeToken(userId: string): string {
-  return jwt.sign({ userId, purpose: "2fa-challenge" }, JWT_SECRET, {
+  return jwt.sign({ userId }, JWT_SECRET, {
     expiresIn: TWO_FACTOR_CHALLENGE_EXPIRY,
+    audience: TWO_FACTOR_CHALLENGE_AUDIENCE,
   });
 }
 
@@ -117,11 +134,12 @@ export function verifyTwoFactorChallengeToken(
   token: string,
 ): { userId: string } | null {
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as {
+    const payload = jwt.verify(token, JWT_SECRET, {
+      audience: TWO_FACTOR_CHALLENGE_AUDIENCE,
+    }) as {
       userId?: string;
-      purpose?: string;
     };
-    if (payload.purpose !== "2fa-challenge" || !payload.userId) return null;
+    if (!payload.userId) return null;
     return { userId: payload.userId };
   } catch {
     return null;

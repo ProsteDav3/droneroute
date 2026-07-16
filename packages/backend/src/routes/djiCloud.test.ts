@@ -190,3 +190,97 @@ describe("POST /api/dji-cloud/upload", () => {
     expect(JSON.stringify(res.body)).not.toContain("Storage unavailable.");
   });
 });
+
+describe("POST /api/dji-cloud/upload-segments", () => {
+  // A 3-waypoint route splits into 2 consecutive one-leg segments.
+  const threeWpBody = {
+    ...validBody,
+    waypoints: [
+      validBody.waypoints[0],
+      validBody.waypoints[1],
+      {
+        index: 2,
+        name: "WP3",
+        latitude: 41.27,
+        longitude: 0.95,
+        height: 30,
+        speed: 5,
+        gimbalPitchAngle: 0,
+        actions: [],
+      },
+    ],
+  };
+
+  const uploadOk = () =>
+    jsonResponse({ code: 0, message: "success", data: "" });
+
+  it("requires authentication", async () => {
+    const res = await request(app)
+      .post("/api/dji-cloud/upload-segments")
+      .send(threeWpBody);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 503 when the bridge isn't configured", async () => {
+    delete process.env.DJI_CLOUD_URL;
+    const res = await request(app)
+      .post("/api/dji-cloud/upload-segments")
+      .set("Authorization", `Bearer ${token}`)
+      .send(threeWpBody);
+    expect(res.status).toBe(503);
+  });
+
+  it("rejects fewer than 2 waypoints", async () => {
+    const res = await request(app)
+      .post("/api/dji-cloud/upload-segments")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...threeWpBody, waypoints: [threeWpBody.waypoints[0]] });
+    expect(res.status).toBe(400);
+  });
+
+  it("logs in once and uploads every segment, returning the count", async () => {
+    // 1 login + 2 segment uploads (N-1 for a 3-waypoint route).
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(uploadOk())
+      .mockResolvedValueOnce(uploadOk());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/upload-segments")
+      .set("Authorization", `Bearer ${token}`)
+      .send(threeWpBody);
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    // Only one login (call 0); the two uploads reuse the same token.
+    expect(fetchMock.mock.calls[0][0]).toContain("/manage/api/v1/login");
+    const seg1 = fetchMock.mock.calls[1][1].body.get("file");
+    const seg2 = fetchMock.mock.calls[2][1].body.get("file");
+    expect(seg1.name).toContain("seg-1-of-2");
+    expect(seg2.name).toContain("seg-2-of-2");
+  });
+
+  it("returns 502 when a segment upload fails outright", async () => {
+    const rejected = () =>
+      jsonResponse({ code: -1, message: "Storage unavailable.", data: "" });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(rejected())
+      .mockResolvedValueOnce(rejected());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/upload-segments")
+      .set("Authorization", `Bearer ${token}`)
+      .send(threeWpBody);
+
+    expect(res.status).toBe(502);
+    expect(res.body.error).toBe("Nahrání segmentů do DJI Cloud selhalo");
+    expect(JSON.stringify(res.body)).not.toContain("Storage unavailable.");
+  });
+});

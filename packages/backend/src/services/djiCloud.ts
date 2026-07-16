@@ -92,12 +92,55 @@ async function uploadFile(
   return (await res.json()) as DjiApiResponse<unknown>;
 }
 
+function timestampSuffix(): string {
+  return new Date()
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace("T", "-")
+    .slice(0, 15);
+}
+
+/**
+ * Uploads one KMZ into an already-authenticated workspace, retrying once
+ * under a timestamped name if the platform rejects the first attempt as a
+ * duplicate (its object storage refuses to overwrite an existing file of
+ * the same name). Returns the wayline name it was actually stored under.
+ */
+async function uploadOne(
+  cfg: DjiCloudConfig,
+  token: string,
+  workspaceId: string,
+  name: string,
+  kmz: Buffer,
+): Promise<string> {
+  const baseName =
+    name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "mission";
+
+  const first = await uploadFile(
+    cfg,
+    token,
+    workspaceId,
+    `${baseName}.kmz`,
+    kmz,
+  );
+  if (first.code === 0) return baseName;
+
+  const retryName = `${baseName}-${timestampSuffix()}`;
+  const second = await uploadFile(
+    cfg,
+    token,
+    workspaceId,
+    `${retryName}.kmz`,
+    kmz,
+  );
+  if (second.code === 0) return retryName;
+
+  throw new Error(`DJI Cloud upload selhal: ${second.message}`);
+}
+
 /**
  * Uploads a mission KMZ into the configured DJI Cloud workspace's wayline
- * library. Returns the wayline name it was stored under — normally the
- * sanitized mission name, with a time suffix appended only if the platform
- * rejects the first attempt as a duplicate (its object storage refuses to
- * overwrite an existing file of the same name).
+ * library. Returns the wayline name it was stored under.
  */
 export async function uploadMissionToDjiCloud(
   missionName: string,
@@ -107,41 +150,37 @@ export async function uploadMissionToDjiCloud(
   if (!cfg) {
     throw new Error("DJI Cloud není nakonfigurován");
   }
+  const { token, workspaceId } = await login(cfg);
+  const waylineName = await uploadOne(
+    cfg,
+    token,
+    workspaceId,
+    missionName,
+    kmz,
+  );
+  return { waylineName };
+}
 
+/**
+ * Uploads several segment KMZs into the workspace under a single login.
+ * Segments are uploaded sequentially (the platform's object storage
+ * duplicate-check isn't safe to hammer concurrently); if any one fails the
+ * whole operation throws, but every segment already uploaded stays in the
+ * library — the caller reports partial success via `count`.
+ */
+export async function uploadSegmentsToDjiCloud(
+  segments: { name: string; kmz: Buffer }[],
+): Promise<{ count: number }> {
+  const cfg = readConfig();
+  if (!cfg) {
+    throw new Error("DJI Cloud není nakonfigurován");
+  }
   const { token, workspaceId } = await login(cfg);
 
-  const baseName =
-    missionName.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "mission";
-
-  const first = await uploadFile(
-    cfg,
-    token,
-    workspaceId,
-    `${baseName}.kmz`,
-    kmz,
-  );
-  if (first.code === 0) {
-    return { waylineName: baseName };
+  let count = 0;
+  for (const segment of segments) {
+    await uploadOne(cfg, token, workspaceId, segment.name, segment.kmz);
+    count++;
   }
-
-  // Duplicate name (or any first-attempt rejection with a retryable
-  // message) — retry once under a timestamped name so re-uploading an
-  // updated mission never dead-ends on the previous upload.
-  const stamp = new Date()
-    .toISOString()
-    .replace(/[-:]/g, "")
-    .replace("T", "-")
-    .slice(0, 15);
-  const retryName = `${baseName}-${stamp}`;
-  const second = await uploadFile(
-    cfg,
-    token,
-    workspaceId,
-    `${retryName}.kmz`,
-    kmz,
-  );
-  if (second.code === 0) {
-    return { waylineName: retryName };
-  }
-  throw new Error(`DJI Cloud upload selhal: ${second.message}`);
+  return { count };
 }

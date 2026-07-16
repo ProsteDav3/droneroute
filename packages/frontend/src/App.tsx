@@ -374,6 +374,40 @@ export default function App() {
     }
   };
 
+  const [uploadingSegmentsToDjiCloud, setUploadingSegmentsToDjiCloud] =
+    useState(false);
+
+  const handleUploadSegmentsToDjiCloud = async () => {
+    if (waypoints.length < 2) {
+      toast.warning("Pro nahrání segmentů je potřeba alespoň 2 body trasy");
+      return;
+    }
+    if (!token) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    setUploadingSegmentsToDjiCloud(true);
+    try {
+      const res = await api.post<{ count: number }>(
+        "/dji-cloud/upload-segments",
+        {
+          name: missionName,
+          config,
+          waypoints,
+          pois,
+        },
+      );
+      toast.success(
+        `Nahráno ${res.count} segmentů do DJI Cloud — najdete je v Pilot 2 v záložce Cloud`,
+      );
+    } catch (err: any) {
+      toast.error(`Nahrání segmentů do DJI Cloud selhalo: ${err.message}`);
+    } finally {
+      setUploadingSegmentsToDjiCloud(false);
+    }
+  };
+
   const handleExportSegments = async () => {
     if (waypoints.length < 2) {
       toast.warning("Pro export segmentů je potřeba alespoň 2 body trasy");
@@ -879,6 +913,25 @@ export default function App() {
             >
               <CloudUpload className="h-3 w-3" />
               {uploadingToDjiCloud ? "Nahrávám..." : "Nahrát do DJI Cloud"}
+            </Button>
+          )}
+          {djiCloudEnabled && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleUploadSegmentsToDjiCloud}
+              disabled={uploadingSegmentsToDjiCloud || waypoints.length < 2}
+              className="w-full text-xs h-7 border-[#00c2ff]/30 bg-[#00c2ff]/5 hover:bg-[#00c2ff]/15 hover:text-[#33cfff]"
+              title={
+                waypoints.length < 2
+                  ? "Pro nahrání segmentů přidejte alespoň 2 body trasy"
+                  : "Rozdělit trasu na jednotlivé úseky (WP1→WP2, WP2→WP3, ...) a nahrát každý z nich jako samostatnou misi do DJI Cloud"
+              }
+            >
+              <CloudUpload className="h-3 w-3" />
+              {uploadingSegmentsToDjiCloud
+                ? "Nahrávám segmenty..."
+                : "Nahrát segmenty do DJI Cloud"}
             </Button>
           )}
           <Button

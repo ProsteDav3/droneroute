@@ -42,7 +42,16 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       throw new Error(err.error || "Email not verified");
     }
 
-    throw new Error(err.error || "Request failed");
+    // Attach the parsed error body so callers that need structured detail
+    // (e.g. a partial-success count) can read it; `.message` stays the
+    // human-readable string every existing caller already relies on.
+    const error = new Error(err.error || "Request failed") as Error & {
+      body?: unknown;
+      status?: number;
+    };
+    error.body = err;
+    error.status = res.status;
+    throw error;
   }
 
   // Check if response is JSON or binary

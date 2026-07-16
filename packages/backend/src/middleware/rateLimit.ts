@@ -1,11 +1,20 @@
 import rateLimit from "express-rate-limit";
 
+/**
+ * Disable rate limiting under `vitest` (NODE_ENV=test), where every request
+ * originates from the same loopback IP and a full route suite legitimately
+ * fires more calls than the production per-minute budget allows — otherwise
+ * tests spuriously 429. Has no effect on any real deployment.
+ */
+const skipInTests = () => process.env.NODE_ENV === "test";
+
 /** Global rate limiter — 100 requests per minute per IP. */
 export const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 100,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: skipInTests,
   message: { error: "Příliš mnoho požadavků, zkuste to prosím znovu později" },
 });
 
@@ -15,6 +24,7 @@ export const strictLimiter = rateLimit({
   max: 10,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: skipInTests,
   message: { error: "Příliš mnoho požadavků, zkuste to prosím znovu později" },
 });
 

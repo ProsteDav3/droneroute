@@ -31,7 +31,10 @@ jobs:
       # version within the current major, so breaking major bumps are left
       # for Dependabot to open as individual, manually-reviewed PRs instead.
       - name: Check for non-major dependency updates
-        run: npx npm-check-updates -u --target minor --workspaces --root
+        # Pinned to an exact version -- this isn't a repo dependency (bare
+        # npx would otherwise resolve whatever's tagged "latest" at runtime,
+        # unpinned, with this job's write-scoped credentials).
+        run: npx npm-check-updates@17.1.18 -u --target minor --workspaces --root
 
       - name: Install updated dependencies
         run: npm install
@@ -101,7 +104,7 @@ jobs:
       # the PR is still opened, just without auto-triggered CI.
       - name: Open pull request
         if: steps.diff.outputs.changed == 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@22a9089034f40e5a961c8808d113e2c98fb63676 # v7.0.0
         with:
           token: ${{ secrets.REPO_PAT || secrets.GITHUB_TOKEN }}
           commit-message: "chore(deps): weekly non-major dependency updates"

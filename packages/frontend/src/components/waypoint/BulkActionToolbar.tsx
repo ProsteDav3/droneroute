@@ -90,7 +90,9 @@ export function BulkActionToolbar() {
       return;
     }
     updateSelectedWaypoints({ speed, useGlobalSpeed: false });
-    toast.success(`Rychlost vybraných bodů nastavena na ${speed} m/s`);
+    toast.success(
+      `Rychlost vybraných bodů nastavena na ${toDisplaySpeed(speed, unitSystem)} ${speedLabel(unitSystem)}`,
+    );
   };
 
   // Only offer "Edit template" when every selected waypoint came from the

@@ -201,6 +201,37 @@ describe("computeSpeedForDuration", () => {
     const waypoints = [wp(50, 14), wp(50.0001, 14)]; // ~11 m
     expect(computeSpeedForDuration(waypoints, 10000)).toBeNull();
   });
+
+  it("with forceUniformSpeed: false, solves only for the global-speed segments and leaves overridden waypoints' contribution fixed (regression — previously solved as if every waypoint adopted the candidate speed, silently promising a duration the mission wouldn't actually have once a waypoint had its own speed override)", () => {
+    const waypoints = [
+      wp(50, 14),
+      wp(50.02, 14, { useGlobalSpeed: false, speed: 2 }), // fixed, slow leg
+      wp(50.04, 14),
+    ];
+    const globalSpeed = 8;
+    const targetTimeS = estimateFlightStats(waypoints, globalSpeed).timeS;
+
+    const solved = computeSpeedForDuration(waypoints, targetTimeS, {
+      forceUniformSpeed: false,
+    });
+    expect(solved).not.toBeNull();
+    expect(solved!).toBeCloseTo(globalSpeed, 1);
+
+    // Applying the solved speed as the global default (respecting the
+    // override, exactly as the real caller does) reproduces the target.
+    const actualTimeS = estimateFlightStats(waypoints, solved!).timeS;
+    expect(actualTimeS).toBeCloseTo(targetTimeS, 1);
+  });
+
+  it("with forceUniformSpeed: false, returns null when every waypoint already has its own speed override (the global speed has no effect on the total)", () => {
+    const waypoints = [
+      wp(50, 14, { useGlobalSpeed: false, speed: 5 }),
+      wp(50.01, 14, { useGlobalSpeed: false, speed: 5 }),
+    ];
+    expect(
+      computeSpeedForDuration(waypoints, 9999, { forceUniformSpeed: false }),
+    ).toBeNull();
+  });
 });
 
 describe("formatFlightDuration", () => {

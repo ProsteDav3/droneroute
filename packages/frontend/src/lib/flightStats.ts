@@ -196,29 +196,54 @@ const DURATION_SOLVE_ITERATIONS = 40;
 /**
  * Speed (m/s) needed for `waypoints` to have an estimated total flight
  * time as close as possible to `targetTimeS`, found via binary search
- * against `estimateFlightStats` — its accel/turn-overhead terms make total
- * time a non-trivial function of speed, not a simple distance/speed
- * inversion, but time still decreases as speed increases across any real
- * path (the cruise term dominates the accel/turn terms it's traded off
- * against), so binary search converges reliably in practice.
+ * against `estimateFlightStats`. Under a single candidate speed applied
+ * uniformly, `estimateFlightStats`'s total time reduces to `A/v + D*v + K`
+ * (A = cruise distance, D ≥ 0 from the accel/turn-overhead terms, which
+ * scale with speed themselves, K = constant hover time) — convex in `v`,
+ * not simply decreasing, but checking the search bounds' time against
+ * `targetTimeS` before searching (below) is enough to guarantee the
+ * binary search still converges to the correct root whenever it doesn't
+ * return `null`: the gate only admits targets that are ≤ the time at the
+ * slowest speed and ≥ the time at the fastest, which for a convex curve
+ * of this shape means the target lies on the strictly-decreasing branch
+ * between them.
  *
- * Every waypoint is given the same candidate speed while searching (this
- * solves for a single uniform cruise speed, matching how both the global
- * `autoFlightSpeed` and a bulk-selection "same speed for all" edit apply).
+ * `forceUniformSpeed` (default `true`) controls whether every waypoint is
+ * overridden to the candidate speed while searching:
+ * - `true` — models applying the solved speed directly to every one of
+ *   `waypoints`' own `speed` fields (e.g. a bulk edit of a selection),
+ *   so the search must vary each waypoint's effective speed in lockstep.
+ * - `false` — models applying the solved speed only as the mission's
+ *   *global* `autoFlightSpeed` default, leaving each waypoint's existing
+ *   `useGlobalSpeed`/`speed` untouched — waypoints already overridden to
+ *   their own fixed speed keep contributing their own (speed-independent)
+ *   time, and only the global-speed segments respond to the candidate.
+ *   Needed because applying only `autoFlightSpeed` (not per-waypoint
+ *   overrides) is what `setConfig({ autoFlightSpeed })` actually changes;
+ *   solving as if every waypoint adopted the candidate would silently
+ *   promise a duration the mission won't actually have once waypoints
+ *   with their own speed override are involved.
+ *
  * Returns `null` when there's no path to solve for, or when the target
  * isn't reachable within `DURATION_SOLVE_MIN_SPEED_MPS`..`_MAX_SPEED_MPS`
- * (path too long to finish that fast even at max speed, or too short to
- * take that long even at min speed).
+ * (path too long to finish that fast even at max speed, too short to
+ * take that long even at min speed, or — when `forceUniformSpeed` is
+ * `false` — every waypoint already has its own fixed speed override, so
+ * the global speed has no effect on the total at all).
  */
 export function computeSpeedForDuration(
   waypoints: FlightStatsWaypoint[],
   targetTimeS: number,
+  options: { forceUniformSpeed?: boolean } = {},
 ): number | null {
+  const { forceUniformSpeed = true } = options;
   if (waypoints.length < 2 || !(targetTimeS > 0)) return null;
 
   const timeAtSpeed = (speed: number): number =>
     estimateFlightStats(
-      waypoints.map((wp) => ({ ...wp, useGlobalSpeed: false, speed })),
+      forceUniformSpeed
+        ? waypoints.map((wp) => ({ ...wp, useGlobalSpeed: false, speed }))
+        : waypoints,
       speed,
     ).timeS;
 

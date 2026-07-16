@@ -8,7 +8,9 @@ set speed directly.
 
 - **Mission settings**: enter a target duration (seconds) and click
   "Dopočítat rychlost" to set the mission's global flight speed to
-  whatever value makes the current route take that long.
+  whatever value makes the current route take that long. Waypoints with
+  their own speed override are left untouched and a note explains that
+  they won't be affected, since only the global default changes here.
 - **Bulk-edit toolbar**: the same control for a selection of waypoints —
   sets the speed for just the selected stretch of the route.
 - Both report when the target isn't achievable within the app's
@@ -34,3 +36,10 @@ the target duration drive the number directly.
 - Purely a planning aid — no data model or WPML export changes; the
   computed value is applied through the exact same `setConfig`/
   `updateSelectedWaypoints` paths a manually-typed speed already uses.
+- `computeSpeedForDuration()` takes a `forceUniformSpeed` option: `true`
+  (bulk-edit toolbar) solves assuming every one of the given waypoints
+  adopts the candidate speed, matching what gets applied; `false`
+  (mission settings) solves for only the global-speed segments, leaving
+  waypoints with their own speed override contributing their fixed,
+  speed-independent time — needed since applying only `autoFlightSpeed`
+  doesn't touch those waypoints at all.

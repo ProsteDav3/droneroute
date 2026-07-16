@@ -79,6 +79,17 @@ describe("buildTemplateKml", () => {
     );
   });
 
+  it("emits no heading override for towardPOI mode when the referenced POI can't be found", () => {
+    const wp = waypoint({
+      useGlobalHeadingParam: false,
+      headingMode: "towardPOI",
+      poiId: "missing-poi",
+    });
+    const kml = buildTemplateKml(mission([wp], []));
+
+    expect(kml).not.toContain("<wpml:waypointHeadingParam>");
+  });
+
   it("emits no heading override when the waypoint uses the global heading param", () => {
     const wp = waypoint({
       useGlobalHeadingParam: true,

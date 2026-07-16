@@ -36,6 +36,7 @@ Configure your drone model, camera, altitude reference, and safety options for t
   isn't published), but it's meaningfully closer than a flat distance/speed
   calculation.
 - Height reference affects how altitude values are interpreted by the drone — choose the one that matches your operational needs. The default is **above ground level**.
+- **Heading mode is only a default**: it applies to waypoints that don't have their own heading override. Templates that need the drone to track a target as it flies (Orbit, Turbine blade inspection, Facade's thermal recommendation) set each of their own waypoints to a specific mode regardless of this setting — so seeing a different heading mode on a selected waypoint than in Mission settings doesn't mean either one is wrong; the per-waypoint value is what actually flies.
 - All height fields enforce a minimum of 1 meter.
 - You can set default values for all mission settings in the **Mission defaults** tab of the settings dialog. New missions will use those defaults instead of the factory defaults.
 - **Matrice 4T is the default drone for new missions**, with defaults (35 min max battery, 7 m/s flight speed) set from DJI's published specs. Its internal WPML drone/camera identifiers were confirmed by inspecting a real DJI Pilot 2 export from an RC Plus 2 + Matrice 4T.

@@ -29,6 +29,7 @@ import {
   toDisplaySpeed,
   fromDisplaySpeed,
   speedRange,
+  headingModeLabel,
 } from "@/lib/units";
 import type { HeadingMode, TurnMode, Waypoint } from "@droneroute/shared";
 
@@ -386,7 +387,8 @@ export function BulkActionToolbar() {
                       </SelectItem>
                     )}
                     <SelectItem value="global">
-                      Použít globální ({config.globalHeadingMode})
+                      Použít globální (
+                      {headingModeLabel(config.globalHeadingMode)})
                     </SelectItem>
                     <SelectItem value="followWayline">Podle trasy</SelectItem>
                     <SelectItem value="manually">Ruční</SelectItem>
@@ -397,6 +399,14 @@ export function BulkActionToolbar() {
                     <SelectItem value="towardPOI">Směrem k POI</SelectItem>
                   </SelectContent>
                 </Select>
+                {headingSelectValue !== "global" &&
+                  headingSelectValue !== "mixed" && (
+                    <div className="text-[10px] text-muted-foreground mt-0.5">
+                      Přebíjí výchozí nastavení mise (
+                      {headingModeLabel(config.globalHeadingMode)}) jen pro tyto
+                      body trasy.
+                    </div>
+                  )}
               </div>
 
               {/* Target POI (visible when heading mode is towardPOI) */}

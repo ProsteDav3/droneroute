@@ -209,6 +209,12 @@ export function MissionConfig() {
             <SelectItem value="towardPOI">Směrem k POI</SelectItem>
           </SelectContent>
         </Select>
+        <div className="text-[10px] text-muted-foreground mt-0.5">
+          Výchozí hodnota jen pro body trasy bez vlastního nastavení natočení —
+          šablony jako Orbit dávají každému bodu vlastní režim (např. "Směrem k
+          POI"), který tuto výchozí hodnotu přebíjí a v praxi rozhoduje, jak
+          dron skutečně letí.
+        </div>
       </div>
 
       <div>

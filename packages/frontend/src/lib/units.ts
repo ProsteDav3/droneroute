@@ -1,4 +1,4 @@
-import type { UnitSystem, HeightMode } from "@droneroute/shared";
+import type { UnitSystem, HeightMode, HeadingMode } from "@droneroute/shared";
 
 // ── Conversion constants ────────────────────────────────
 
@@ -163,6 +163,26 @@ export function heightModeLabel(mode: HeightMode): string {
       return "nad terénem";
     case "EGM96":
       return "nad mořem (EGM96)";
+    default:
+      return mode;
+  }
+}
+
+// ── Heading mode label ───────────────────────────────────
+
+/** Human-readable Czech label for a waypoint/mission heading mode. */
+export function headingModeLabel(mode: HeadingMode): string {
+  switch (mode) {
+    case "followWayline":
+      return "podle trasy";
+    case "manually":
+      return "ruční";
+    case "fixed":
+      return "pevné";
+    case "smoothTransition":
+      return "plynulý přechod";
+    case "towardPOI":
+      return "směrem k POI";
     default:
       return mode;
   }

@@ -32,9 +32,13 @@ import type {
 } from "@droneroute/shared";
 
 export function MissionConfig() {
-  const { config, setConfig, waypoints } = useMissionStore();
+  const { config, setConfig, waypoints, updateAllWaypoints } =
+    useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
   const [targetDurationInput, setTargetDurationInput] = useState("");
+  const [overrideWaypointSpeeds, setOverrideWaypointSpeeds] = useState(false);
+
+  const hasOverriddenWaypoints = waypoints.some((wp) => !wp.useGlobalSpeed);
 
   const handleApplyTargetDuration = () => {
     const targetTimeS = parseFloat(targetDurationInput);
@@ -42,27 +46,30 @@ export function MissionConfig() {
       toast.warning("Zadejte platnou cílovou dobu letu v sekundách");
       return;
     }
-    // Solve for the global speed only — waypoints with their own speed
-    // override (useGlobalSpeed: false) keep their own fixed speed, since
-    // this control only changes config.autoFlightSpeed, not per-waypoint
-    // overrides. Warn up front so the user knows those waypoints won't be
-    // affected and the resulting duration may not exactly hit the target.
-    const hasOverriddenWaypoints = waypoints.some((wp) => !wp.useGlobalSpeed);
+    // By default, solve for the global speed only — waypoints with their
+    // own speed override keep their own fixed speed, since this control
+    // only changes config.autoFlightSpeed. When overrideWaypointSpeeds is
+    // checked, solve as if every waypoint adopted the candidate speed
+    // instead, and actually clear every override afterward so the mission
+    // matches what was solved for.
     const speed = computeSpeedForDuration(waypoints, targetTimeS, {
-      forceUniformSpeed: false,
+      forceUniformSpeed: overrideWaypointSpeeds,
     });
     if (speed === null) {
       toast.warning(
-        hasOverriddenWaypoints
+        hasOverriddenWaypoints && !overrideWaypointSpeeds
           ? "Tuto dobu letu nelze dosáhnout — mise obsahuje body s vlastní rychlostí, které globální rychlost letu neovlivní"
           : "Tuto dobu letu nelze s aktuální trasou dosáhnout v rozsahu rychlosti 1-15 m/s",
       );
       return;
     }
     setConfig({ autoFlightSpeed: speed });
+    if (overrideWaypointSpeeds && hasOverriddenWaypoints) {
+      updateAllWaypoints({ useGlobalSpeed: true });
+    }
     toast.success(
       `Rychlost letu nastavena na ${toDisplaySpeed(speed, unitSystem)} ${speedLabel(unitSystem)}${
-        hasOverriddenWaypoints
+        hasOverriddenWaypoints && !overrideWaypointSpeeds
           ? " (body s vlastní rychlostí zůstávají beze změny)"
           : ""
       }`,
@@ -213,10 +220,22 @@ export function MissionConfig() {
         </div>
         <div className="text-[10px] text-muted-foreground mt-0.5">
           Zadejte, jak dlouho má celý let trvat — rychlost letu (
-          {speedLabel(unitSystem)}) se dopočítá zpětně z aktuální trasy. Body
-          trasy s vlastní rychlostí (nastavenou individuálně) tím nejsou
-          ovlivněny.
+          {speedLabel(unitSystem)}) se dopočítá zpětně z aktuální trasy.
+          {!overrideWaypointSpeeds &&
+            " Body trasy s vlastní rychlostí (nastavenou individuálně) tím nejsou ovlivněny."}
         </div>
+        {hasOverriddenWaypoints && (
+          <label className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-1 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={overrideWaypointSpeeds}
+              onChange={(e) => setOverrideWaypointSpeeds(e.target.checked)}
+              className="rounded"
+            />
+            Přepsat i body s vlastní rychlostí (nastaví jednotnou rychlost pro
+            celou misi)
+          </label>
+        )}
       </div>
 
       <div>

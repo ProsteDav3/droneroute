@@ -86,7 +86,7 @@ describe("POST /api/kmz/generate-segments", () => {
     for (const entryName of kmzEntries) {
       const entryBuffer = await zip.files[entryName].async("nodebuffer");
       const legZip = await JSZip.loadAsync(entryBuffer);
-      const wpml = await legZip.file("waylines.wpml")?.async("string");
+      const wpml = await legZip.file("wpmz/waylines.wpml")?.async("string");
       expect(wpml).toBeTruthy();
       const placemarkCount = (wpml?.match(/<Placemark>/g) || []).length;
       expect(placemarkCount).toBe(2);
@@ -121,7 +121,7 @@ describe("POST /api/kmz/generate — takePhoto lens selection", () => {
 
     expect(res.status).toBe(200);
     const zip = await JSZip.loadAsync(res.body as Buffer);
-    const wpml = await zip.file("waylines.wpml")?.async("string");
+    const wpml = await zip.file("wpmz/waylines.wpml")?.async("string");
     expect(wpml).toContain(
       "<wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>",
     );
@@ -152,7 +152,7 @@ describe("POST /api/kmz/generate — takePhoto lens selection", () => {
 
     expect(res.status).toBe(200);
     const zip = await JSZip.loadAsync(res.body as Buffer);
-    const wpml = await zip.file("waylines.wpml")?.async("string");
+    const wpml = await zip.file("wpmz/waylines.wpml")?.async("string");
     expect(wpml).toContain("<wpml:payloadLensIndex>ir</wpml:payloadLensIndex>");
     expect(wpml).toContain(
       "<wpml:useGlobalPayloadLensIndex>0</wpml:useGlobalPayloadLensIndex>",

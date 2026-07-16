@@ -38,21 +38,31 @@ droneroute/
 
 ## DJI WPML KMZ Format
 
-A KMZ is a ZIP archive containing:
+A KMZ is a ZIP archive matching DJI Pilot 2's own native export layout:
 
 ```
 mission.kmz
-├── template.kml      # Mission parameters — DJI Pilot 2 treats this as the
-│                     # source of truth and regenerates its own waylines
-│                     # from it, so per-waypoint overrides must live here too
-├── waylines.wpml     # Execution file DJI's own tooling derives from template.kml
-└── res/              # Resources (reference images, etc.)
+└── wpmz/
+    ├── template.kml      # Mission parameters — DJI Pilot 2 treats this as
+    │                     # the source of truth and regenerates its own
+    │                     # waylines from it, so per-waypoint overrides must
+    │                     # live here too
+    └── waylines.wpml     # Execution file DJI's own tooling derives from
+                          # template.kml
 ```
 
 Both files use KML extended with DJI WPML namespace:
 
 - KML: `http://www.opengis.net/kml/2.2`
-- WPML: `http://www.dji.com/wpmz/1.0.2`
+- WPML: `http://www.dji.com/wpmz/1.0.6`
+
+The 1.0.6 native structure matters: DJI Pilot 2's **cloud-download path**
+(third-party cloud platforms via DJI Cloud API) strictly validates wayline
+files against the native format and rejects older/looser WPML with
+"Original route file error. Make sure route file is not modified by
+third-party tool." — while its **manual import** tolerates older files.
+Emitting exactly what Pilot 2 itself generates (verified against a real
+M4T-era export) keeps both paths working.
 
 ### Supported Drones
 
@@ -272,18 +282,25 @@ Actions are executed sequentially when the drone reaches the waypoint.
 
 ### KMZ Generation
 
-The backend generates a valid DJI WPML KMZ containing:
+The backend generates a valid DJI WPML 1.0.6 KMZ containing:
 
-1. **template.kml** - Mission config + waypoints with `useGlobal*` flags,
-   action groups, and POI heading references. DJI Pilot 2 reads this file
-   as the authoritative source and regenerates its own `waylines.wpml`
-   from it — so any waypoint with `useGlobalHeadingParam=0` needs its
-   per-waypoint heading override emitted here too, not just in
-   waylines.wpml, or the aircraft has nothing to fall back on but its
-   takeoff heading.
-2. **waylines.wpml** - Execution file with explicit per-waypoint speed,
-   heading, turn params, and computed POI angles
-3. **res/** - Empty resource directory
+1. **wpmz/template.kml** - Mission config + waypoints with `useGlobal*`
+   flags, action groups, and POI heading references. DJI Pilot 2 reads
+   this file as the authoritative source and regenerates its own
+   `waylines.wpml` from it — so any waypoint with
+   `useGlobalHeadingParam=0` needs its per-waypoint heading override
+   emitted here too, not just in waylines.wpml, or the aircraft has
+   nothing to fall back on but its takeoff heading.
+2. **wpmz/waylines.wpml** - Execution file with explicit per-waypoint
+   speed, heading (incl. `waypointHeadingAngleEnable`), turn params,
+   gimbal (`waypointGimbalHeadingParam`), computed POI angles, and the
+   folder-level `executeHeightMode`/`distance`/`duration` fields the
+   native format requires. `executeHeightMode` maps from the mission's
+   height reference conservatively: EGM96 → WGS84, everything else
+   (relative-to-start and AGL) → relativeToStartPoint — never
+   realTimeFollowSurface, which would silently enable terrain following.
+
+(No `res/` directory — native Pilot 2 exports don't include one.)
 
 Both files emit a per-waypoint `waypointHeadingParam` override whenever a
 waypoint opts out of the global heading config (`useGlobalHeadingParam=0`)

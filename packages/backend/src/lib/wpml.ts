@@ -155,19 +155,30 @@ export function buildTemplateKml(mission: Mission): string {
     .map((wp, i) => {
       const actionGroupXml = buildActionGroupXml(wp, i);
 
-      // Build per-waypoint heading param when using towardPOI
+      // Build per-waypoint heading param whenever this waypoint opts out of
+      // the global heading config (useGlobalHeadingParam=0). Previously this
+      // only covered towardPOI — every other per-waypoint mode (in
+      // particular "fixed", used by Orbit/Turbine/Facade-thermal to face a
+      // point by giving each waypoint its own precomputed bearing) silently
+      // got NO override here despite declaring useGlobalHeadingParam=0,
+      // leaving the aircraft to fall back to whatever heading it already
+      // had — in practice, the heading it took off with, held for the rest
+      // of the flight, instead of continuously reorienting toward the
+      // target as intended.
       let headingOverrideXml = "";
-      if (
-        !wp.useGlobalHeadingParam &&
-        wp.headingMode === "towardPOI" &&
-        wp.poiId
-      ) {
-        const poi = findPoi(pois, wp.poiId);
-        if (poi) {
+      if (!wp.useGlobalHeadingParam && wp.headingMode) {
+        const poi =
+          wp.headingMode === "towardPOI" ? findPoi(pois, wp.poiId) : undefined;
+        if (wp.headingMode !== "towardPOI" || poi) {
+          const targetXml =
+            wp.headingMode === "towardPOI" && poi
+              ? `
+          <wpml:waypointPoiPoint>${poi.latitude},${poi.longitude},${poi.height}</wpml:waypointPoiPoint>`
+              : `
+          <wpml:waypointHeadingAngle>${wp.headingAngle ?? 0}</wpml:waypointHeadingAngle>`;
           headingOverrideXml = `
         <wpml:waypointHeadingParam>
-          <wpml:waypointHeadingMode>towardPOI</wpml:waypointHeadingMode>
-          <wpml:waypointPoiPoint>${poi.latitude},${poi.longitude},${poi.height}</wpml:waypointPoiPoint>
+          <wpml:waypointHeadingMode>${wp.headingMode}</wpml:waypointHeadingMode>${targetXml}
           <wpml:waypointHeadingPathMode>clockwise</wpml:waypointHeadingPathMode>
         </wpml:waypointHeadingParam>`;
         }

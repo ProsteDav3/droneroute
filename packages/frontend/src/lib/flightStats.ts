@@ -189,6 +189,56 @@ export function countCaptureActions(
   return { photoCount, videoCount };
 }
 
+const DURATION_SOLVE_MIN_SPEED_MPS = 1;
+const DURATION_SOLVE_MAX_SPEED_MPS = 15;
+const DURATION_SOLVE_ITERATIONS = 40;
+
+/**
+ * Speed (m/s) needed for `waypoints` to have an estimated total flight
+ * time as close as possible to `targetTimeS`, found via binary search
+ * against `estimateFlightStats` — its accel/turn-overhead terms make total
+ * time a non-trivial function of speed, not a simple distance/speed
+ * inversion, but time still decreases as speed increases across any real
+ * path (the cruise term dominates the accel/turn terms it's traded off
+ * against), so binary search converges reliably in practice.
+ *
+ * Every waypoint is given the same candidate speed while searching (this
+ * solves for a single uniform cruise speed, matching how both the global
+ * `autoFlightSpeed` and a bulk-selection "same speed for all" edit apply).
+ * Returns `null` when there's no path to solve for, or when the target
+ * isn't reachable within `DURATION_SOLVE_MIN_SPEED_MPS`..`_MAX_SPEED_MPS`
+ * (path too long to finish that fast even at max speed, or too short to
+ * take that long even at min speed).
+ */
+export function computeSpeedForDuration(
+  waypoints: FlightStatsWaypoint[],
+  targetTimeS: number,
+): number | null {
+  if (waypoints.length < 2 || !(targetTimeS > 0)) return null;
+
+  const timeAtSpeed = (speed: number): number =>
+    estimateFlightStats(
+      waypoints.map((wp) => ({ ...wp, useGlobalSpeed: false, speed })),
+      speed,
+    ).timeS;
+
+  const timeAtMin = timeAtSpeed(DURATION_SOLVE_MIN_SPEED_MPS);
+  const timeAtMax = timeAtSpeed(DURATION_SOLVE_MAX_SPEED_MPS);
+  if (targetTimeS > timeAtMin || targetTimeS < timeAtMax) return null;
+
+  let lo = DURATION_SOLVE_MIN_SPEED_MPS;
+  let hi = DURATION_SOLVE_MAX_SPEED_MPS;
+  for (let i = 0; i < DURATION_SOLVE_ITERATIONS; i++) {
+    const mid = (lo + hi) / 2;
+    if (timeAtSpeed(mid) > targetTimeS) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return Math.round(((lo + hi) / 2) * 10) / 10;
+}
+
 /** Format seconds into a human-readable duration, e.g. "1m 5s", "2h 3m". */
 export function formatFlightDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;

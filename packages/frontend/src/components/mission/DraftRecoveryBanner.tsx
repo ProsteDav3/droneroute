@@ -35,6 +35,8 @@ export function DraftRecoveryBanner() {
     const isPristine =
       current.waypoints.length === 0 &&
       current.pois.length === 0 &&
+      current.obstacles.length === 0 &&
+      current.buildings.length === 0 &&
       !current.dirty;
     return isPristine ? pending : null;
   });

@@ -698,7 +698,14 @@ describe("missionStore — autosave draft", () => {
   });
 
   it("does not autosave a still-empty mission", () => {
-    useMissionStore.getState().setDirty(true);
+    // setDirty alone leaves every content field's reference unchanged, which
+    // the subscriber's own no-op check already short-circuits on — that
+    // would make this test pass without ever exercising the *inner*
+    // still-empty guard inside the debounced callback. Change missionName
+    // instead: it passes the subscriber's reference check and schedules the
+    // timer, so the assertion below actually depends on the empty-mission
+    // guard, not just on the timer never having been armed.
+    useMissionStore.getState().setMissionName("Prázdná mise");
     vi.advanceTimersByTime(3000);
 
     expect(peekMissionDraft()).toBeNull();

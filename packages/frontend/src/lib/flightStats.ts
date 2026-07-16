@@ -189,6 +189,81 @@ export function countCaptureActions(
   return { photoCount, videoCount };
 }
 
+const DURATION_SOLVE_MIN_SPEED_MPS = 1;
+const DURATION_SOLVE_MAX_SPEED_MPS = 15;
+const DURATION_SOLVE_ITERATIONS = 40;
+
+/**
+ * Speed (m/s) needed for `waypoints` to have an estimated total flight
+ * time as close as possible to `targetTimeS`, found via binary search
+ * against `estimateFlightStats`. Under a single candidate speed applied
+ * uniformly, `estimateFlightStats`'s total time reduces to `A/v + D*v + K`
+ * (A = cruise distance, D ≥ 0 from the accel/turn-overhead terms, which
+ * scale with speed themselves, K = constant hover time) — convex in `v`,
+ * not simply decreasing, but checking the search bounds' time against
+ * `targetTimeS` before searching (below) is enough to guarantee the
+ * binary search still converges to the correct root whenever it doesn't
+ * return `null`: the gate only admits targets that are ≤ the time at the
+ * slowest speed and ≥ the time at the fastest, which for a convex curve
+ * of this shape means the target lies on the strictly-decreasing branch
+ * between them.
+ *
+ * `forceUniformSpeed` (default `true`) controls whether every waypoint is
+ * overridden to the candidate speed while searching:
+ * - `true` — models applying the solved speed directly to every one of
+ *   `waypoints`' own `speed` fields (e.g. a bulk edit of a selection),
+ *   so the search must vary each waypoint's effective speed in lockstep.
+ * - `false` — models applying the solved speed only as the mission's
+ *   *global* `autoFlightSpeed` default, leaving each waypoint's existing
+ *   `useGlobalSpeed`/`speed` untouched — waypoints already overridden to
+ *   their own fixed speed keep contributing their own (speed-independent)
+ *   time, and only the global-speed segments respond to the candidate.
+ *   Needed because applying only `autoFlightSpeed` (not per-waypoint
+ *   overrides) is what `setConfig({ autoFlightSpeed })` actually changes;
+ *   solving as if every waypoint adopted the candidate would silently
+ *   promise a duration the mission won't actually have once waypoints
+ *   with their own speed override are involved.
+ *
+ * Returns `null` when there's no path to solve for, or when the target
+ * isn't reachable within `DURATION_SOLVE_MIN_SPEED_MPS`..`_MAX_SPEED_MPS`
+ * (path too long to finish that fast even at max speed, too short to
+ * take that long even at min speed, or — when `forceUniformSpeed` is
+ * `false` — every waypoint already has its own fixed speed override, so
+ * the global speed has no effect on the total at all).
+ */
+export function computeSpeedForDuration(
+  waypoints: FlightStatsWaypoint[],
+  targetTimeS: number,
+  options: { forceUniformSpeed?: boolean } = {},
+): number | null {
+  const { forceUniformSpeed = true } = options;
+  if (waypoints.length < 2 || !(targetTimeS > 0)) return null;
+
+  const timeAtSpeed = (speed: number): number =>
+    estimateFlightStats(
+      forceUniformSpeed
+        ? waypoints.map((wp) => ({ ...wp, useGlobalSpeed: false, speed }))
+        : waypoints,
+      speed,
+    ).timeS;
+
+  const timeAtMin = timeAtSpeed(DURATION_SOLVE_MIN_SPEED_MPS);
+  const timeAtMax = timeAtSpeed(DURATION_SOLVE_MAX_SPEED_MPS);
+  if (targetTimeS > timeAtMin || targetTimeS < timeAtMax) return null;
+
+  let lo = DURATION_SOLVE_MIN_SPEED_MPS;
+  let hi = DURATION_SOLVE_MAX_SPEED_MPS;
+  for (let i = 0; i < DURATION_SOLVE_ITERATIONS; i++) {
+    const mid = (lo + hi) / 2;
+    if (timeAtSpeed(mid) > targetTimeS) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return Math.round(((lo + hi) / 2) * 10) / 10;
+}
+
 /** Format seconds into a human-readable duration, e.g. "1m 5s", "2h 3m". */
 export function formatFlightDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;

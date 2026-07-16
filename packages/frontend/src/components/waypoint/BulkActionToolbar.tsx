@@ -8,6 +8,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,6 +32,7 @@ import {
   speedRange,
   headingModeLabel,
 } from "@/lib/units";
+import { computeSpeedForDuration } from "@/lib/flightStats";
 import type { HeadingMode, TurnMode, Waypoint } from "@droneroute/shared";
 
 /**
@@ -63,9 +65,35 @@ export function BulkActionToolbar() {
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
 
   const [showEditor, setShowEditor] = useState(false);
+  const [targetDurationInput, setTargetDurationInput] = useState("");
 
   const count = selectedWaypointIndices.size;
   if (count < 2) return null;
+
+  const handleApplyTargetDuration = () => {
+    const targetTimeS = parseFloat(targetDurationInput);
+    if (!(targetTimeS > 0)) {
+      toast.warning("Zadejte platnou cílovou dobu letu v sekundách");
+      return;
+    }
+    const selectedWaypointsInOrder = waypoints.filter((wp) =>
+      selectedWaypointIndices.has(wp.index),
+    );
+    const speed = computeSpeedForDuration(
+      selectedWaypointsInOrder,
+      targetTimeS,
+    );
+    if (speed === null) {
+      toast.warning(
+        "Tuto dobu letu nelze s vybranými body dosáhnout v rozsahu rychlosti 1-15 m/s",
+      );
+      return;
+    }
+    updateSelectedWaypoints({ speed, useGlobalSpeed: false });
+    toast.success(
+      `Rychlost vybraných bodů nastavena na ${toDisplaySpeed(speed, unitSystem)} ${speedLabel(unitSystem)}`,
+    );
+  };
 
   // Only offer "Edit template" when every selected waypoint came from the
   // same template application, and its original params are still available
@@ -354,6 +382,30 @@ export function BulkActionToolbar() {
                   step={5}
                   className="h-7 text-xs mt-0.5"
                 />
+              </div>
+            </div>
+
+            <div>
+              <Label className="text-[10px] text-muted-foreground">
+                Cílová doba letu vybraných bodů (s)
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  value={targetDurationInput}
+                  onChange={(e) => setTargetDurationInput(e.target.value)}
+                  min={1}
+                  placeholder="např. 5"
+                  className="h-7 text-xs mt-0.5"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs mt-0.5 shrink-0"
+                  onClick={handleApplyTargetDuration}
+                >
+                  Dopočítat rychlost
+                </Button>
               </div>
             </div>
 

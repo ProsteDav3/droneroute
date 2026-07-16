@@ -3,6 +3,7 @@ import {
   estimateFlightStats,
   formatFlightDuration,
   countCaptureActions,
+  computeSpeedForDuration,
   haversine,
   type FlightStatsWaypoint,
 } from "./flightStats";
@@ -164,6 +165,72 @@ describe("estimateFlightStats", () => {
     const dist = haversine(50, 14, 50.001, 14);
     // Cruise leg uses the waypoint's own speed (2 m/s), not the global 10.
     expect(timeS).toBeGreaterThan(dist / 10);
+  });
+});
+
+describe("computeSpeedForDuration", () => {
+  it("returns null for fewer than two waypoints or a non-positive target", () => {
+    expect(computeSpeedForDuration([], 30)).toBeNull();
+    expect(computeSpeedForDuration([wp(50, 14)], 30)).toBeNull();
+    expect(computeSpeedForDuration([wp(50, 14), wp(50.01, 14)], 0)).toBeNull();
+    expect(computeSpeedForDuration([wp(50, 14), wp(50.01, 14)], -5)).toBeNull();
+  });
+
+  it("recovers a known speed via round-trip with estimateFlightStats (within a tight tolerance)", () => {
+    const waypoints = [wp(50, 14), wp(50.02, 14), wp(50.04, 14)];
+    const knownSpeed = 6;
+    const { timeS: targetTimeS } = estimateFlightStats(
+      waypoints.map((w) => ({
+        ...w,
+        useGlobalSpeed: false,
+        speed: knownSpeed,
+      })),
+      knownSpeed,
+    );
+    const solved = computeSpeedForDuration(waypoints, targetTimeS);
+    expect(solved).not.toBeNull();
+    expect(solved!).toBeCloseTo(knownSpeed, 1);
+  });
+
+  it("returns null when the target is unreachable even at max speed (path too long)", () => {
+    const waypoints = [wp(50, 14), wp(51, 14)]; // ~111 km
+    expect(computeSpeedForDuration(waypoints, 1)).toBeNull();
+  });
+
+  it("returns null when the target is unreachable even at min speed (path too short)", () => {
+    const waypoints = [wp(50, 14), wp(50.0001, 14)]; // ~11 m
+    expect(computeSpeedForDuration(waypoints, 10000)).toBeNull();
+  });
+
+  it("with forceUniformSpeed: false, solves only for the global-speed segments and leaves overridden waypoints' contribution fixed (regression — previously solved as if every waypoint adopted the candidate speed, silently promising a duration the mission wouldn't actually have once a waypoint had its own speed override)", () => {
+    const waypoints = [
+      wp(50, 14),
+      wp(50.02, 14, { useGlobalSpeed: false, speed: 2 }), // fixed, slow leg
+      wp(50.04, 14),
+    ];
+    const globalSpeed = 8;
+    const targetTimeS = estimateFlightStats(waypoints, globalSpeed).timeS;
+
+    const solved = computeSpeedForDuration(waypoints, targetTimeS, {
+      forceUniformSpeed: false,
+    });
+    expect(solved).not.toBeNull();
+    expect(solved!).toBeCloseTo(globalSpeed, 1);
+
+    // Applying the solved speed as the global default (respecting the
+    // override, exactly as the real caller does) reproduces the target.
+    const actualTimeS = estimateFlightStats(waypoints, solved!).timeS;
+    expect(actualTimeS).toBeCloseTo(targetTimeS, 1);
+  });
+
+  it("with forceUniformSpeed: false, returns null when every waypoint already has its own speed override (the global speed has no effect on the total)", () => {
+    const waypoints = [
+      wp(50, 14, { useGlobalSpeed: false, speed: 5 }),
+      wp(50.01, 14, { useGlobalSpeed: false, speed: 5 }),
+    ];
+    expect(
+      computeSpeedForDuration(waypoints, 9999, { forceUniformSpeed: false }),
+    ).toBeNull();
   });
 });
 

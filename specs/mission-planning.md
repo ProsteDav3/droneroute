@@ -11,6 +11,7 @@ Plan a drone flight by placing waypoints on the map and configuring what the dro
 - Choose a turn mode: smooth curve, stop at the waypoint then continue, or fly through without stopping.
 - Reorder waypoints by dragging them in the sidebar list.
 - Select multiple waypoints at once (Ctrl+click, Shift+click, or Ctrl+A) and edit them all in bulk.
+- Set a target flight duration for a selection of waypoints instead of a speed: enter how long that stretch of the route should take (in seconds) in the bulk-edit panel and click "Dopočítat rychlost" to have the speed for those waypoints computed backward from the selected path.
 - Rename waypoints by double-clicking their name.
 - Use a global speed for the whole flight, or set a different speed for each waypoint.
 - Use a global altitude for the whole flight, or set a different altitude for each waypoint.

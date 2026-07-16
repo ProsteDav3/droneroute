@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { toast } from "sonner";
 import { useMissionStore } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import {
@@ -9,8 +11,10 @@ import {
   fromDisplayHeight,
   speedRange,
 } from "@/lib/units";
+import { computeSpeedForDuration } from "@/lib/flightStats";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -28,8 +32,42 @@ import type {
 } from "@droneroute/shared";
 
 export function MissionConfig() {
-  const { config, setConfig } = useMissionStore();
+  const { config, setConfig, waypoints } = useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
+  const [targetDurationInput, setTargetDurationInput] = useState("");
+
+  const handleApplyTargetDuration = () => {
+    const targetTimeS = parseFloat(targetDurationInput);
+    if (!(targetTimeS > 0)) {
+      toast.warning("Zadejte platnou cílovou dobu letu v sekundách");
+      return;
+    }
+    // Solve for the global speed only — waypoints with their own speed
+    // override (useGlobalSpeed: false) keep their own fixed speed, since
+    // this control only changes config.autoFlightSpeed, not per-waypoint
+    // overrides. Warn up front so the user knows those waypoints won't be
+    // affected and the resulting duration may not exactly hit the target.
+    const hasOverriddenWaypoints = waypoints.some((wp) => !wp.useGlobalSpeed);
+    const speed = computeSpeedForDuration(waypoints, targetTimeS, {
+      forceUniformSpeed: false,
+    });
+    if (speed === null) {
+      toast.warning(
+        hasOverriddenWaypoints
+          ? "Tuto dobu letu nelze dosáhnout — mise obsahuje body s vlastní rychlostí, které globální rychlost letu neovlivní"
+          : "Tuto dobu letu nelze s aktuální trasou dosáhnout v rozsahu rychlosti 1-15 m/s",
+      );
+      return;
+    }
+    setConfig({ autoFlightSpeed: speed });
+    toast.success(
+      `Rychlost letu nastavena na ${toDisplaySpeed(speed, unitSystem)} ${speedLabel(unitSystem)}${
+        hasOverriddenWaypoints
+          ? " (body s vlastní rychlostí zůstávají beze změny)"
+          : ""
+      }`,
+    );
+  };
 
   const selectedDrone = DRONE_MODELS.find(
     (d) =>
@@ -149,6 +187,35 @@ export function MissionConfig() {
             max={1500}
             className="h-8 text-xs"
           />
+        </div>
+      </div>
+
+      <div>
+        <Label className="text-xs">Cílová doba letu (s)</Label>
+        <div className="flex gap-2">
+          <Input
+            type="number"
+            value={targetDurationInput}
+            onChange={(e) => setTargetDurationInput(e.target.value)}
+            min={1}
+            placeholder="např. 60"
+            className="h-8 text-xs"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 text-xs shrink-0"
+            onClick={handleApplyTargetDuration}
+            disabled={waypoints.length < 2}
+          >
+            Dopočítat rychlost
+          </Button>
+        </div>
+        <div className="text-[10px] text-muted-foreground mt-0.5">
+          Zadejte, jak dlouho má celý let trvat — rychlost letu (
+          {speedLabel(unitSystem)}) se dopočítá zpětně z aktuální trasy. Body
+          trasy s vlastní rychlostí (nastavenou individuálně) tím nejsou
+          ovlivněny.
         </div>
       </div>
 

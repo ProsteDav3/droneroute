@@ -8,12 +8,32 @@ import {
   uploadMissionToDjiCloud,
   uploadSegmentsToDjiCloud,
   PartialSegmentUploadError,
+  listBoundDevices,
+  listHmsMessages,
+  listWaylineJobs,
+  deleteWayline,
 } from "../services/djiCloud.js";
+import {
+  ensureTelemetryBridgeConnected,
+  getTelemetrySnapshot,
+  onTelemetryUpdate,
+} from "../services/mqttTelemetry.js";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
-import { strictLimiter } from "../middleware/rateLimit.js";
+import { globalLimiter, strictLimiter } from "../middleware/rateLimit.js";
 import { validateMissionGeometry } from "../services/missionValidation.js";
 
 export const djiCloudRoutes = Router();
+
+/** Shared "not configured" guard for every route below. */
+function requireConfigured(res: import("express").Response): boolean {
+  if (!isDjiCloudConfigured()) {
+    res
+      .status(503)
+      .json({ error: "DJI Cloud není na tomto serveru nakonfigurován" });
+    return false;
+  }
+  return true;
+}
 
 function buildMission(body: {
   name?: string;
@@ -141,5 +161,113 @@ djiCloudRoutes.post(
       }
       res.status(502).json({ error: "Nahrání segmentů do DJI Cloud selhalo" });
     }
+  },
+);
+
+// Devices bound to the workspace (aircraft/RCs) — read-only, so any signed-in
+// user can see fleet status without needing admin rights.
+djiCloudRoutes.get("/devices", authMiddleware, async (_req, res) => {
+  try {
+    if (!requireConfigured(res)) return;
+    const devices = await listBoundDevices();
+    res.json({ devices });
+  } catch (err) {
+    console.error("DJI Cloud device list error:", err);
+    res.status(502).json({ error: "Načtení zařízení z DJI Cloud selhalo" });
+  }
+});
+
+// Recent Health Management System messages (aircraft-reported warnings).
+djiCloudRoutes.get("/hms", authMiddleware, async (_req, res) => {
+  try {
+    if (!requireConfigured(res)) return;
+    const messages = await listHmsMessages();
+    res.json({ messages });
+  } catch (err) {
+    console.error("DJI Cloud HMS error:", err);
+    res.status(502).json({ error: "Načtení HMS zpráv z DJI Cloud selhalo" });
+  }
+});
+
+// Wayline job history/status. Note: this platform only supports remotely
+// *triggering* a flight via a DJI Dock (autonomous drone-in-a-box hardware)
+// — a handheld RC can't be commanded to take off — so this bridge exposes
+// job history/progress, not job creation.
+djiCloudRoutes.get("/jobs", authMiddleware, async (_req, res) => {
+  try {
+    if (!requireConfigured(res)) return;
+    const jobs = await listWaylineJobs();
+    res.json({ jobs });
+  } catch (err) {
+    console.error("DJI Cloud jobs list error:", err);
+    res.status(502).json({ error: "Načtení úloh z DJI Cloud selhalo" });
+  }
+});
+
+// Removes a wayline from the workspace's library (e.g. a timestamped
+// duplicate from a retried upload). Rate-limited like the upload routes —
+// it's an authenticated, workspace-mutating call.
+djiCloudRoutes.delete(
+  "/waylines/:id",
+  strictLimiter,
+  authMiddleware,
+  async (req: AuthRequest, res) => {
+    try {
+      if (!requireConfigured(res)) return;
+      const waylineId = req.params.id;
+      if (typeof waylineId !== "string" || !waylineId) {
+        res.status(400).json({ error: "Chybí ID wayline" });
+        return;
+      }
+      await deleteWayline(waylineId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("DJI Cloud wayline delete error:", err);
+      res.status(502).json({ error: "Smazání z DJI Cloud selhalo" });
+    }
+  },
+);
+
+// Snapshot of every device's last-known telemetry (position/battery/status).
+// Kicks off the MQTT bridge connection on first use rather than at server
+// boot, so an unconfigured instance never opens an outbound connection.
+djiCloudRoutes.get("/telemetry", authMiddleware, async (_req, res) => {
+  if (!requireConfigured(res)) return;
+  await ensureTelemetryBridgeConnected();
+  res.json({ devices: getTelemetrySnapshot() });
+});
+
+// Server-Sent Events stream of live telemetry updates, so the map can show
+// an aircraft moving in real time instead of only on manual refresh.
+djiCloudRoutes.get(
+  "/telemetry/stream",
+  globalLimiter,
+  authMiddleware,
+  async (_req: AuthRequest, res) => {
+    if (!requireConfigured(res)) return;
+    await ensureTelemetryBridgeConnected();
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    });
+
+    // Send the current snapshot immediately so the client doesn't wait for
+    // the next MQTT message to render anything.
+    for (const device of getTelemetrySnapshot()) {
+      res.write(`data: ${JSON.stringify(device)}\n\n`);
+    }
+
+    const unsubscribe = onTelemetryUpdate((record) => {
+      res.write(`data: ${JSON.stringify(record)}\n\n`);
+    });
+
+    const heartbeat = setInterval(() => res.write(":\n\n"), 30_000);
+
+    _req.on("close", () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
   },
 );

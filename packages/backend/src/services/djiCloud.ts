@@ -33,6 +33,8 @@ export function isDjiCloudConfigured(): boolean {
 interface DjiLoginData {
   access_token: string;
   workspace_id: string;
+  mqtt_username?: string;
+  mqtt_password?: string;
 }
 
 interface DjiApiResponse<T> {
@@ -41,9 +43,14 @@ interface DjiApiResponse<T> {
   data: T;
 }
 
-async function login(
-  cfg: DjiCloudConfig,
-): Promise<{ token: string; workspaceId: string }> {
+interface DjiSession {
+  token: string;
+  workspaceId: string;
+  mqttUsername?: string;
+  mqttPassword?: string;
+}
+
+async function login(cfg: DjiCloudConfig): Promise<DjiSession> {
   const res = await fetch(`${cfg.url}/manage/api/v1/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -62,7 +69,164 @@ async function login(
   if (body.code !== 0 || !body.data?.access_token) {
     throw new Error(`DJI Cloud login selhal: ${body.message}`);
   }
-  return { token: body.data.access_token, workspaceId: body.data.workspace_id };
+  return {
+    token: body.data.access_token,
+    workspaceId: body.data.workspace_id,
+    mqttUsername: body.data.mqtt_username,
+    mqttPassword: body.data.mqtt_password,
+  };
+}
+
+async function authedGet<T>(
+  cfg: DjiCloudConfig,
+  token: string,
+  path: string,
+): Promise<T> {
+  const res = await fetch(`${cfg.url}${path}`, {
+    headers: { "x-auth-token": token },
+  });
+  if (!res.ok) {
+    throw new Error(`DJI Cloud požadavek selhal (HTTP ${res.status})`);
+  }
+  const body = (await res.json()) as DjiApiResponse<T>;
+  if (body.code !== 0) {
+    throw new Error(`DJI Cloud požadavek selhal: ${body.message}`);
+  }
+  return body.data;
+}
+
+export interface DjiDeviceSummary {
+  device_sn: string;
+  nickname: string;
+  device_name: string;
+  device_model_key?: string;
+  bound_status: boolean;
+  login_time?: string;
+  bound_time?: string;
+  workspace_id?: string;
+  domain?: number;
+  status?: boolean;
+}
+
+/**
+ * Lists devices (aircraft + RCs) bound to the configured workspace, per the
+ * platform's `/manage/api/v1/devices/{workspace_id}/devices/bound` endpoint
+ * (paginated; a workspace realistically has a handful of devices, so the
+ * first page is fetched with a generous size rather than implementing full
+ * pagination here).
+ */
+export async function listBoundDevices(): Promise<DjiDeviceSummary[]> {
+  const cfg = readConfig();
+  if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
+  const { token, workspaceId } = await login(cfg);
+  const data = await authedGet<{ list: DjiDeviceSummary[] }>(
+    cfg,
+    token,
+    `/manage/api/v1/devices/${workspaceId}/devices/bound?page=1&page_size=50`,
+  );
+  return data.list;
+}
+
+export interface DjiHmsMessage {
+  device_sn: string;
+  key: string;
+  level: number;
+  module: number;
+  create_time: number;
+  args?: Record<string, string>;
+}
+
+/**
+ * Fetches recent Health Management System (HMS) messages for the
+ * workspace's devices — aircraft-reported warnings/errors (e.g. gimbal
+ * fault, low battery cell imbalance), surfaced so a pilot can see them
+ * before a flight instead of only in DJI Pilot 2's own UI.
+ */
+export async function listHmsMessages(): Promise<DjiHmsMessage[]> {
+  const cfg = readConfig();
+  if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
+  const { token, workspaceId } = await login(cfg);
+  const data = await authedGet<{ list: DjiHmsMessage[] }>(
+    cfg,
+    token,
+    `/manage/api/v1/devices/${workspaceId}/devices/hms?page=1&page_size=50`,
+  );
+  return data.list;
+}
+
+export interface DjiWaylineJob {
+  job_id: string;
+  job_name: string;
+  file_id: string;
+  dock_sn?: string;
+  status: string;
+  progress?: { percent?: number };
+  create_time: number;
+}
+
+/**
+ * Lists wayline execution jobs (flight history/progress) for the workspace
+ * — `/wayline/api/v1/workspaces/{workspace_id}/jobs`. Scheduling a *new*
+ * job this way requires a DJI Dock (autonomous drone-in-a-box hardware);
+ * a handheld RC + aircraft combo can't be remotely triggered to take off,
+ * so this bridge only exposes job *history/status*, not creation — see the
+ * changelog for why "remote flight task dispatch" is narrower in scope
+ * than originally imagined.
+ */
+export async function listWaylineJobs(): Promise<DjiWaylineJob[]> {
+  const cfg = readConfig();
+  if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
+  const { token, workspaceId } = await login(cfg);
+  const data = await authedGet<{ list: DjiWaylineJob[] }>(
+    cfg,
+    token,
+    `/wayline/api/v1/workspaces/${workspaceId}/jobs?page=1&page_size=50&order_by=create_time%20desc`,
+  );
+  return data.list;
+}
+
+/**
+ * Returns the MQTT credentials issued by the platform's own login response
+ * (the same account the KMZ-upload bridge already authenticates as) so the
+ * live-telemetry bridge (see `mqttTelemetry.ts`) can subscribe without
+ * needing a separate, statically-configured MQTT user.
+ */
+export async function getMqttSessionCredentials(): Promise<{
+  url: string;
+  username: string;
+  password: string;
+} | null> {
+  const cfg = readConfig();
+  if (!cfg) return null;
+  const session = await login(cfg);
+  if (!session.mqttUsername || !session.mqttPassword) return null;
+  return {
+    url: cfg.url,
+    username: session.mqttUsername,
+    password: session.mqttPassword,
+  };
+}
+
+/**
+ * Deletes a wayline file from the workspace's library (e.g. to clean up a
+ * timestamped duplicate created by a retried upload, or a mission that's
+ * no longer needed) — `/wayline/api/v1/workspaces/{workspace_id}/waylines/{id}`.
+ */
+export async function deleteWayline(waylineId: string): Promise<void> {
+  const cfg = readConfig();
+  if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
+  const { token, workspaceId } = await login(cfg);
+  const res = await fetch(
+    `${cfg.url}/wayline/api/v1/workspaces/${workspaceId}/waylines/${encodeURIComponent(waylineId)}`,
+    { method: "DELETE", headers: { "x-auth-token": token } },
+  );
+  if (!res.ok) {
+    throw new Error(`DJI Cloud smazání selhalo (HTTP ${res.status})`);
+  }
+  const body = (await res.json()) as DjiApiResponse<unknown>;
+  if (body.code !== 0) {
+    throw new Error(`DJI Cloud smazání selhalo: ${body.message}`);
+  }
 }
 
 async function uploadFile(

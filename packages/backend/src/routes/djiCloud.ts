@@ -65,11 +65,10 @@ djiCloudRoutes.post(
 
       res.json({ waylineName });
     } catch (err) {
+      // Full detail stays server-side only -- the upstream platform's raw
+      // response text must never reach the client (AGENTS.md policy).
       console.error("DJI Cloud upload error:", err);
-      res.status(502).json({
-        error:
-          err instanceof Error ? err.message : "Nahrání do DJI Cloud selhalo",
-      });
+      res.status(502).json({ error: "Nahrání do DJI Cloud selhalo" });
     }
   },
 );

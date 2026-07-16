@@ -169,7 +169,7 @@ describe("POST /api/dji-cloud/upload", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("returns 502 with the platform's message when both attempts fail", async () => {
+  it("returns 502 with a generic message (upstream detail stays server-side) when both attempts fail", async () => {
     const rejected = () =>
       jsonResponse({ code: -1, message: "Storage unavailable.", data: "" });
     const fetchMock = vi
@@ -185,6 +185,8 @@ describe("POST /api/dji-cloud/upload", () => {
       .send(validBody);
 
     expect(res.status).toBe(502);
-    expect(res.body.error).toContain("Storage unavailable.");
+    expect(res.body.error).toBe("Nahrání do DJI Cloud selhalo");
+    // The upstream platform's raw message must not leak to the client.
+    expect(JSON.stringify(res.body)).not.toContain("Storage unavailable.");
   });
 });

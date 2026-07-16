@@ -55,6 +55,8 @@ import {
   isMultispectralPayload,
   NDVI_RECOMMENDED_FRONT_OVERLAP_PCT,
   NDVI_RECOMMENDED_SIDE_OVERLAP_PCT,
+  VOLUMETRIC_RECOMMENDED_FRONT_OVERLAP_PCT,
+  VOLUMETRIC_RECOMMENDED_SIDE_OVERLAP_PCT,
   THERMAL_CAMERA_FOV,
   WIDE_CAMERA_FOV,
 } from "@/lib/solarCamera";
@@ -211,6 +213,11 @@ export function TemplateConfigPanel({
   // 75%/65% are common photogrammetry defaults (front/side overlap).
   const [gridFrontOverlapPct, setGridFrontOverlapPct] = useState(75);
   const [gridSideOverlapPct, setGridSideOverlapPct] = useState(65);
+
+  // Volumetric-survey quick check — ephemeral, purely a planning aid (this
+  // app doesn't compute volume itself). Off by default since most Grid
+  // surveys are ordinary orthomosaic mapping, not stockpile volumetrics.
+  const [gridVolumetricMode, setGridVolumetricMode] = useState(false);
 
   // Facade thermal-overlap calculator inputs — ephemeral (not part of
   // FacadeParams itself), used only to recommend numRows/numColumns.
@@ -939,6 +946,72 @@ export function TemplateConfigPanel({
               </ul>
             </div>
           )}
+          <div className="col-span-2 flex items-center gap-1.5">
+            <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={gridVolumetricMode}
+                onChange={(e) => setGridVolumetricMode(e.target.checked)}
+                className="rounded"
+              />
+              Výpočet objemu (hromady, skládky)
+            </label>
+          </div>
+          {gridVolumetricMode &&
+            (() => {
+              const sufficient =
+                gridFrontOverlapPct >=
+                  VOLUMETRIC_RECOMMENDED_FRONT_OVERLAP_PCT &&
+                gridSideOverlapPct >= VOLUMETRIC_RECOMMENDED_SIDE_OVERLAP_PCT;
+              return (
+                <div className="col-span-2 flex flex-col gap-1 text-[10px] text-muted-foreground bg-muted/20 rounded-md px-2 py-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-foreground">
+                      Kontrola pokrytí pro volumetrii
+                    </span>
+                    {!sufficient && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-5 text-[10px] px-2 shrink-0"
+                        onClick={() => {
+                          setGridFrontOverlapPct(
+                            VOLUMETRIC_RECOMMENDED_FRONT_OVERLAP_PCT,
+                          );
+                          setGridSideOverlapPct(
+                            VOLUMETRIC_RECOMMENDED_SIDE_OVERLAP_PCT,
+                          );
+                        }}
+                      >
+                        Použít doporučený překryv
+                      </Button>
+                    )}
+                  </div>
+                  {sufficient ? (
+                    <div>
+                      Aktuální překryv ({gridFrontOverlapPct}% podélný /{" "}
+                      {gridSideOverlapPct}% boční) je dostatečný pro kvalitní
+                      výpočet objemu — samotný výpočet ale provádí až
+                      fotogrammetrický software (Pix4D, Metashape apod.).
+                    </div>
+                  ) : (
+                    <div className="text-amber-500">
+                      Aktuální překryv ({gridFrontOverlapPct}% podélný /{" "}
+                      {gridSideOverlapPct}% boční) nemusí stačit na kvalitní
+                      výpočet objemu — pro volumetrii se doporučuje alespoň{" "}
+                      {VOLUMETRIC_RECOMMENDED_FRONT_OVERLAP_PCT}% podélný /{" "}
+                      {VOLUMETRIC_RECOMMENDED_SIDE_OVERLAP_PCT}% boční překryv.
+                    </div>
+                  )}
+                  <div>
+                    Pro nejlepší přesnost zvažte i křížový nálet (druhý grid
+                    otočený o 90°) — samotný výpočet objemu ale provádí externí
+                    fotogrammetrický software, tady jde jen o rychlou kontrolu
+                    pokrytí před letem.
+                  </div>
+                </div>
+              );
+            })()}
           <div>
             <CaptureModeToggle
               value={gridParams.captureMode === "video" ? "video" : "photo"}

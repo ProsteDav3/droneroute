@@ -23,6 +23,7 @@ import {
   formatDistance,
   formatHeight,
   speedRange,
+  headingModeLabel,
 } from "@/lib/units";
 import type { HeadingMode, TurnMode } from "@droneroute/shared";
 
@@ -219,7 +220,7 @@ export function WaypointEditorInline({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="global">
-              Použít globální ({config.globalHeadingMode})
+              Použít globální ({headingModeLabel(config.globalHeadingMode)})
             </SelectItem>
             <SelectItem value="followWayline">Podle trasy</SelectItem>
             <SelectItem value="manually">Ruční</SelectItem>
@@ -228,6 +229,13 @@ export function WaypointEditorInline({
             <SelectItem value="towardPOI">Směrem k POI</SelectItem>
           </SelectContent>
         </Select>
+        {!wp.useGlobalHeadingParam && (
+          <div className="text-[10px] text-muted-foreground mt-0.5">
+            Přebíjí výchozí nastavení mise (
+            {headingModeLabel(config.globalHeadingMode)}) jen pro tento bod
+            trasy.
+          </div>
+        )}
       </div>
 
       {!wp.useGlobalHeadingParam &&

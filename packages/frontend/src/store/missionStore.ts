@@ -84,9 +84,11 @@ interface MissionState {
   /** Set to reopen a template's config panel for editing (see BulkActionToolbar's "Edit template"). */
   editingTemplateGroupId: string | null;
   setEditingTemplateGroupId: (id: string | null) => void;
-  currentPage: "editor" | "routes" | "shared" | "admin";
+  currentPage: "editor" | "routes" | "shared" | "admin" | "embed";
   shareToken: string | null;
-  setCurrentPage: (page: "editor" | "routes" | "shared" | "admin") => void;
+  setCurrentPage: (
+    page: "editor" | "routes" | "shared" | "admin" | "embed",
+  ) => void;
   setShareToken: (token: string | null) => void;
 
   // Waypoint actions

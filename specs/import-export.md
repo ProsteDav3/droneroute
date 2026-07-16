@@ -23,6 +23,8 @@ Bring in existing missions or export your planned flight as a file ready for DJI
   battery limit.
 - **Upload to DJI Cloud**: when the server is configured with a DJI Cloud API platform (the self-hosted stack DJI Pilot 2 connects to via its "Open Platforms" cloud service), a "Nahrát do DJI Cloud" button pushes the mission straight into that platform's wayline library — it then appears in Pilot 2's **Cloud** tab on the remote controller, with no manual file transfer at all. Requires being signed in. If a wayline of the same name already exists, the new upload is stored under a timestamped name instead of failing.
 - **Upload segments to DJI Cloud**: the segment equivalent of the above — "Nahrát segmenty do DJI Cloud" splits the route into consecutive one-leg missions (WP1→WP2, WP2→WP3, ...) and uploads each as its own wayline into the platform, so every leg of a long recurring revisit schedule shows up individually in Pilot 2's Cloud tab. Same sign-in requirement and duplicate-name handling as the whole-mission upload.
+- **Live fleet status**: when DJI Cloud is configured, a "DJI Cloud — zařízení" panel in the sidebar lists devices bound to the workspace (online/offline) and recent Health Management System (HMS) warnings reported by the aircraft — so a pilot can catch a gimbal fault or similar before a flight without opening Pilot 2's own menus.
+- **Live telemetry on the map**: while a bound aircraft is online and reporting position, its live location appears on the map as a moving marker (rotated to match its heading), updated in real time over the same DJI Cloud connection — no manual refresh needed.
 - **Import** an existing KMZ file to load its waypoints, actions, POIs, and settings into the editor.
 - **PDF report**: download a client-facing summary of the planned mission — drone/camera used, waypoint count, flight distance and estimated duration, altitude range, photo/video action counts, and a table of every waypoint's coordinates, altitude, and actions.
 - **Export for Pix4D/Metashape**: download a CSV listing the planned GPS position of every photo the mission will capture, in flight order — usable as an external image-geolocation import in Pix4D or Agisoft Metashape. The altitude column reflects whatever height reference the mission is configured with (above ground level or above the start point — the app doesn't expose a true absolute/geodetic height mode in practice), not necessarily true altitude, so double-check this matches what your photogrammetry workflow expects before relying on it for georeferencing.
@@ -64,9 +66,10 @@ Bring in existing missions or export your planned flight as a file ready for DJI
 2. Click "Stáhnout PDF report".
 3. A PDF downloads with the mission name, drone/camera, waypoint count,
    distance, estimated flight time, altitude range, photo/video action
-   counts, and a table listing every waypoint (very dense missions show the
-   first 200 rows with a note about how many more exist, to keep the report
-   a manageable length).
+   counts, a snapshot of the current map view (whatever the map was showing
+   at the moment you clicked the button), and a table listing every waypoint
+   (very dense missions show the first 200 rows with a note about how many
+   more exist, to keep the report a manageable length).
 
 ### Export for Pix4D/Metashape
 

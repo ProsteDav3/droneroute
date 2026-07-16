@@ -8,16 +8,56 @@ import {
 } from "@/lib/flightStats";
 import { describeDroneAndPayload } from "@/lib/droneModels";
 import { formatDistance, formatHeight } from "@/lib/units";
+import { addMapSnapshotToPdf, type MapSnapshot } from "@/lib/pdfSnapshot";
 
 export interface MissionReportInput {
   missionName: string;
   config: MissionConfig;
   waypoints: Waypoint[];
   unitSystem: UnitSystem;
+  /** Current map view, captured via lib/pdfSnapshot.ts — omitted entirely if unavailable (e.g. the map hasn't finished loading yet). */
+  mapSnapshot?: MapSnapshot;
 }
 
 /** Cap the per-waypoint table to keep the report a reasonable length for very dense surveys (hundreds/thousands of points). */
 const MAX_WAYPOINT_ROWS = 200;
+
+/**
+ * Draws the SkyRoute mark (the same drone icon as `public/skyroute-icon.svg`)
+ * directly with jsPDF's vector primitives, so the report is recognizably a
+ * SkyRoute document without needing to rasterize/embed an image asset —
+ * `x`/`y` is the icon's center, `size` its width/height in mm.
+ */
+function drawSkyRouteLogo(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  size: number,
+): void {
+  const s = size / 32; // scale factor from the SVG's 32x32 viewBox
+  doc.setDrawColor(0, 194, 255);
+  doc.setFillColor(0, 194, 255);
+
+  // Body (center square)
+  doc.roundedRect(x - 2.5 * s, y - 2.5 * s, 5 * s, 5 * s, 1 * s, 1 * s, "F");
+
+  // Arms (X pattern) + rotor rings, one corner at a time
+  const corners: [number, number][] = [
+    [-1, -1],
+    [1, -1],
+    [-1, 1],
+    [1, 1],
+  ];
+  doc.setLineWidth(0.5 * s);
+  for (const [dx, dy] of corners) {
+    const armEndX = x + dx * 4.5 * s;
+    const armEndY = y + dy * 4.5 * s;
+    const bodyX = x + dx * 2.5 * s;
+    const bodyY = y + dy * 2.5 * s;
+    doc.line(bodyX, bodyY, armEndX, armEndY);
+    doc.circle(armEndX, armEndY, 2.2 * s, "S");
+  }
+}
 
 /** `jspdf-autotable` augments `jsPDF` with `lastAutoTable` at runtime, with no official type for it. */
 function getLastAutoTableY(doc: jsPDF): number {
@@ -46,6 +86,7 @@ export function generateMissionReportPdf({
   config,
   waypoints,
   unitSystem,
+  mapSnapshot,
 }: MissionReportInput): jsPDF {
   const doc = new jsPDF();
   const { droneLabel, payloadLabel } = describeDroneAndPayload(config);
@@ -57,6 +98,14 @@ export function generateMissionReportPdf({
   const altitudes = waypoints.map((wp) => wp.height);
   const minAltitude = altitudes.length ? Math.min(...altitudes) : 0;
   const maxAltitude = altitudes.length ? Math.max(...altitudes) : 0;
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const logoX = pageWidth - 20;
+  drawSkyRouteLogo(doc, logoX, 13, 8);
+  doc.setFontSize(9);
+  doc.setTextColor(0, 148, 196);
+  doc.text("SkyRoute", logoX, 21, { align: "center" });
+  doc.setTextColor(0);
 
   doc.setFontSize(18);
   doc.text("Letový report", 14, 18);
@@ -86,7 +135,19 @@ export function generateMissionReportPdf({
     columnStyles: { 0: { fontStyle: "bold", cellWidth: 50 } },
   });
 
-  const afterOverviewY = getLastAutoTableY(doc) + 10;
+  let afterOverviewY = getLastAutoTableY(doc) + 10;
+
+  if (mapSnapshot) {
+    afterOverviewY =
+      addMapSnapshotToPdf(
+        doc,
+        mapSnapshot,
+        14,
+        afterOverviewY,
+        pageWidth - 28,
+        90,
+      ) + 10;
+  }
 
   const rows = waypoints
     .slice(0, MAX_WAYPOINT_ROWS)

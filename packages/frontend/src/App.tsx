@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import type mapboxgl from "mapbox-gl";
 import { toast } from "sonner";
 import {
   Download,
@@ -45,8 +46,10 @@ import { WeatherForecast } from "@/components/mission/WeatherForecast";
 import { useTemplatePresetsStore } from "@/store/templatePresetsStore";
 import { RoutesPage } from "@/components/routes/RoutesPage";
 import { SharedMissionPage } from "@/components/routes/SharedMissionPage";
+import { EmbedMissionPage } from "@/components/routes/EmbedMissionPage";
 import { AdminPage } from "@/pages/AdminPage";
 import { ElevationGraph } from "@/components/mission/ElevationGraph";
+import { DjiCloudOpsPanel } from "@/components/mission/DjiCloudOpsPanel";
 import { WarningsPanel } from "@/components/mission/WarningsPanel";
 import type { Warning } from "@/components/mission/WarningsPanel";
 import { AuthModal } from "@/components/auth/AuthModal";
@@ -123,6 +126,7 @@ export default function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
 
   const {
     token,
@@ -158,12 +162,16 @@ export default function App() {
     }
   }, [token]);
 
-  // Detect /shared/:token or /admin URL on mount
+  // Detect /shared/:token, /embed/:token, or /admin URL on mount
   useEffect(() => {
     const match = window.location.pathname.match(/^\/shared\/([^/]+)$/);
+    const embedMatch = window.location.pathname.match(/^\/embed\/([^/]+)$/);
     if (match) {
       setShareToken(match[1]);
       setCurrentPage("shared");
+    } else if (embedMatch) {
+      setShareToken(embedMatch[1]);
+      setCurrentPage("embed");
     } else if (window.location.pathname === "/admin") {
       const token = localStorage.getItem("droneroute_token");
       const adminFlag = localStorage.getItem("droneroute_is_admin") === "true";
@@ -460,11 +468,16 @@ export default function App() {
       // dependencies the app otherwise never needs, so it's excluded from
       // the main bundle and only fetched when a report is actually requested.
       const { generateMissionReportPdf } = await import("@/lib/pdfReport");
+      const { captureMapSnapshot } = await import("@/lib/pdfSnapshot");
+      const mapSnapshot = mapRef.current
+        ? captureMapSnapshot(mapRef.current)
+        : undefined;
       const doc = generateMissionReportPdf({
         missionName,
         config,
         waypoints,
         unitSystem,
+        mapSnapshot,
       });
       doc.save(`${missionName.replace(/[^a-zA-Z0-9_-]/g, "_")}-report.pdf`);
     } catch (err: any) {
@@ -731,10 +744,15 @@ export default function App() {
   // of a share link); everything else requires signing in. Wait for
   // hasRestored so a returning, already-logged-in user doesn't flash the
   // login screen before the stored token is read back from localStorage.
-  if (hasRestored && !token && currentPage !== "shared") {
+  if (
+    hasRestored &&
+    !token &&
+    currentPage !== "shared" &&
+    currentPage !== "embed"
+  ) {
     return <LoginGate />;
   }
-  if (!hasRestored && currentPage !== "shared") {
+  if (!hasRestored && currentPage !== "shared" && currentPage !== "embed") {
     return null;
   }
 
@@ -764,6 +782,12 @@ export default function App() {
         {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
       </>
     );
+  }
+
+  // Show the embeddable read-only map+route view (no editor chrome) — meant
+  // to be loaded inside an <iframe> on a third-party page.
+  if (currentPage === "embed" && shareToken) {
+    return <EmbedMissionPage shareToken={shareToken} />;
   }
 
   return (
@@ -1160,6 +1184,9 @@ export default function App() {
           </div>
         </div>
 
+        {/* DJI Cloud fleet status (devices + HMS warnings) */}
+        <DjiCloudOpsPanel />
+
         {/* Elevation graph */}
         <ElevationGraph />
 
@@ -1312,7 +1339,7 @@ export default function App() {
         </div>
       </div>
       <div className="flex-1 relative">
-        <MapView />
+        <MapView onMapLoad={(map) => (mapRef.current = map)} />
         <BulkActionToolbar />
         <WarningsPanel warnings={warnings} />
       </div>

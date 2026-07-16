@@ -9,11 +9,15 @@ import { kmzRoutes } from "./routes/kmz.js";
 import { authRoutes } from "./routes/auth.js";
 import { sharedRoutes } from "./routes/shared.js";
 import { airspaceRoutes } from "./routes/airspace.js";
+import { notamRoutes } from "./routes/notam.js";
 import { adminRoutes } from "./routes/admin.js";
 import { preferencesRoutes } from "./routes/preferences.js";
 import { templatePresetRoutes } from "./routes/templatePresets.js";
 import { weatherRoutes } from "./routes/weather.js";
 import { djiCloudRoutes } from "./routes/djiCloud.js";
+import { flightLogRoutes } from "./routes/flightLogs.js";
+import { riskAssessmentRoutes } from "./routes/riskAssessments.js";
+import { permitRoutes } from "./routes/permits.js";
 import { isDjiCloudConfigured } from "./services/djiCloud.js";
 import { globalLimiter } from "./middleware/rateLimit.js";
 import { resolveDefaultMapView } from "./lib/config.js";
@@ -70,7 +74,11 @@ app.use("/api/preferences", preferencesRoutes);
 app.use("/api/template-presets", templatePresetRoutes);
 app.use("/api/weather", weatherRoutes);
 app.use("/api/airspace", airspaceRoutes);
+app.use("/api/notam", notamRoutes);
 app.use("/api/dji-cloud", djiCloudRoutes);
+app.use("/api/flight-logs", flightLogRoutes);
+app.use("/api/risk-assessments", riskAssessmentRoutes);
+app.use("/api/permits", permitRoutes);
 app.use("/api", sharedRoutes);
 
 // Health check

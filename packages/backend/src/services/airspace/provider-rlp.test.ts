@@ -8,7 +8,12 @@ const INDEX_HTML = `<html><body>
 <a href="/data/uas/2026_07_09/actual/GRID_ATZ.json">GRID_ATZ</a>
 </body></html>`;
 
-function gridCtrFeature(
+const INDEX_HTML_NO_ATZ = `<html><body>
+<a href="/data/uas/2026_07_09/actual/LKR311A.json">LKR311A</a>
+<a href="/data/uas/2026_07_09/actual/GRID_CTR.json">GRID_CTR</a>
+</body></html>`;
+
+function gridFeature(
   ident: string,
   verticalLimit: string,
   coords: [number, number][],
@@ -33,6 +38,16 @@ function jsonResponse(body: unknown) {
 function textResponse(body: string) {
   return { ok: true, text: async () => body };
 }
+
+const IN_VIEW_COORDS: [number, number][] = [
+  [15.0, 49.8],
+  [15.02, 49.8],
+  [15.02, 49.82],
+  [15.0, 49.82],
+  [15.0, 49.8],
+];
+
+const CZ_VIEWPORT = { south: 49, west: 14, north: 50.5, east: 16 };
 
 describe("provider-rlp", () => {
   describe("parseVerticalLimitUpper", () => {
@@ -72,24 +87,23 @@ describe("provider-rlp", () => {
       expect(fetch).not.toHaveBeenCalled();
     });
 
-    it("discovers the current data URL, downloads it, and maps features to AirspaceZone", async () => {
-      const feature = gridCtrFeature("110286", "GND - 120 m AGL", [
-        [15.0, 49.8],
-        [15.02, 49.8],
-        [15.02, 49.82],
-        [15.0, 49.82],
-        [15.0, 49.8],
-      ]);
+    it("discovers both GRID_CTR and GRID_ATZ, downloads them, and maps features to AirspaceZone", async () => {
+      const ctrFeature = gridFeature(
+        "110286",
+        "GND - 120 m AGL",
+        IN_VIEW_COORDS,
+      );
+      const atzFeature = gridFeature(
+        "ATZ-1",
+        "GND - 100 m AGL",
+        IN_VIEW_COORDS,
+      );
       (fetch as any)
         .mockResolvedValueOnce(textResponse(INDEX_HTML))
-        .mockResolvedValueOnce(jsonResponse({ features: [feature] }));
+        .mockResolvedValueOnce(jsonResponse({ features: [ctrFeature] }))
+        .mockResolvedValueOnce(jsonResponse({ features: [atzFeature] }));
 
-      const zones = await rlpProvider.fetchZones({
-        south: 49,
-        west: 14,
-        north: 50.5,
-        east: 16,
-      });
+      const zones = await rlpProvider.fetchZones(CZ_VIEWPORT);
 
       expect(fetch).toHaveBeenNthCalledWith(
         1,
@@ -99,34 +113,70 @@ describe("provider-rlp", () => {
         2,
         "https://aim.rlp.cz/data/uas/2026_07_09/actual/GRID_CTR.json",
       );
-      expect(zones).toHaveLength(1);
-      expect(zones[0]).toMatchObject({
-        id: "rlp-110286",
-        severity: "restricted",
-        altitudeLower: 0,
-        altitudeUpper: 120,
-        source: "rlp",
-        category: "controlled-airspace",
-      });
+      expect(fetch).toHaveBeenNthCalledWith(
+        3,
+        "https://aim.rlp.cz/data/uas/2026_07_09/actual/GRID_ATZ.json",
+      );
+      expect(zones).toHaveLength(2);
+      expect(zones).toContainEqual(
+        expect.objectContaining({
+          id: "rlp-grid_ctr-110286",
+          severity: "restricted",
+          altitudeUpper: 120,
+          source: "rlp",
+          category: "controlled-airspace",
+        }),
+      );
+      expect(zones).toContainEqual(
+        expect.objectContaining({
+          id: "rlp-grid_atz-ATZ-1",
+          severity: "restricted",
+          altitudeUpper: 100,
+          source: "rlp",
+          category: "uncontrolled-airspace-atz",
+        }),
+      );
+    });
+
+    it("still returns GRID_CTR zones when GRID_ATZ is missing from the index page", async () => {
+      const feature = gridFeature("110286", "GND - 120 m AGL", IN_VIEW_COORDS);
+      (fetch as any)
+        .mockResolvedValueOnce(textResponse(INDEX_HTML_NO_ATZ))
+        .mockResolvedValueOnce(jsonResponse({ features: [feature] }));
+
+      const zones = await rlpProvider.fetchZones(CZ_VIEWPORT);
+
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(zones.map((z) => z.id)).toEqual(["rlp-grid_ctr-110286"]);
+    });
+
+    it("still returns GRID_ATZ zones when the GRID_CTR download itself fails", async () => {
+      const atzFeature = gridFeature(
+        "ATZ-1",
+        "GND - 100 m AGL",
+        IN_VIEW_COORDS,
+      );
+      (fetch as any)
+        .mockResolvedValueOnce(textResponse(INDEX_HTML))
+        .mockResolvedValueOnce({ ok: false, status: 500 })
+        .mockResolvedValueOnce(jsonResponse({ features: [atzFeature] }));
+
+      const zones = await rlpProvider.fetchZones(CZ_VIEWPORT);
+
+      expect(zones.map((z) => z.id)).toEqual(["rlp-grid_atz-ATZ-1"]);
     });
 
     it("filters out zones that don't intersect the requested viewport", async () => {
-      const farAway = gridCtrFeature("999999", "GND - 100 m AGL", [
+      const farAway = gridFeature("999999", "GND - 100 m AGL", [
         [12.1, 48.6],
         [12.11, 48.6],
         [12.11, 48.61],
         [12.1, 48.61],
         [12.1, 48.6],
       ]);
-      const inView = gridCtrFeature("110286", "GND - 120 m AGL", [
-        [15.0, 49.8],
-        [15.02, 49.8],
-        [15.02, 49.82],
-        [15.0, 49.82],
-        [15.0, 49.8],
-      ]);
+      const inView = gridFeature("110286", "GND - 120 m AGL", IN_VIEW_COORDS);
       (fetch as any)
-        .mockResolvedValueOnce(textResponse(INDEX_HTML))
+        .mockResolvedValueOnce(textResponse(INDEX_HTML_NO_ATZ))
         .mockResolvedValueOnce(jsonResponse({ features: [farAway, inView] }));
 
       const zones = await rlpProvider.fetchZones({
@@ -136,17 +186,11 @@ describe("provider-rlp", () => {
         east: 15.1,
       });
 
-      expect(zones.map((z) => z.id)).toEqual(["rlp-110286"]);
+      expect(zones.map((z) => z.id)).toEqual(["rlp-grid_ctr-110286"]);
     });
 
     it("skips features with malformed geometry instead of letting them poison every future call", async () => {
-      const valid = gridCtrFeature("110286", "GND - 120 m AGL", [
-        [15.0, 49.8],
-        [15.02, 49.8],
-        [15.02, 49.82],
-        [15.0, 49.82],
-        [15.0, 49.8],
-      ]);
+      const valid = gridFeature("110286", "GND - 120 m AGL", IN_VIEW_COORDS);
       const nullGeometry = {
         type: "Feature" as const,
         geometry: null,
@@ -163,55 +207,41 @@ describe("provider-rlp", () => {
         properties: { ident: "bad-3", vertical_limit: "GND - 100 m AGL" },
       };
       (fetch as any)
-        .mockResolvedValueOnce(textResponse(INDEX_HTML))
+        .mockResolvedValueOnce(textResponse(INDEX_HTML_NO_ATZ))
         .mockResolvedValueOnce(
           jsonResponse({
             features: [valid, nullGeometry, emptyCoordinates, wrongType],
           }),
         );
 
-      const bounds = { south: 49, west: 14, north: 50.5, east: 16 };
-
       // First call: must not throw despite the malformed features being cached.
-      const first = await rlpProvider.fetchZones(bounds);
-      expect(first.map((z) => z.id)).toEqual(["rlp-110286"]);
+      const first = await rlpProvider.fetchZones(CZ_VIEWPORT);
+      expect(first.map((z) => z.id)).toEqual(["rlp-grid_ctr-110286"]);
 
       // Second call (served from cache): must also not throw.
-      const second = await rlpProvider.fetchZones(bounds);
-      expect(second.map((z) => z.id)).toEqual(["rlp-110286"]);
+      const second = await rlpProvider.fetchZones(CZ_VIEWPORT);
+      expect(second.map((z) => z.id)).toEqual(["rlp-grid_ctr-110286"]);
     });
 
     it("caches the downloaded dataset instead of re-fetching on every call", async () => {
-      const feature = gridCtrFeature("110286", "GND - 120 m AGL", [
-        [15.0, 49.8],
-        [15.02, 49.8],
-        [15.02, 49.82],
-        [15.0, 49.82],
-        [15.0, 49.8],
-      ]);
+      const feature = gridFeature("110286", "GND - 120 m AGL", IN_VIEW_COORDS);
       (fetch as any)
-        .mockResolvedValueOnce(textResponse(INDEX_HTML))
+        .mockResolvedValueOnce(textResponse(INDEX_HTML_NO_ATZ))
         .mockResolvedValueOnce(jsonResponse({ features: [feature] }));
 
-      const bounds = { south: 49, west: 14, north: 50.5, east: 16 };
-      await rlpProvider.fetchZones(bounds);
-      await rlpProvider.fetchZones(bounds);
+      await rlpProvider.fetchZones(CZ_VIEWPORT);
+      await rlpProvider.fetchZones(CZ_VIEWPORT);
 
-      // Index + data file fetched once each, not once per call.
+      // Index + GRID_CTR data fetched once each, not once per call.
       expect(fetch).toHaveBeenCalledTimes(2);
     });
 
-    it("returns an empty list (not a thrown error) when the index page has no GRID_CTR link", async () => {
+    it("returns an empty list (not a thrown error) when the index page has no grid dataset links", async () => {
       (fetch as any).mockResolvedValueOnce(
         textResponse("<html><body>no links here</body></html>"),
       );
 
-      const zones = await rlpProvider.fetchZones({
-        south: 49,
-        west: 14,
-        north: 50.5,
-        east: 16,
-      });
+      const zones = await rlpProvider.fetchZones(CZ_VIEWPORT);
 
       expect(zones).toEqual([]);
     });

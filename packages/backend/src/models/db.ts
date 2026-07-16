@@ -170,6 +170,61 @@ export function initDb(): void {
     );
   `);
 
+  // Migration: create flight_logs table — simple record-keeping of actual
+  // flights against a saved mission (date, duration, free-text notes). Not
+  // a full EU-compliant logbook with every regulatory field; a deliberately
+  // modest first cut.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS flight_logs (
+      id TEXT PRIMARY KEY,
+      mission_id TEXT,
+      user_id TEXT NOT NULL,
+      flown_at TEXT NOT NULL,
+      duration_minutes REAL NOT NULL,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (mission_id) REFERENCES missions(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_flight_logs_user_id ON flight_logs(user_id)`,
+  );
+
+  // Migration: create mission_risk_assessments table — a lightweight,
+  // simplified SORA-style questionnaire result per mission (one per
+  // mission: ground/air risk class + free-form mitigations). This is a
+  // simplified planning aid, not an authoritative SORA submission.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS mission_risk_assessments (
+      mission_id TEXT PRIMARY KEY,
+      ground_risk_class TEXT NOT NULL,
+      air_risk_class TEXT NOT NULL,
+      mitigations TEXT NOT NULL DEFAULT '[]',
+      assessed_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (mission_id) REFERENCES missions(id)
+    );
+  `);
+
+  // Migration: create mission_permits table — tracking authorization /
+  // coordination documents per mission, with an expiry date so the UI can
+  // surface an expired/expiring-soon warning.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS mission_permits (
+      id TEXT PRIMARY KEY,
+      mission_id TEXT NOT NULL,
+      description TEXT NOT NULL,
+      reference_or_url TEXT,
+      expiry_date TEXT,
+      issued_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (mission_id) REFERENCES missions(id)
+    );
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_mission_permits_mission_id ON mission_permits(mission_id)`,
+  );
+
   // Ensure ADMIN_EMAIL user has admin privileges (cloud mode)
   const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
   const adminEmail = process.env.ADMIN_EMAIL || "";

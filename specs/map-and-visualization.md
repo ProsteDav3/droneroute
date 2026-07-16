@@ -60,9 +60,15 @@ You can overlay airspace restriction zones on the map to check for drone no-fly 
   - **Spain (ENAIRE)** — prohibited and restricted airspace zones.
   - **France (DGAC)** — UAS restriction zones for the open category and aeromodelling.
   - **United Kingdom (NATS)** — flight restriction zones around aerodromes, updated every 28 days.
-  - **Czech Republic (ŘLP ČR)** — controlled airspace, shown as a grid of cells each carrying the altitude above which flying inside that cell needs coordination (e.g. "GND - 120 m AGL").
+  - **Czech Republic (ŘLP ČR)** — controlled airspace _and_ uncontrolled aerodrome traffic zones (ATZ), each shown as a grid of cells carrying the altitude above which flying inside that cell needs coordination (e.g. "GND - 120 m AGL"). This is the same official ŘLP dataset AisView and DronView are built on.
 - Press **A** to toggle all providers on/off at once.
 - Zones are classified as either **prohibited** (red) or **restricted** (orange).
 - When the flight path enters a prohibited zone, a red warning banner appears at the bottom of the map.
 - When the flight path enters a restricted zone, an orange warning banner appears indicating authorization may be required.
+- A more detailed warning also lists which specific zone the route crosses and its altitude limit, e.g. "Trasa letu protíná zónu Řízený vzdušný prostor (limit 120 m AGL)".
 - Zones update automatically as you pan the map — data is fetched for the current viewport with caching to avoid redundant requests.
+
+## NOTAM (Notice to Airmen)
+
+- When your mission has waypoints, a "Zobrazit NOTAM pro tuto oblast" link appears next to the airspace warnings.
+- Live NOTAM data for the Czech Republic requires an authenticated session with the official AIM ČR briefing system (there's no public feed to fetch automatically) — the link takes you straight to that official portal so you can check NOTAMs for your mission's area and date yourself.

@@ -60,6 +60,7 @@ describe("generateKmzBuffer", () => {
     const wps = [
       waypoint(0, {
         height: 42,
+        gimbalPitchAngle: -35,
         useGlobalHeadingParam: false,
         headingMode: "towardPOI",
         poiId: "poi-1",
@@ -72,6 +73,7 @@ describe("generateKmzBuffer", () => {
 
     expect(parsed.waypoints).toHaveLength(2);
     expect(parsed.waypoints[0].height).toBe(42);
+    expect(parsed.waypoints[0].gimbalPitchAngle).toBe(-35);
     expect(parsed.waypoints[0].headingMode).toBe("towardPOI");
     expect(parsed.waypoints[0].useGlobalHeadingParam).toBe(false);
     expect(parsed.waypoints[1].useGlobalHeadingParam).toBe(true);

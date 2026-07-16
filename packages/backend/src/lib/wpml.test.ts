@@ -218,10 +218,15 @@ describe("WPML 1.0.6 native format (Pilot 2 cloud-download compatibility)", () =
   });
 
   it("emits imageFormat visable,ir for thermal payloads and visable otherwise", () => {
-    const thermal = mission([wp]); // DEFAULT config = Matrice 4T (payload 89)
-    expect(buildTemplateKml(thermal)).toContain(
-      "<wpml:imageFormat>visable,ir</wpml:imageFormat>",
-    );
+    // Every thermal-capable payload in DRONE_MODELS: H20T, M30T, H20N,
+    // M3T, M3TD, H30T, Matrice 4T.
+    for (const payloadEnumValue of [43, 53, 61, 67, 81, 83, 89]) {
+      const thermal = mission([wp]);
+      thermal.config = { ...thermal.config, payloadEnumValue };
+      expect(buildTemplateKml(thermal)).toContain(
+        "<wpml:imageFormat>visable,ir</wpml:imageFormat>",
+      );
+    }
 
     const rgb = mission([wp]);
     rgb.config = { ...rgb.config, payloadEnumValue: 66 }; // M3E camera

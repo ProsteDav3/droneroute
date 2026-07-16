@@ -92,10 +92,13 @@ function mapExecuteHeightMode(heightMode: MissionConfig["heightMode"]): string {
 /**
  * Payloads with a thermal sensor save both visual and IR imagery — matches
  * the `imageFormat` a real M4T-era Pilot 2 writes into its own missions
- * ("visable" [sic — DJI's own spelling], "ir"). Keyed by payloadEnumValue:
- * H20T, M30T, M3T, M3TD, Matrice 4T.
+ * ("visable" [sic — DJI's own spelling], "ir"). Keyed by payloadEnumValue,
+ * covering every thermal-capable payload in DRONE_MODELS: H20T, M30T,
+ * H20N (night camera with dual thermal sensors), M3T, M3TD, H30T,
+ * Matrice 4T. PSDK (65534) is intentionally excluded — a generic
+ * third-party mount whose capabilities are unknown.
  */
-const THERMAL_PAYLOAD_ENUM_VALUES = [43, 53, 67, 81, 89];
+const THERMAL_PAYLOAD_ENUM_VALUES = [43, 53, 61, 67, 81, 83, 89];
 
 function imageFormatFor(payloadEnumValue: number): string {
   return THERMAL_PAYLOAD_ENUM_VALUES.includes(payloadEnumValue)

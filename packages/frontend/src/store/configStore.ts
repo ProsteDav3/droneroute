@@ -4,6 +4,8 @@ import { api } from "@/lib/api";
 
 interface ConfigState {
   selfHosted: boolean;
+  /** True when the backend has a DJI Cloud platform configured (missions can be pushed straight to Pilot 2's Cloud tab). */
+  djiCloudEnabled: boolean;
   googleClientId: string | null;
   mapboxToken: string;
   defaultMapView: MapViewState;
@@ -13,6 +15,7 @@ interface ConfigState {
 
 export const useConfigStore = create<ConfigState>((set) => ({
   selfHosted: true,
+  djiCloudEnabled: false,
   googleClientId: null,
   mapboxToken: "",
   defaultMapView: DEFAULT_MAP_VIEW,
@@ -22,12 +25,14 @@ export const useConfigStore = create<ConfigState>((set) => ({
     try {
       const res = await api.get<{
         selfHosted: boolean;
+        djiCloudEnabled?: boolean;
         googleClientId?: string;
         mapboxToken?: string;
         defaultMapView?: MapViewState;
       }>("/config");
       set({
         selfHosted: res.selfHosted,
+        djiCloudEnabled: res.djiCloudEnabled ?? false,
         googleClientId: res.googleClientId ?? null,
         mapboxToken: res.mapboxToken ?? "",
         defaultMapView: res.defaultMapView ?? DEFAULT_MAP_VIEW,
@@ -37,6 +42,7 @@ export const useConfigStore = create<ConfigState>((set) => ({
       // Fallback to self-hosted if config endpoint fails
       set({
         selfHosted: true,
+        djiCloudEnabled: false,
         googleClientId: null,
         mapboxToken: "",
         defaultMapView: DEFAULT_MAP_VIEW,

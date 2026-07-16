@@ -29,6 +29,7 @@ import {
   BatteryFull,
   FileText,
   FileSpreadsheet,
+  CloudUpload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -131,7 +132,7 @@ export default function App() {
     isAdmin,
     hasRestored,
   } = useAuthStore();
-  const { selfHosted } = useConfigStore();
+  const { selfHosted, djiCloudEnabled } = useConfigStore();
   const [gravatarUrl, setGravatarUrl] = useState<string | null>(null);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
 
@@ -340,6 +341,36 @@ export default function App() {
       toast.error(`Export selhal: ${err.message}`);
     } finally {
       setExporting(false);
+    }
+  };
+
+  const [uploadingToDjiCloud, setUploadingToDjiCloud] = useState(false);
+
+  const handleUploadToDjiCloud = async () => {
+    if (waypoints.length < 2) {
+      toast.warning("Pro nahrání je potřeba alespoň 2 body trasy");
+      return;
+    }
+    if (!token) {
+      setShowAuthModal(true);
+      return;
+    }
+
+    setUploadingToDjiCloud(true);
+    try {
+      const res = await api.post<{ waylineName: string }>("/dji-cloud/upload", {
+        name: missionName,
+        config,
+        waypoints,
+        pois,
+      });
+      toast.success(
+        `Mise nahrána do DJI Cloud jako "${res.waylineName}" — najdete ji v Pilot 2 v záložce Cloud`,
+      );
+    } catch (err: any) {
+      toast.error(`Nahrání do DJI Cloud selhalo: ${err.message}`);
+    } finally {
+      setUploadingToDjiCloud(false);
     }
   };
 
@@ -833,6 +864,23 @@ export default function App() {
             <FileSpreadsheet className="h-3 w-3" />
             Export pro Pix4D/Metashape (.csv)
           </Button>
+          {djiCloudEnabled && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleUploadToDjiCloud}
+              disabled={uploadingToDjiCloud || waypoints.length < 2}
+              className="w-full text-xs h-7 border-[#00c2ff]/30 bg-[#00c2ff]/5 hover:bg-[#00c2ff]/15 hover:text-[#33cfff]"
+              title={
+                waypoints.length < 2
+                  ? "Pro nahrání přidejte alespoň 2 body trasy"
+                  : "Nahrát misi přímo do DJI Cloud — objeví se v Pilot 2 v záložce Cloud bez ručního přenášení souboru"
+              }
+            >
+              <CloudUpload className="h-3 w-3" />
+              {uploadingToDjiCloud ? "Nahrávám..." : "Nahrát do DJI Cloud"}
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"

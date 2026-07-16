@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchForecast } from "./weather.js";
+import { fetchForecast, fetchWindAloft } from "./weather.js";
 
 function metnoResponse(timeseries: any[], expiresInMs = 30 * 60 * 1000) {
   return {
@@ -179,5 +179,197 @@ describe("fetchForecast", () => {
 
     const [, options] = (fetch as any).mock.calls[0];
     expect(options.headers["User-Agent"]).toMatch(/DroneRoute/);
+  });
+});
+
+function openMeteoResponse(overrides: Record<string, any[]> = {}) {
+  const time = [
+    new Date(Date.now() - 60 * 60 * 1000).toISOString(), // 1h ago
+    new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1h from now — closest to "now"
+    new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+  ];
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      hourly: {
+        time,
+        wind_speed_80m: [3.1, 4.2, 5.3],
+        wind_direction_80m: [180, 190, 200],
+        wind_speed_120m: [4.1, 5.2, 6.3],
+        wind_direction_120m: [181, 191, 201],
+        wind_speed_180m: [5.1, 6.2, 7.3],
+        wind_direction_180m: [182, 192, 202],
+        ...overrides,
+      },
+    }),
+  };
+}
+
+describe("fetchWindAloft", () => {
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("picks the 80m band for a low flight height and the closest-to-now hourly reading", async () => {
+    (fetch as any).mockResolvedValue(openMeteoResponse());
+
+    const reading = await fetchWindAloft(51.1, 20.1, 60);
+
+    expect(reading.altitudeM).toBe(80);
+    expect(reading.windSpeedMs).toBe(4.2);
+    expect(reading.windFromDirectionDeg).toBe(190);
+  });
+
+  it("picks the 120m band when the flight height is closer to it than to 80m or 180m", async () => {
+    (fetch as any).mockResolvedValue(openMeteoResponse());
+
+    const reading = await fetchWindAloft(52.2, 21.2, 110);
+
+    expect(reading.altitudeM).toBe(120);
+  });
+
+  it("picks the 180m band for a high flight height", async () => {
+    (fetch as any).mockResolvedValue(openMeteoResponse());
+
+    const reading = await fetchWindAloft(53.3, 22.3, 200);
+
+    expect(reading.altitudeM).toBe(180);
+  });
+
+  it("caches per-location responses and doesn't re-fetch within the TTL, even for a different requested height", async () => {
+    (fetch as any).mockResolvedValue(openMeteoResponse());
+
+    await fetchWindAloft(54.4, 23.4, 80);
+    await fetchWindAloft(54.4, 23.4, 180); // same location, different band — still a cache hit
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats nearby-but-distinct coordinates as separate cache entries", async () => {
+    (fetch as any).mockResolvedValue(openMeteoResponse());
+
+    await fetchWindAloft(55.5, 24.5, 80);
+    await fetchWindAloft(56.6, 25.6, 80);
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws when the upstream response is not ok", async () => {
+    (fetch as any).mockResolvedValue({ ok: false, status: 503 });
+
+    await expect(fetchWindAloft(57.7, 26.7, 80)).rejects.toThrow(
+      "Wind-aloft provider returned 503",
+    );
+  });
+
+  it("throws when the upstream response has no hourly timeseries", async () => {
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ hourly: {} }),
+    });
+
+    await expect(fetchWindAloft(58.8, 27.8, 80)).rejects.toThrow(
+      "Unexpected response shape from wind-aloft provider",
+    );
+  });
+
+  it("returns null wind fields rather than throwing when a band's values are missing", async () => {
+    (fetch as any).mockResolvedValue(
+      openMeteoResponse({ wind_speed_80m: [], wind_direction_80m: [] }),
+    );
+
+    const reading = await fetchWindAloft(60.1, 29.1, 80);
+
+    expect(reading.windSpeedMs).toBeNull();
+    expect(reading.windFromDirectionDeg).toBeNull();
+  });
+});
+
+function kpResponse(rows: Array<[string, string, string, string]>) {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => [
+      ["time_tag", "Kp", "a_running", "station_count"],
+      ...rows,
+    ],
+  };
+}
+
+describe("fetchKpIndex", () => {
+  // fetchKpIndex's cache is a single module-level singleton (not keyed by
+  // location, unlike fetchForecast/fetchWindAloft), so it must be reset
+  // between tests via a fresh module instance rather than relying on
+  // distinct cache keys per test.
+  let fetchKpIndex: typeof import("./weather.js").fetchKpIndex;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    vi.stubGlobal("fetch", vi.fn());
+    ({ fetchKpIndex } = await import("./weather.js"));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("returns the most recent Kp reading from the feed", async () => {
+    (fetch as any).mockResolvedValue(
+      kpResponse([
+        ["2026-07-16 00:00:00.000", "2.33", "7", "6"],
+        ["2026-07-16 03:00:00.000", "5.67", "12", "6"],
+      ]),
+    );
+
+    const reading = await fetchKpIndex();
+
+    expect(reading).toEqual({ time: "2026-07-16 03:00:00.000", kp: 5.67 });
+  });
+
+  it("caches the reading and doesn't re-fetch within the TTL", async () => {
+    (fetch as any).mockResolvedValue(
+      kpResponse([["2026-07-16 00:00:00.000", "1.0", "5", "6"]]),
+    );
+
+    await fetchKpIndex();
+    await fetchKpIndex();
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("throws when the upstream response is not ok", async () => {
+    (fetch as any).mockResolvedValue({ ok: false, status: 503 });
+
+    await expect(fetchKpIndex()).rejects.toThrow(
+      "Kp-index provider returned 503",
+    );
+  });
+
+  it("throws when the upstream response shape is unexpected", async () => {
+    (fetch as any).mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ not: "an array" }),
+    });
+
+    await expect(fetchKpIndex()).rejects.toThrow(
+      "Unexpected response shape from Kp-index provider",
+    );
+  });
+
+  it("throws when a data row's Kp value isn't numeric", async () => {
+    (fetch as any).mockResolvedValue(
+      kpResponse([["2026-07-16 00:00:00.000", "not-a-number", "5", "6"]]),
+    );
+
+    await expect(fetchKpIndex()).rejects.toThrow(
+      "Unexpected response shape from Kp-index provider",
+    );
   });
 });

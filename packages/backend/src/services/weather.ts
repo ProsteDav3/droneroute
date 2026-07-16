@@ -114,3 +114,177 @@ export async function fetchForecast(
 
   return forecast;
 }
+
+// ── Wind at altitude (Open-Meteo) ───────────────────────────
+//
+// MET Norway's Locationforecast only reports surface-level wind. For rotor
+// wash and gust planning at actual flight altitude, Open-Meteo's forecast
+// API (https://open-meteo.com/, free, no API key) exposes wind speed/
+// direction at fixed altitude bands (80/120/180m above ground). We fetch
+// all three bands in a single request and cache the whole set per
+// location, then pick whichever band is closest to the mission's
+// configured flight height — no re-fetch needed just because the height
+// changed slightly.
+
+const WIND_ALOFT_TTL_MS = 30 * 60 * 1000;
+const WIND_ALOFT_ALTITUDES = [80, 120, 180] as const;
+type WindAloftAltitude = (typeof WIND_ALOFT_ALTITUDES)[number];
+
+export interface WindAloftReading {
+  time: string;
+  /** The altitude band (m) actually used — the closest one available to the requested height. */
+  altitudeM: WindAloftAltitude;
+  windSpeedMs: number | null;
+  windFromDirectionDeg: number | null;
+}
+
+interface WindAloftBandReading {
+  time: string;
+  windSpeedMs: number | null;
+  windFromDirectionDeg: number | null;
+}
+
+interface WindAloftCacheEntry {
+  expiresAt: number;
+  readings: Record<WindAloftAltitude, WindAloftBandReading>;
+}
+
+const windAloftCache = new Map<string, WindAloftCacheEntry>();
+
+/** Nearest of the fixed 80/120/180m Open-Meteo bands to the requested height. */
+function closestAltitudeBand(heightM: number): WindAloftAltitude {
+  return WIND_ALOFT_ALTITUDES.reduce((closest, band) =>
+    Math.abs(band - heightM) < Math.abs(closest - heightM) ? band : closest,
+  );
+}
+
+/** Index of the first hourly timestamp at or after now, falling back to the last available one if the whole series is already in the past. */
+function closestTimeIndex(times: string[]): number {
+  const now = Date.now();
+  for (let i = 0; i < times.length; i++) {
+    const t = new Date(times[i]).getTime();
+    if (Number.isFinite(t) && t >= now) return i;
+  }
+  return Math.max(0, times.length - 1);
+}
+
+function extractWindAloftReadings(
+  json: any,
+): Record<WindAloftAltitude, WindAloftBandReading> {
+  const times = json?.hourly?.time;
+  if (!Array.isArray(times) || times.length === 0) {
+    throw new Error("Unexpected response shape from wind-aloft provider");
+  }
+
+  const index = closestTimeIndex(times);
+  const readings = {} as Record<WindAloftAltitude, WindAloftBandReading>;
+  for (const band of WIND_ALOFT_ALTITUDES) {
+    const speeds = json.hourly[`wind_speed_${band}m`];
+    const directions = json.hourly[`wind_direction_${band}m`];
+    readings[band] = {
+      time: times[index],
+      windSpeedMs: typeof speeds?.[index] === "number" ? speeds[index] : null,
+      windFromDirectionDeg:
+        typeof directions?.[index] === "number" ? directions[index] : null,
+    };
+  }
+  return readings;
+}
+
+export async function fetchWindAloft(
+  lat: number,
+  lng: number,
+  heightM: number,
+): Promise<WindAloftReading> {
+  const key = cacheKey(lat, lng);
+  const cached = windAloftCache.get(key);
+
+  let readings: Record<WindAloftAltitude, WindAloftBandReading>;
+  if (cached && cached.expiresAt > Date.now()) {
+    readings = cached.readings;
+  } else {
+    const params = WIND_ALOFT_ALTITUDES.flatMap((band) => [
+      `wind_speed_${band}m`,
+      `wind_direction_${band}m`,
+    ]).join(",");
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat.toFixed(2)}&longitude=${lng.toFixed(2)}&hourly=${params}&wind_speed_unit=ms&forecast_days=1`;
+    const upstream = await fetch(url);
+
+    if (!upstream.ok) {
+      throw new Error(`Wind-aloft provider returned ${upstream.status}`);
+    }
+
+    const json = await upstream.json();
+    readings = extractWindAloftReadings(json);
+
+    if (windAloftCache.size >= MAX_CACHE_ENTRIES) {
+      const oldestKey = windAloftCache.keys().next().value;
+      if (oldestKey !== undefined) windAloftCache.delete(oldestKey);
+    }
+    windAloftCache.set(key, {
+      expiresAt: Date.now() + WIND_ALOFT_TTL_MS,
+      readings,
+    });
+  }
+
+  const band = closestAltitudeBand(heightM);
+  return { altitudeM: band, ...readings[band] };
+}
+
+// ── Planetary Kp index (NOAA SWPC) ──────────────────────────
+//
+// NOAA's Space Weather Prediction Center publishes a free, no-key JSON
+// feed of recent planetary Kp values. It's a single global reading (not
+// location-specific) that updates a few times a day, so it's cached
+// independently of any coordinate.
+
+const KP_TTL_MS = 45 * 60 * 1000;
+
+export interface KpReading {
+  time: string;
+  kp: number;
+}
+
+let kpCache: { expiresAt: number; reading: KpReading } | null = null;
+
+function extractLatestKp(json: any): KpReading {
+  if (!Array.isArray(json) || json.length < 2) {
+    throw new Error("Unexpected response shape from Kp-index provider");
+  }
+
+  const header = json[0];
+  const timeIndex = Array.isArray(header) ? header.indexOf("time_tag") : -1;
+  const kpIndex = Array.isArray(header) ? header.indexOf("Kp") : -1;
+  if (timeIndex === -1 || kpIndex === -1) {
+    throw new Error("Unexpected response shape from Kp-index provider");
+  }
+
+  const lastRow = json[json.length - 1];
+  const kp = Number(lastRow?.[kpIndex]);
+  const time = lastRow?.[timeIndex];
+  if (!Number.isFinite(kp) || typeof time !== "string") {
+    throw new Error("Unexpected response shape from Kp-index provider");
+  }
+
+  return { time, kp };
+}
+
+export async function fetchKpIndex(): Promise<KpReading> {
+  if (kpCache && kpCache.expiresAt > Date.now()) {
+    return kpCache.reading;
+  }
+
+  const upstream = await fetch(
+    "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json",
+  );
+
+  if (!upstream.ok) {
+    throw new Error(`Kp-index provider returned ${upstream.status}`);
+  }
+
+  const json = await upstream.json();
+  const reading = extractLatestKp(json);
+  kpCache = { expiresAt: Date.now() + KP_TTL_MS, reading };
+
+  return reading;
+}

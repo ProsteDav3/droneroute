@@ -402,7 +402,18 @@ export default function App() {
         `Nahráno ${res.count} segmentů do DJI Cloud — najdete je v Pilot 2 v záložce Cloud`,
       );
     } catch (err: any) {
-      toast.error(`Nahrání segmentů do DJI Cloud selhalo: ${err.message}`);
+      // On a partial failure the backend reports how many legs already
+      // uploaded, so the user doesn't re-run and create duplicates.
+      const partial = err?.body as
+        | { uploaded?: number; total?: number }
+        | undefined;
+      if (partial?.uploaded && partial?.total) {
+        toast.error(
+          `Nahrávání segmentů do DJI Cloud selhalo — ${partial.uploaded} z ${partial.total} segmentů se ale už nahrálo (najdete je v Pilot 2 v záložce Cloud)`,
+        );
+      } else {
+        toast.error(`Nahrání segmentů do DJI Cloud selhalo: ${err.message}`);
+      }
     } finally {
       setUploadingSegmentsToDjiCloud(false);
     }

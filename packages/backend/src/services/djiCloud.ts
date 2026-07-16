@@ -162,11 +162,29 @@ export async function uploadMissionToDjiCloud(
 }
 
 /**
+ * Thrown when a segment upload fails partway through, carrying how many
+ * segments already made it into the workspace so the caller can tell the
+ * user (e.g. "3 of 5 uploaded before the failure") instead of implying
+ * nothing happened — which would invite a redundant re-upload.
+ */
+export class PartialSegmentUploadError extends Error {
+  constructor(
+    public readonly uploaded: number,
+    public readonly total: number,
+  ) {
+    super(
+      `DJI Cloud segment upload selhal: nahráno ${uploaded} z ${total} segmentů`,
+    );
+    this.name = "PartialSegmentUploadError";
+  }
+}
+
+/**
  * Uploads several segment KMZs into the workspace under a single login.
  * Segments are uploaded sequentially (the platform's object storage
- * duplicate-check isn't safe to hammer concurrently); if any one fails the
- * whole operation throws, but every segment already uploaded stays in the
- * library — the caller reports partial success via `count`.
+ * duplicate-check isn't safe to hammer concurrently). If one fails partway
+ * through, every segment already uploaded stays in the library and a
+ * `PartialSegmentUploadError` carries the count that succeeded.
  */
 export async function uploadSegmentsToDjiCloud(
   segments: { name: string; kmz: Buffer }[],
@@ -179,7 +197,16 @@ export async function uploadSegmentsToDjiCloud(
 
   let count = 0;
   for (const segment of segments) {
-    await uploadOne(cfg, token, workspaceId, segment.name, segment.kmz);
+    try {
+      await uploadOne(cfg, token, workspaceId, segment.name, segment.kmz);
+    } catch (err) {
+      // A failure after the first segment means some legs are already in
+      // the library — surface how many so the caller doesn't imply a
+      // clean no-op. A failure on the very first segment (count === 0)
+      // rethrows as-is: nothing uploaded, no partial state to report.
+      if (count === 0) throw err;
+      throw new PartialSegmentUploadError(count, segments.length);
+    }
     count++;
   }
   return { count };

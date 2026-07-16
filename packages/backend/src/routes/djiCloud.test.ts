@@ -264,7 +264,7 @@ describe("POST /api/dji-cloud/upload-segments", () => {
     expect(seg2.name).toContain("seg-2-of-2");
   });
 
-  it("returns 502 when a segment upload fails outright", async () => {
+  it("returns 502 with no partial count when the very first segment fails (nothing uploaded)", async () => {
     const rejected = () =>
       jsonResponse({ code: -1, message: "Storage unavailable.", data: "" });
     const fetchMock = vi
@@ -281,6 +281,31 @@ describe("POST /api/dji-cloud/upload-segments", () => {
 
     expect(res.status).toBe(502);
     expect(res.body.error).toBe("Nahrání segmentů do DJI Cloud selhalo");
+    expect(res.body.uploaded).toBeUndefined();
+    expect(JSON.stringify(res.body)).not.toContain("Storage unavailable.");
+  });
+
+  it("reports the partial count when a later segment fails after earlier ones uploaded", async () => {
+    const rejected = () =>
+      jsonResponse({ code: -1, message: "Storage unavailable.", data: "" });
+    // login, seg1 OK, then seg2 fails on both its attempt + duplicate retry.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(uploadOk())
+      .mockResolvedValueOnce(rejected())
+      .mockResolvedValueOnce(rejected());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/upload-segments")
+      .set("Authorization", `Bearer ${token}`)
+      .send(threeWpBody);
+
+    expect(res.status).toBe(502);
+    expect(res.body.uploaded).toBe(1);
+    expect(res.body.total).toBe(2);
+    // Still no upstream detail leaked.
     expect(JSON.stringify(res.body)).not.toContain("Storage unavailable.");
   });
 });

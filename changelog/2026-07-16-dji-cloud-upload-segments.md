@@ -14,6 +14,10 @@ appears individually in Pilot 2's Cloud tab.
   under a single platform login.
 - Duplicate names are retried once under a timestamped name per segment,
   same as the whole-mission upload.
+- If a segment fails partway through a multi-leg upload, the error toast
+  reports how many legs already made it into the workspace ("3 z 5
+  segmentů se ale už nahrálo"), so you don't re-run the whole upload and
+  create redundant duplicates.
 - The button only appears when the server has a DJI Cloud platform
   configured (`djiCloudEnabled`), sitting next to "Nahrát do DJI Cloud".
 

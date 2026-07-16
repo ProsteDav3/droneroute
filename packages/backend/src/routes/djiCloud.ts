@@ -7,6 +7,7 @@ import {
   isDjiCloudConfigured,
   uploadMissionToDjiCloud,
   uploadSegmentsToDjiCloud,
+  PartialSegmentUploadError,
 } from "../services/djiCloud.js";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { strictLimiter } from "../middleware/rateLimit.js";
@@ -127,6 +128,17 @@ djiCloudRoutes.post(
       res.json({ count });
     } catch (err) {
       console.error("DJI Cloud segments upload error:", err);
+      // Surface a partial-success count so the user knows some legs are
+      // already in the workspace (avoids a redundant re-upload) — but never
+      // the upstream platform's raw message (AGENTS.md policy).
+      if (err instanceof PartialSegmentUploadError) {
+        res.status(502).json({
+          error: "Nahrání segmentů do DJI Cloud se nezdařilo dokončit",
+          uploaded: err.uploaded,
+          total: err.total,
+        });
+        return;
+      }
       res.status(502).json({ error: "Nahrání segmentů do DJI Cloud selhalo" });
     }
   },

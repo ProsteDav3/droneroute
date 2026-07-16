@@ -106,4 +106,30 @@ describe("writeConfig", () => {
       0o600,
     );
   });
+
+  it("creates the config directory with owner-only permissions", async () => {
+    const { writeConfig } = await import("./config.js");
+
+    writeConfig({ server: "https://server.example", token: "tok" });
+
+    expect(mockedFs.mkdirSync).toHaveBeenCalledWith(
+      expect.stringContaining(".droneroute"),
+      expect.objectContaining({ recursive: true, mode: 0o700 }),
+    );
+  });
+
+  it("re-asserts owner-only permissions on an already-existing config directory", async () => {
+    // mkdirSync's `mode` option is only honored when it actually creates the
+    // directory — on an upgrade from an earlier install where the directory
+    // already exists (e.g. at the OS default 0o755), it must be re-chmod'd
+    // explicitly rather than silently left permissive.
+    const { writeConfig } = await import("./config.js");
+
+    writeConfig({ server: "https://server.example", token: "tok" });
+
+    expect(mockedFs.chmodSync).toHaveBeenCalledWith(
+      expect.stringContaining(".droneroute"),
+      0o700,
+    );
+  });
 });

@@ -9,7 +9,7 @@ import { uploadKmz } from "./upload.js";
 import { isAdbAvailable } from "./adb.js";
 import { fileURLToPath } from "node:url";
 import { resolveServer, resolveToken } from "./config.js";
-import { parseKmzToMissionJson } from "./kmzParser.js";
+import { parseKmzToMissionJson, MAX_KMZ_FILE_SIZE } from "./kmzParser.js";
 import {
   uploadMissionToCloud,
   ensureToken,
@@ -44,6 +44,19 @@ async function runCloudUpload(
   } catch (err) {
     const message = err instanceof CloudUploadError ? err.message : String(err);
     console.error(chalk.red(`\n${message}`));
+    process.exit(1);
+  }
+
+  // Check the file size before ever reading it into memory — parseKmzToMissionJson
+  // enforces the same cap on the buffer it's handed, but statting first avoids
+  // fully loading an oversized file just to reject it a moment later.
+  const { size } = fs.statSync(kmzPath);
+  if (size > MAX_KMZ_FILE_SIZE) {
+    console.error(
+      chalk.red(
+        `\nKMZ file is too large (${Math.round(size / 1024 / 1024)} MB, max ${Math.round(MAX_KMZ_FILE_SIZE / 1024 / 1024)} MB).`,
+      ),
+    );
     process.exit(1);
   }
 

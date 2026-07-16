@@ -31,11 +31,16 @@ export function readConfig(): CliConfig {
  * Windows doesn't support POSIX file modes, so failures there are ignored.
  */
 export function writeConfig(config: CliConfig): void {
-  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  fs.mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2) + "\n", {
     mode: 0o600,
   });
   try {
+    // `mkdirSync`'s `mode` only applies when the directory is actually
+    // created — on an existing install (upgraded from an earlier version,
+    // or a dir created some other way) it's left at whatever it already
+    // was, so re-assert 0o700 explicitly every time, same as the file below.
+    fs.chmodSync(CONFIG_DIR, 0o700);
     fs.chmodSync(CONFIG_FILE, 0o600);
   } catch {
     // Best-effort — not all platforms/filesystems support POSIX permissions.

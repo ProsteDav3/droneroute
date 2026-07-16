@@ -65,6 +65,24 @@ export interface ParsedKmz {
   pois: ParsedPoi[];
 }
 
+/**
+ * Maximum accepted size for the raw (compressed) KMZ file, and independently
+ * for each decompressed zip entry we read. Matches the server's multer
+ * upload limit (packages/backend/src/routes/kmz.ts) for consistency.
+ *
+ * Before this parser existed, the CLI never decompressed KMZ contents — it
+ * just streamed the raw bytes over ADB. Since `--cloud` is the first code
+ * path that inflates archive entries into memory, a crafted KMZ with a tiny
+ * compressed size but a huge declared/actual decompressed size (a zip bomb)
+ * could otherwise OOM the user's own machine. Both the whole-file size and
+ * each entry's actual decompressed byte count (checked while streaming, not
+ * trusted from zip metadata) are capped below.
+ */
+export const MAX_KMZ_FILE_SIZE = 50 * 1024 * 1024;
+
+/** Raised when the input file or a decompressed zip entry exceeds `MAX_KMZ_FILE_SIZE`. */
+export class KmzTooLargeError extends Error {}
+
 const DEFAULT_CONFIG: ParsedMissionConfig = {
   droneEnumValue: 99,
   droneSubEnumValue: 1,
@@ -99,6 +117,42 @@ function extractCoords(coordStr: string): {
   return { longitude: parts[0], latitude: parts[1] };
 }
 
+/**
+ * Read a zip entry as UTF-8 text, aborting once the decompressed byte count
+ * exceeds `maxBytes`. Streams rather than trusting the zip's declared
+ * uncompressed size (which a malicious archive could misreport) — the cap
+ * is enforced against bytes actually produced by the decompressor.
+ */
+function readZipEntryText(
+  entry: JSZip.JSZipObject,
+  maxBytes: number,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    const stream = entry.nodeStream();
+
+    stream.on("data", (chunk: Buffer) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        // JSZip types `nodeStream()` as the minimal `NodeJS.ReadableStream`
+        // interface, which doesn't declare `destroy()` — but the concrete
+        // object returned at runtime is a real `stream.Readable`, which does.
+        (stream as unknown as { destroy: () => void }).destroy();
+        reject(
+          new KmzTooLargeError(
+            `KMZ entry "${entry.name}" exceeds the ${Math.round(maxBytes / 1024 / 1024)} MB decompressed size limit`,
+          ),
+        );
+        return;
+      }
+      chunks.push(chunk);
+    });
+    stream.on("error", (err: Error) => reject(err));
+    stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+  });
+}
+
 function parseActions(placemark: any): ParsedWaypoint["actions"] {
   const groups = placemark["wpml:actionGroup"];
   if (!groups) return [];
@@ -125,6 +179,12 @@ function parseActions(placemark: any): ParsedWaypoint["actions"] {
 export async function parseKmzToMissionJson(
   buffer: Buffer,
 ): Promise<ParsedKmz> {
+  if (buffer.byteLength > MAX_KMZ_FILE_SIZE) {
+    throw new KmzTooLargeError(
+      `KMZ file is too large (max ${Math.round(MAX_KMZ_FILE_SIZE / 1024 / 1024)} MB)`,
+    );
+  }
+
   const zip = await JSZip.loadAsync(buffer);
 
   const templateFile =
@@ -133,7 +193,7 @@ export async function parseKmzToMissionJson(
     throw new Error("Invalid KMZ: missing template.kml");
   }
 
-  const templateXml = await templateFile.async("string");
+  const templateXml = await readZipEntryText(templateFile, MAX_KMZ_FILE_SIZE);
   const parsed = parser.parse(templateXml);
   const doc = parsed.kml.Document;
 
@@ -176,7 +236,10 @@ export async function parseKmzToMissionJson(
     const waylinesFile =
       zip.file("waylines.wpml") || zip.file("wpmz/waylines.wpml");
     if (waylinesFile) {
-      const waylinesXml = await waylinesFile.async("string");
+      const waylinesXml = await readZipEntryText(
+        waylinesFile,
+        MAX_KMZ_FILE_SIZE,
+      );
       const waylinesParsed = parser.parse(waylinesXml);
       folder = waylinesParsed.kml?.Document?.Folder;
     }
@@ -209,6 +272,11 @@ export async function parseKmzToMissionJson(
   const poiMap = new Map<string, ParsedPoi>();
 
   const waypoints: ParsedWaypoint[] = placemarks.map((pm: any, i: number) => {
+    if (!pm.Point?.coordinates) {
+      throw new Error(
+        `Invalid KMZ: waypoint ${i + 1} is missing its <Point> coordinates`,
+      );
+    }
     const coords = extractCoords(pm.Point.coordinates);
     const actions = parseActions(pm);
 

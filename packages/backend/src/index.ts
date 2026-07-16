@@ -19,7 +19,7 @@ import { healthRoutes } from "./routes/health.js";
 import { isDjiCloudConfigured } from "./services/djiCloud.js";
 import { globalLimiter } from "./middleware/rateLimit.js";
 import { resolveDefaultMapView } from "./lib/config.js";
-import { logger } from "./lib/logger.js";
+import { logger, httpLogRedactPaths, shouldSkipHttpLog } from "./lib/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -60,14 +60,17 @@ app.use(
 app.use(express.json({ limit: "50mb" }));
 app.use(globalLimiter);
 
-// Per-request access logging. The health endpoint is excluded since an
-// uptime monitor polls it every 1-5 minutes indefinitely — logging every hit
-// would just be noise.
+// Per-request access logging. See lib/logger.ts for why the Authorization
+// header is redacted and why /api/health + /api/shared/* are skipped.
 app.use(
   pinoHttp({
     logger,
+    redact: {
+      paths: httpLogRedactPaths,
+      censor: "[redacted]",
+    },
     autoLogging: {
-      ignore: (req) => req.url === "/api/health",
+      ignore: (req) => shouldSkipHttpLog(req.url),
     },
   }),
 );

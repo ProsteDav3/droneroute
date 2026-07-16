@@ -12,6 +12,7 @@ import type {
   BBox,
   ZoneSeverity,
 } from "./types.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Layer definitions
@@ -172,7 +173,7 @@ async function queryLayer(
   const url = `${layer.url}/query?${params}`;
   const res = await fetch(url);
   if (!res.ok) {
-    console.error(`ENAIRE: failed to query ${layer.url} – ${res.status}`);
+    logger.error(`ENAIRE: failed to query ${layer.url} – ${res.status}`);
     return [];
   }
 

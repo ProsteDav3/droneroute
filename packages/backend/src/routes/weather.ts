@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { weatherLimiter } from "../middleware/rateLimit.js";
 import { fetchForecast } from "../services/weather.js";
+import { logger } from "../lib/logger.js";
 
 export const weatherRoutes = Router();
 
@@ -31,7 +32,7 @@ weatherRoutes.get("/forecast", weatherLimiter, async (req, res) => {
     const forecast = await fetchForecast(lat, lng);
     res.json({ forecast });
   } catch (err) {
-    console.error("Weather fetch error:", err);
+    logger.error({ err }, "Weather fetch error");
     res
       .status(502)
       .json({ error: "Načtení dat o počasí od poskytovatele selhalo" });

@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { logger } from "../lib/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH =
@@ -170,6 +171,19 @@ export function initDb(): void {
     );
   `);
 
+  // Migration: create audit_log table — records admin actions that mutate
+  // state (ban, unban, promote, demote, create user), for accountability.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      admin_user_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_user_id TEXT,
+      detail TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
   // Ensure ADMIN_EMAIL user has admin privileges (cloud mode)
   const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
   const adminEmail = process.env.ADMIN_EMAIL || "";
@@ -193,11 +207,11 @@ export function initDb(): void {
           "INSERT INTO users (id, email, password_hash, email_verified, is_admin) VALUES (?, ?, ?, 1, 1)",
         )
         .run(id, adminEmail, passwordHash);
-      console.log(
+      logger.info(
         `Dev account created for ${adminEmail} (password equals the email — change it after first login)`,
       );
     }
   }
 
-  console.log("Database initialized at", DB_PATH);
+  logger.info(`Database initialized at ${DB_PATH}`);
 }

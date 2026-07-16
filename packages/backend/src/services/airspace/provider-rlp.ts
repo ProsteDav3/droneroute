@@ -21,6 +21,7 @@
  */
 
 import type { AirspaceProvider, AirspaceZone, BBox } from "./types.js";
+import { logger } from "../../lib/logger.js";
 
 const INDEX_URL = "https://aim.rlp.cz/?lang=en&p=uas-gz";
 const AIM_ORIGIN = "https://aim.rlp.cz";
@@ -156,7 +157,7 @@ function hasValidGeometry(geometry: unknown): geometry is {
 
 async function downloadAndParse(): Promise<AirspaceZone[]> {
   const dataUrl = await discoverDataUrl();
-  console.log(`RLP: downloading ${dataUrl}`);
+  logger.info(`RLP: downloading ${dataUrl}`);
 
   const res = await fetch(dataUrl);
   if (!res.ok) {
@@ -189,7 +190,7 @@ async function downloadAndParse(): Promise<AirspaceZone[]> {
     });
   });
 
-  console.log(
+  logger.info(
     `RLP: parsed ${zones.length} grid cells${skipped > 0 ? ` (skipped ${skipped} with invalid geometry)` : ""}`,
   );
 
@@ -212,7 +213,7 @@ async function getCachedZones(): Promise<AirspaceZone[]> {
     })
     .catch((err) => {
       fetchInProgress = null;
-      console.error("RLP: failed to fetch/parse dataset:", err);
+      logger.error({ err }, "RLP: failed to fetch/parse dataset");
       return [];
     });
 

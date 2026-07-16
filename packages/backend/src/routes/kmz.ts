@@ -15,6 +15,7 @@ import {
 } from "../middleware/auth.js";
 import { strictLimiter } from "../middleware/rateLimit.js";
 import { validateMissionGeometry } from "../services/missionValidation.js";
+import { logger } from "../lib/logger.js";
 
 export const kmzRoutes = Router();
 
@@ -67,7 +68,7 @@ kmzRoutes.post(
       );
       res.send(buffer);
     } catch (err: any) {
-      console.error("KMZ download error:", err);
+      logger.error({ err }, "KMZ download error");
       res.status(500).json({ error: "Generování KMZ selhalo" });
     }
   },
@@ -118,7 +119,7 @@ kmzRoutes.post(
       );
       res.send(buffer);
     } catch (err: any) {
-      console.error("KMZ segments export error:", err);
+      logger.error({ err }, "KMZ segments export error");
       res.status(500).json({ error: "Generování segmentů mise selhalo" });
     }
   },
@@ -162,7 +163,7 @@ kmzRoutes.get(
       );
       res.send(buffer);
     } catch (err: any) {
-      console.error("KMZ download error:", err);
+      logger.error({ err }, "KMZ download error");
       res.status(500).json({ error: "Generování KMZ selhalo" });
     }
   },
@@ -212,7 +213,7 @@ kmzRoutes.post(
 
       res.json({ id: missionId, config, waypoints, pois });
     } catch (err: any) {
-      console.error("KMZ import error:", err);
+      logger.error({ err }, "KMZ import error");
       res.status(500).json({ error: "Zpracování KMZ selhalo" });
     }
   },

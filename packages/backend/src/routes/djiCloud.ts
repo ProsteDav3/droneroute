@@ -12,6 +12,7 @@ import {
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { strictLimiter } from "../middleware/rateLimit.js";
 import { validateMissionGeometry } from "../services/missionValidation.js";
+import { logger } from "../lib/logger.js";
 
 export const djiCloudRoutes = Router();
 
@@ -78,7 +79,7 @@ djiCloudRoutes.post(
     } catch (err) {
       // Full detail stays server-side only -- the upstream platform's raw
       // response text must never reach the client (AGENTS.md policy).
-      console.error("DJI Cloud upload error:", err);
+      logger.error({ err }, "DJI Cloud upload error");
       res.status(502).json({ error: "Nahrání do DJI Cloud selhalo" });
     }
   },
@@ -127,7 +128,7 @@ djiCloudRoutes.post(
 
       res.json({ count });
     } catch (err) {
-      console.error("DJI Cloud segments upload error:", err);
+      logger.error({ err }, "DJI Cloud segments upload error");
       // Surface a partial-success count so the user knows some legs are
       // already in the workspace (avoids a redundant re-upload) — but never
       // the upstream platform's raw message (AGENTS.md policy).

@@ -1,12 +1,13 @@
 import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
+import type Database from "better-sqlite3";
 import { getDb } from "../models/db.js";
 import {
   authMiddleware,
   optionalAuth,
   type AuthRequest,
 } from "../middleware/auth.js";
-import type { Mission } from "@droneroute/shared";
+import type { Mission, MissionVersionSnapshot } from "@droneroute/shared";
 import {
   validateMissionCreate,
   validateMissionUpdate,
@@ -15,15 +16,86 @@ import { buildMissionSegments } from "../services/missionSegments.js";
 
 export const missionRoutes = Router();
 
-// List missions for authenticated user
+/** How many of the most recent snapshots are kept per mission — older rows are pruned in the same transaction as the insert. */
+const MAX_VERSIONS_PER_MISSION = 20;
+
+/** Escape LIKE wildcard characters so a free-text search behaves like a literal substring match rather than a pattern. */
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/**
+ * Insert a version snapshot for a mission and prune older rows beyond
+ * `MAX_VERSIONS_PER_MISSION`, atomically. Called after every mission
+ * create/update/restore so history never grows unbounded.
+ */
+function saveMissionVersion(
+  db: Database.Database,
+  missionId: string,
+  snapshot: MissionVersionSnapshot,
+): void {
+  const insertVersion = db.prepare(
+    "INSERT INTO mission_versions (id, mission_id, snapshot) VALUES (?, ?, ?)",
+  );
+  // `created_at` is `datetime('now')` (second resolution), so rapid saves
+  // within the same second can tie on it — `rowid` (SQLite's implicit,
+  // strictly insertion-ordered column) breaks the tie deterministically in
+  // true insertion order, unlike the UUID `id` which sorts arbitrarily.
+  const pruneOld = db.prepare(
+    `DELETE FROM mission_versions
+     WHERE mission_id = ?
+       AND id NOT IN (
+         SELECT id FROM mission_versions
+         WHERE mission_id = ?
+         ORDER BY created_at DESC, rowid DESC
+         LIMIT ?
+       )`,
+  );
+  const run = db.transaction(() => {
+    insertVersion.run(uuidv4(), missionId, JSON.stringify(snapshot));
+    pruneOld.run(missionId, missionId, MAX_VERSIONS_PER_MISSION);
+  });
+  run();
+}
+
+/** Read back a mission row's full editable content as a version snapshot. */
+function snapshotFromRow(row: any): MissionVersionSnapshot {
+  return {
+    name: row.name,
+    client: row.client ?? null,
+    folder: row.folder ?? null,
+    config: JSON.parse(row.config),
+    waypoints: JSON.parse(row.waypoints),
+    pois: JSON.parse(row.pois || "[]"),
+    obstacles: JSON.parse(row.obstacles || "[]"),
+    buildings: JSON.parse(row.buildings || "[]"),
+    templateGroups: JSON.parse(row.template_groups || "{}"),
+  };
+}
+
+// List missions for authenticated user — optionally filtered by folder
+// (exact match) and/or a free-text search over the mission name.
 missionRoutes.get("/", authMiddleware, (req: AuthRequest, res) => {
   const db = getDb();
-  const rows = db
-    .prepare(
-      "SELECT id, name, client, config, waypoints, pois, obstacles, buildings, template_groups, share_token, created_at, updated_at FROM missions WHERE user_id = ? ORDER BY updated_at DESC",
-    )
-    .all(req.userId!) as any[];
+  const { folder, search } = req.query;
 
+  let sql =
+    "SELECT id, name, client, folder, config, waypoints, pois, obstacles, buildings, template_groups, share_token, created_at, updated_at FROM missions WHERE user_id = ?";
+  const params: unknown[] = [req.userId!];
+
+  if (typeof folder === "string" && folder.length > 0) {
+    sql += " AND folder = ?";
+    params.push(folder);
+  }
+
+  if (typeof search === "string" && search.trim().length > 0) {
+    sql += " AND name LIKE ? ESCAPE '\\'";
+    params.push(`%${escapeLikePattern(search.trim())}%`);
+  }
+
+  sql += " ORDER BY updated_at DESC";
+
+  const rows = db.prepare(sql).all(...params) as any[];
   res.json(rows);
 });
 
@@ -48,6 +120,7 @@ missionRoutes.get("/:id", authMiddleware, (req: AuthRequest, res) => {
     id: row.id,
     name: row.name,
     client: row.client ?? null,
+    folder: row.folder ?? null,
     userId: row.user_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -67,6 +140,7 @@ missionRoutes.post("/", optionalAuth, (req: AuthRequest, res) => {
   const {
     name,
     client,
+    folder,
     config,
     waypoints,
     pois,
@@ -90,11 +164,12 @@ missionRoutes.post("/", optionalAuth, (req: AuthRequest, res) => {
   const db = getDb();
   const id = uuidv4();
   db.prepare(
-    "INSERT INTO missions (id, name, client, user_id, config, waypoints, pois, obstacles, buildings, template_groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO missions (id, name, client, folder, user_id, config, waypoints, pois, obstacles, buildings, template_groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
   ).run(
     id,
     name,
     client || null,
+    folder || null,
     req.userId || null,
     JSON.stringify(config),
     JSON.stringify(waypoints),
@@ -103,6 +178,20 @@ missionRoutes.post("/", optionalAuth, (req: AuthRequest, res) => {
     JSON.stringify(buildings || []),
     JSON.stringify(templateGroups || {}),
   );
+
+  if (req.userId) {
+    saveMissionVersion(db, id, {
+      name,
+      client: client || null,
+      folder: folder || null,
+      config,
+      waypoints,
+      pois: pois || [],
+      obstacles: obstacles || [],
+      buildings: buildings || [],
+      templateGroups: templateGroups || {},
+    });
+  }
 
   res.status(201).json({ id, name });
 });
@@ -185,6 +274,7 @@ missionRoutes.put("/:id", authMiddleware, (req: AuthRequest, res) => {
   const {
     name,
     client,
+    folder,
     config,
     waypoints,
     pois,
@@ -224,6 +314,10 @@ missionRoutes.put("/:id", authMiddleware, (req: AuthRequest, res) => {
     updates.push("client = ?");
     values.push(client || null);
   }
+  if (folder !== undefined) {
+    updates.push("folder = ?");
+    values.push(folder || null);
+  }
   if (config !== undefined) {
     updates.push("config = ?");
     values.push(JSON.stringify(config));
@@ -256,6 +350,11 @@ missionRoutes.put("/:id", authMiddleware, (req: AuthRequest, res) => {
     ...values,
   );
 
+  const updatedRow = db
+    .prepare("SELECT * FROM missions WHERE id = ?")
+    .get(req.params.id) as any;
+  saveMissionVersion(db, String(req.params.id), snapshotFromRow(updatedRow));
+
   res.json({ id: req.params.id, name });
 });
 
@@ -277,3 +376,143 @@ missionRoutes.delete("/:id", authMiddleware, (req: AuthRequest, res) => {
   db.prepare("DELETE FROM missions WHERE id = ?").run(req.params.id);
   res.json({ success: true });
 });
+
+// Duplicate a mission (owner only) — a clean, independent copy: fresh id,
+// name suffixed with " (kopie)", all editable content copied, but the
+// share token, comments, and version history are intentionally NOT carried
+// over (the copy starts unshared with its own blank history).
+missionRoutes.post(
+  "/:id/duplicate",
+  authMiddleware,
+  (req: AuthRequest, res) => {
+    const db = getDb();
+    const existing = db
+      .prepare("SELECT * FROM missions WHERE id = ?")
+      .get(req.params.id) as any;
+
+    if (!existing) {
+      res.status(404).json({ error: "Mise nebyla nalezena" });
+      return;
+    }
+    if (existing.user_id !== req.userId) {
+      res.status(403).json({ error: "Nemáte oprávnění" });
+      return;
+    }
+
+    const id = uuidv4();
+    const name = `${existing.name} (kopie)`;
+
+    db.prepare(
+      "INSERT INTO missions (id, name, client, folder, user_id, config, waypoints, pois, obstacles, buildings, template_groups) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    ).run(
+      id,
+      name,
+      existing.client ?? null,
+      existing.folder ?? null,
+      req.userId!,
+      existing.config,
+      existing.waypoints,
+      existing.pois || "[]",
+      existing.obstacles || "[]",
+      existing.buildings || "[]",
+      existing.template_groups || "{}",
+    );
+
+    saveMissionVersion(db, id, {
+      name,
+      client: existing.client ?? null,
+      folder: existing.folder ?? null,
+      config: JSON.parse(existing.config),
+      waypoints: JSON.parse(existing.waypoints),
+      pois: JSON.parse(existing.pois || "[]"),
+      obstacles: JSON.parse(existing.obstacles || "[]"),
+      buildings: JSON.parse(existing.buildings || "[]"),
+      templateGroups: JSON.parse(existing.template_groups || "{}"),
+    });
+
+    res.status(201).json({ id, name });
+  },
+);
+
+// List version snapshots for a mission (owner only) — newest first, no
+// snapshot payload (restore a specific version to apply it).
+missionRoutes.get("/:id/versions", authMiddleware, (req: AuthRequest, res) => {
+  const db = getDb();
+  const mission = db
+    .prepare("SELECT user_id FROM missions WHERE id = ?")
+    .get(req.params.id) as any;
+
+  if (!mission) {
+    res.status(404).json({ error: "Mise nebyla nalezena" });
+    return;
+  }
+  if (mission.user_id !== req.userId) {
+    res.status(403).json({ error: "Nemáte oprávnění" });
+    return;
+  }
+
+  const versions = db
+    .prepare(
+      "SELECT id, created_at FROM mission_versions WHERE mission_id = ? ORDER BY created_at DESC, rowid DESC",
+    )
+    .all(req.params.id) as any[];
+
+  res.json(versions.map((v) => ({ id: v.id, createdAt: v.created_at })));
+});
+
+// Restore a mission to a previous version snapshot (owner only). Overwrites
+// the mission's current content with the snapshot, then records the
+// restore itself as a new version so history is never destroyed.
+missionRoutes.post(
+  "/:id/versions/:versionId/restore",
+  authMiddleware,
+  (req: AuthRequest, res) => {
+    const db = getDb();
+    const mission = db
+      .prepare("SELECT user_id FROM missions WHERE id = ?")
+      .get(req.params.id) as any;
+
+    if (!mission) {
+      res.status(404).json({ error: "Mise nebyla nalezena" });
+      return;
+    }
+    if (mission.user_id !== req.userId) {
+      res.status(403).json({ error: "Nemáte oprávnění" });
+      return;
+    }
+
+    const version = db
+      .prepare(
+        "SELECT snapshot FROM mission_versions WHERE id = ? AND mission_id = ?",
+      )
+      .get(req.params.versionId, req.params.id) as any;
+
+    if (!version) {
+      res.status(404).json({ error: "Verze nebyla nalezena" });
+      return;
+    }
+
+    const snapshot: MissionVersionSnapshot = JSON.parse(version.snapshot);
+
+    db.prepare(
+      `UPDATE missions
+       SET name = ?, client = ?, folder = ?, config = ?, waypoints = ?, pois = ?, obstacles = ?, buildings = ?, template_groups = ?, updated_at = datetime('now')
+       WHERE id = ?`,
+    ).run(
+      snapshot.name,
+      snapshot.client,
+      snapshot.folder,
+      JSON.stringify(snapshot.config),
+      JSON.stringify(snapshot.waypoints),
+      JSON.stringify(snapshot.pois),
+      JSON.stringify(snapshot.obstacles),
+      JSON.stringify(snapshot.buildings),
+      JSON.stringify(snapshot.templateGroups),
+      req.params.id,
+    );
+
+    saveMissionVersion(db, String(req.params.id), snapshot);
+
+    res.json({ id: req.params.id, name: snapshot.name });
+  },
+);

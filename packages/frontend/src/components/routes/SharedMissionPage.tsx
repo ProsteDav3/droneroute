@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type FormEvent } from "react";
 import { toast } from "sonner";
 import { formatDistance } from "@/lib/units";
 import { estimateFlightStats, formatFlightDuration } from "@/lib/flightStats";
@@ -13,10 +13,13 @@ import {
   Copy,
   User,
   ArrowLeft,
+  MessageCircle,
+  Send,
 } from "lucide-react";
 import Map, { Source, Layer, Marker } from "react-map-gl/mapbox";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useMissionStore } from "@/store/missionStore";
 import { useAuthStore } from "@/store/authStore";
 import { useConfigStore } from "@/store/configStore";
@@ -28,7 +31,15 @@ import type {
   MissionConfig,
   PointOfInterest,
   Obstacle,
+  MissionComment,
 } from "@droneroute/shared";
+
+/** Kept in sync with the backend caps in missionValidation.ts — enforced there too, this is just immediate UX feedback. */
+const MAX_COMMENT_AUTHOR_NAME_LEN = 80;
+const MAX_COMMENT_TEXT_LEN = 2000;
+
+/** Remembers the visitor's display name across shared missions on this browser, so they don't retype it every time. */
+const AUTHOR_NAME_STORAGE_KEY = "droneroute_comment_author_name";
 
 interface SharedMissionData {
   id: string;
@@ -257,6 +268,165 @@ function SharedMissionMap({
           </Marker>
         ))}
       </Map>
+    </div>
+  );
+}
+
+/**
+ * Comment thread on a publicly shared mission — no account required, just a
+ * display name + text. This is the only place comments are shown; the
+ * authenticated editor (RoutesPage) never surfaces them.
+ */
+function MissionCommentsSection({ shareToken }: { shareToken: string }) {
+  const [comments, setComments] = useState<MissionComment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [authorName, setAuthorName] = useState(
+    () => localStorage.getItem(AUTHOR_NAME_STORAGE_KEY) || "",
+  );
+  const [text, setText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const fetchComments = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get<MissionComment[]>(
+        `/shared/${shareToken}/comments`,
+      );
+      setComments(data);
+    } catch {
+      // A public read-only thread failing to load isn't worth an error
+      // banner on top of the mission itself — just show an empty state.
+      setComments([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchComments();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareToken]);
+
+  const trimmedName = authorName.trim();
+  const trimmedText = text.trim();
+  const canSubmit =
+    trimmedName.length > 0 &&
+    trimmedName.length <= MAX_COMMENT_AUTHOR_NAME_LEN &&
+    trimmedText.length > 0 &&
+    trimmedText.length <= MAX_COMMENT_TEXT_LEN;
+
+  const handleSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!canSubmit || submitting) return;
+    setSubmitting(true);
+    try {
+      const created = await api.post<MissionComment>(
+        `/shared/${shareToken}/comments`,
+        { authorName: trimmedName, text: trimmedText },
+      );
+      setComments((prev) => [...prev, created]);
+      setText("");
+      localStorage.setItem(AUTHOR_NAME_STORAGE_KEY, trimmedName);
+    } catch (e: any) {
+      toast.error(
+        "Odeslání komentáře se nezdařilo: " + (e.message || "Neznámá chyba"),
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const formatDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleString("cs-CZ", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  return (
+    <div className="mt-6 pt-6 border-t border-border">
+      <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-3">
+        <MessageCircle className="h-4 w-4 text-primary" />
+        Komentáře
+        {comments.length > 0 && (
+          <span className="text-xs font-normal text-muted-foreground">
+            ({comments.length})
+          </span>
+        )}
+      </h3>
+
+      {loading && (
+        <p className="text-xs text-muted-foreground mb-3">
+          Načítání komentářů...
+        </p>
+      )}
+
+      {!loading && comments.length === 0 && (
+        <p className="text-xs text-muted-foreground mb-3">
+          Zatím žádné komentáře. Buďte první!
+        </p>
+      )}
+
+      {!loading && comments.length > 0 && (
+        <ul className="space-y-3 mb-4">
+          {comments.map((comment) => (
+            <li
+              key={comment.id}
+              className="bg-background rounded-lg p-3 border border-border"
+            >
+              <div className="flex items-center justify-between gap-2 mb-1">
+                <span className="text-xs font-medium text-foreground">
+                  {comment.authorName}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {formatDate(comment.createdAt)}
+                </span>
+              </div>
+              <p className="text-sm text-foreground whitespace-pre-wrap break-words">
+                {comment.text}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-2">
+        <Input
+          value={authorName}
+          onChange={(e) => setAuthorName(e.target.value)}
+          placeholder="Vaše jméno"
+          maxLength={MAX_COMMENT_AUTHOR_NAME_LEN}
+          className="h-8 text-xs"
+        />
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Napište komentář…"
+          maxLength={MAX_COMMENT_TEXT_LEN}
+          rows={2}
+          className="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+        />
+        <div className="flex justify-end">
+          <Button
+            type="submit"
+            size="sm"
+            disabled={!canSubmit || submitting}
+            className="gap-1.5"
+          >
+            <Send className="h-3.5 w-3.5" />
+            {submitting ? "Odesílání..." : "Odeslat komentář"}
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -573,6 +743,8 @@ export function SharedMissionPage({
                           </Button>
                         )}
                       </div>
+
+                      <MissionCommentsSection shareToken={shareToken} />
                     </div>
                   </div>
                 );

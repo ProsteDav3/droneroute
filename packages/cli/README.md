@@ -128,6 +128,46 @@ Open DJI Fly on the controller and look for the new
 mission in the waypoint list.
 ```
 
+## Uploading to DJI Cloud instead of ADB/USB
+
+Instead of transferring the KMZ file over USB, you can push it straight
+into a SkyRoute server's DJI Cloud platform, where it shows up in DJI
+Pilot 2's **Cloud** tab automatically — no cable, no controller connection
+needed.
+
+```bash
+# One-time login (prompts for server URL, email, password)
+npx @prostedav3/droneroute login
+
+# Upload straight to DJI Cloud
+npx @prostedav3/droneroute my-survey.kmz --cloud
+```
+
+`droneroute login` caches the resulting auth token in
+`~/.droneroute/config.json` (written with owner-only permissions). After
+that, `--cloud` uploads use the cached server/token automatically.
+
+Options for `--cloud` uploads:
+
+| Flag             | Env var             | Description                                                                         |
+| ---------------- | ------------------- | ----------------------------------------------------------------------------------- |
+| `--server <url>` | `DRONEROUTE_SERVER` | SkyRoute server base URL. Falls back to the cached config, then a built-in default. |
+| `--token <jwt>`  | `DRONEROUTE_TOKEN`  | Auth token. Falls back to the token cached by `droneroute login`.                   |
+
+Precedence for both is: CLI flag > environment variable > cached config
+file > built-in default (server only — there's no default token).
+
+Notes:
+
+- The mission needs at least 2 waypoints (same requirement as the web
+  app's upload).
+- `droneroute login` requires the server to be running in self-hosted
+  (email/password) auth mode. Cloud-mode instances that only support
+  Google sign-in will return a clear error explaining that instead.
+- If the server has no DJI Cloud platform configured, or the upload
+  fails upstream, the CLI prints the server's error message and exits
+  with a non-zero status.
+
 ## Troubleshooting
 
 | Problem                                                        | Solution                                                                                                                                                                                                                                      |
@@ -140,6 +180,9 @@ mission in the waypoint list.
 | Mission doesn't appear in DJI Fly                              | Open the waypoint mission list and scroll — new missions appear at the end. Tap on it to load it into the editor.                                                                                                                             |
 | Mission doesn't appear in DJI Pilot 2                          | Pilot 2 support is best-effort and doesn't auto-appear like DJI Fly — open Pilot 2's import/route-library screen and browse to `DJI/Mission/KML/` manually. If it's not there or the path is wrong for your controller, please open an issue. |
 | SD card method: directory not found                            | The waypoint/mission directory is only created after you save at least one mission via DJI Fly / DJI Pilot 2 on the controller.                                                                                                               |
+| "No SkyRoute login found" (`--cloud`)                          | Run `npx @prostedav3/droneroute login` first, or pass `--token <jwt>` explicitly.                                                                                                                                                             |
+| Login fails with an auth-mode error                            | The target server is running in cloud mode (Google sign-in only) — self-hosted email/password login isn't available there.                                                                                                                    |
+| "Could not reach the SkyRoute server" (`--cloud`)              | Check the server URL (`--server`, `DRONEROUTE_SERVER`, or what was cached by `login`) and your network connection.                                                                                                                            |
 
 ## License
 

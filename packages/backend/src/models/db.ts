@@ -170,6 +170,52 @@ export function initDb(): void {
     );
   `);
 
+  // Migration: add folder column if missing (for existing DBs) — free-text,
+  // single-folder-per-mission tag for organizing the mission list (separate
+  // from the client/project field).
+  try {
+    database.exec(`ALTER TABLE missions ADD COLUMN folder TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Migration: create mission_comments table — visitor comments left on a
+  // publicly shared mission. `share_token` is denormalized (copied from
+  // missions.share_token at insert time) so the public GET/POST endpoints can
+  // resolve comments straight from the token without joining through
+  // missions and without ever exposing mission ownership.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS mission_comments (
+      id TEXT PRIMARY KEY,
+      mission_id TEXT NOT NULL,
+      share_token TEXT NOT NULL,
+      author_name TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (mission_id) REFERENCES missions(id)
+    );
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_mission_comments_share_token ON mission_comments(share_token)`,
+  );
+
+  // Migration: create mission_versions table — a full JSON snapshot of a
+  // mission's editable content, captured on every save. Retention is capped
+  // at the most recent 20 rows per mission_id (pruned in the same
+  // transaction as the insert — see missions.ts).
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS mission_versions (
+      id TEXT PRIMARY KEY,
+      mission_id TEXT NOT NULL,
+      snapshot TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (mission_id) REFERENCES missions(id)
+    );
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_mission_versions_mission_id ON mission_versions(mission_id, created_at)`,
+  );
+
   // Ensure ADMIN_EMAIL user has admin privileges (cloud mode)
   const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
   const adminEmail = process.env.ADMIN_EMAIL || "";

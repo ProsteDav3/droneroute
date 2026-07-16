@@ -69,3 +69,19 @@ export const authLimiter = rateLimit({
   skipSuccessfulRequests: true,
   message: { error: "Příliš mnoho pokusů, zkuste to prosím znovu později" },
 });
+
+/**
+ * Comment rate limiter — posting a comment on a publicly shared mission
+ * requires no account, so this is the main abuse control (alongside the
+ * name/length validation in missionValidation.ts). 5 posts per minute per
+ * IP is generous for a real visitor leaving feedback but blunt for a spam
+ * script.
+ */
+export const commentLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: skipInTests,
+  message: { error: "Příliš mnoho komentářů, zkuste to prosím znovu později" },
+});

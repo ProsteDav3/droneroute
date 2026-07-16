@@ -7,9 +7,18 @@ import {
   optionalAuth,
   type AuthRequest,
 } from "../middleware/auth.js";
-import type { SharedMission } from "@droneroute/shared";
+import { commentLimiter } from "../middleware/rateLimit.js";
+import { validateMissionComment } from "../services/missionValidation.js";
+import type {
+  SharedMission,
+  EmbedMission,
+  MissionComment,
+} from "@droneroute/shared";
 
 export const sharedRoutes = Router();
+
+/** Cap on comments returned per shared mission — a public read-only page has no pagination UI, so this just bounds the response size for a mission with an unusually long comment thread. */
+const MAX_COMMENTS_RETURNED = 500;
 
 // Enable sharing for a mission (generates share token)
 sharedRoutes.post(
@@ -145,3 +154,115 @@ sharedRoutes.post(
     res.status(201).json({ id, name });
   },
 );
+
+// List comments on a publicly shared mission (public, no auth required).
+// Resolves straight from the denormalized share_token on mission_comments,
+// so this never needs to join through missions or expose ownership.
+sharedRoutes.get("/shared/:token/comments", (req, res) => {
+  const db = getDb();
+
+  // A 404 for an unknown/revoked token keeps this consistent with
+  // GET /shared/:token instead of silently returning an empty list.
+  const mission = db
+    .prepare("SELECT id FROM missions WHERE share_token = ?")
+    .get(req.params.token) as any;
+  if (!mission) {
+    res.status(404).json({ error: "Sdílená mise nebyla nalezena" });
+    return;
+  }
+
+  // `created_at` is `datetime('now')` (second resolution) — `rowid`
+  // (SQLite's implicit, strictly insertion-ordered column) breaks ties
+  // between comments posted within the same second in true post order,
+  // unlike the UUID `id` which would sort arbitrarily.
+  const rows = db
+    .prepare(
+      `SELECT id, author_name, text, created_at FROM mission_comments
+       WHERE share_token = ?
+       ORDER BY created_at ASC, rowid ASC
+       LIMIT ?`,
+    )
+    .all(req.params.token, MAX_COMMENTS_RETURNED) as any[];
+
+  const comments: MissionComment[] = rows.map((row) => ({
+    id: row.id,
+    authorName: row.author_name,
+    text: row.text,
+    createdAt: row.created_at,
+  }));
+
+  res.json(comments);
+});
+
+// Post a comment on a publicly shared mission (public, no auth required —
+// just a display name + text). Rate-limited and length-bounded since this
+// is anonymous input.
+sharedRoutes.post("/shared/:token/comments", commentLimiter, (req, res) => {
+  const db = getDb();
+
+  const mission = db
+    .prepare("SELECT id FROM missions WHERE share_token = ?")
+    .get(req.params.token) as any;
+  if (!mission) {
+    res.status(404).json({ error: "Sdílená mise nebyla nalezena" });
+    return;
+  }
+
+  const validationError = validateMissionComment(req.body);
+  if (validationError) {
+    res.status(400).json({ error: validationError });
+    return;
+  }
+
+  const { authorName, text } = req.body as {
+    authorName: string;
+    text: string;
+  };
+
+  const id = uuidv4();
+  db.prepare(
+    "INSERT INTO mission_comments (id, mission_id, share_token, author_name, text) VALUES (?, ?, ?, ?, ?)",
+  ).run(id, mission.id, req.params.token, authorName.trim(), text.trim());
+
+  const created = db
+    .prepare(
+      "SELECT id, author_name, text, created_at FROM mission_comments WHERE id = ?",
+    )
+    .get(id) as any;
+
+  const comment: MissionComment = {
+    id: created.id,
+    authorName: created.author_name,
+    text: created.text,
+    createdAt: created.created_at,
+  };
+
+  res.status(201).json(comment);
+});
+
+// Minimal read-only mission data for the public embed widget (public, no
+// auth required) — deliberately excludes the owner's email, the mission's
+// DB id, and the share token itself (the caller already has the token).
+sharedRoutes.get("/embed/:token", (req, res) => {
+  const db = getDb();
+  const row = db
+    .prepare(
+      "SELECT name, config, waypoints, pois, obstacles FROM missions WHERE share_token = ?",
+    )
+    .get(req.params.token) as any;
+
+  if (!row) {
+    res.status(404).json({ error: "Sdílená mise nebyla nalezena" });
+    return;
+  }
+
+  const mission: EmbedMission = {
+    name: row.name,
+    config: JSON.parse(row.config),
+    waypoints: JSON.parse(row.waypoints),
+    pois: JSON.parse(row.pois || "[]"),
+    obstacles: JSON.parse(row.obstacles || "[]"),
+  };
+
+  res.json(mission);
+});

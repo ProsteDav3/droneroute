@@ -45,4 +45,16 @@ export default defineConfig({
       },
     },
   },
+  // Mirrors the dev server proxy above so `vite preview` (used by the
+  // Playwright E2E suite — see e2e/) can talk to a locally-running backend
+  // without needing a separate reverse proxy or CORS configuration.
+  preview: {
+    port: 4173,
+    proxy: {
+      "/api": {
+        target: "http://localhost:3001",
+        changeOrigin: true,
+      },
+    },
+  },
 });

@@ -17,9 +17,13 @@
     "lint:fix": "oxlint --fix packages/",
     "fmt": "prettier --write .",
     "fmt:check": "prettier --check .",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install",
+    "test:e2e": "playwright test --config=e2e/playwright.config.ts",
+    "test:e2e:update-snapshots": "playwright test --config=e2e/playwright.config.ts --update-snapshots",
+    "typecheck:e2e": "tsc --noEmit -p e2e/tsconfig.json"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/mapbox__mapbox-gl-geocoder": "^5.1.1",
     "concurrently": "^10.0.3",
     "lefthook": "^2.1.9",

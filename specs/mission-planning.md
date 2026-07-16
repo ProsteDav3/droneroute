@@ -15,6 +15,8 @@ Plan a drone flight by placing waypoints on the map and configuring what the dro
 - Rename waypoints by double-clicking their name.
 - Use a global speed for the whole flight, or set a different speed for each waypoint.
 - Use a global altitude for the whole flight, or set a different altitude for each waypoint.
+- Undo/redo any content edit (waypoints, POIs, obstacles, buildings, mission settings, applied templates) with Ctrl+Z / Ctrl+Shift+Z, or the undo/redo buttons in the map's top-left corner. Undo doesn't step through selection changes or tool-mode switches — only actual edits to the mission's content. Loading a different (or brand new) mission clears the undo history, since "undo" shouldn't jump back into a previous mission's content.
+- If your browser tab closes or crashes with unsaved changes, reopening the editor offers to recover your last autosaved draft (saved automatically to your browser's local storage a couple of seconds after each edit). You can restore it or discard it — declining just dismisses the prompt without deleting the draft, in case you want to come back to it. Saving the mission for real clears the autosaved draft.
 
 ## How it works
 

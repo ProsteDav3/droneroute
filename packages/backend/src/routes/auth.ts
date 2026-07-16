@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "../models/db.js";
 import {
@@ -6,13 +6,35 @@ import {
   comparePassword,
   generateToken,
   verifyGoogleToken,
+  generateResetToken,
+  hashResetToken,
+  resetTokenExpiresAt,
+  generateTwoFactorChallengeToken,
+  verifyTwoFactorChallengeToken,
+  generateTotpSecret,
+  totpKeyUri,
+  verifyTotpCode,
 } from "../services/authService.js";
+import {
+  isEmailConfigured,
+  sendPasswordResetEmail,
+} from "../services/emailService.js";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { authLimiter } from "../middleware/rateLimit.js";
 
 export const authRoutes = Router();
 
 const isSelfHosted = () => (process.env.SELF_HOSTED ?? "true") === "true";
+
+/**
+ * Base URL to build the password-reset link against. `APP_URL` lets an
+ * operator pin this explicitly (e.g. behind a reverse proxy that rewrites
+ * the Host header); otherwise it's derived from the incoming request, which
+ * is safe here since the SPA is always served same-origin with the API.
+ */
+function resolveAppUrl(req: Request): string {
+  return process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+}
 
 // Registration is a one-time bootstrap: the first account ever created
 // becomes the admin, and every account after that must be created by an
@@ -79,7 +101,7 @@ authRoutes.post("/google", authLimiter, async (req, res) => {
   // Check if a user with this google_id already exists
   const existingByGoogle = db
     .prepare(
-      "SELECT id, email, is_admin, is_banned FROM users WHERE google_id = ?",
+      "SELECT id, email, is_admin, is_banned, token_version FROM users WHERE google_id = ?",
     )
     .get(googleId) as any;
 
@@ -94,6 +116,7 @@ authRoutes.post("/google", authLimiter, async (req, res) => {
     const token = generateToken(
       existingByGoogle.id,
       !!existingByGoogle.is_admin,
+      existingByGoogle.token_version ?? 0,
     );
     res.json({
       token,
@@ -107,7 +130,7 @@ authRoutes.post("/google", authLimiter, async (req, res) => {
   // Check if a user with this email exists (existing user linking Google account)
   const existingByEmail = db
     .prepare(
-      "SELECT id, email, is_admin, is_banned FROM users WHERE LOWER(email) = LOWER(?)",
+      "SELECT id, email, is_admin, is_banned, token_version FROM users WHERE LOWER(email) = LOWER(?)",
     )
     .get(email) as any;
 
@@ -121,7 +144,11 @@ authRoutes.post("/google", authLimiter, async (req, res) => {
       "UPDATE users SET google_id = ?, email_verified = 1, last_login_at = datetime('now') WHERE id = ?",
     ).run(googleId, existingByEmail.id);
 
-    const token = generateToken(existingByEmail.id, !!existingByEmail.is_admin);
+    const token = generateToken(
+      existingByEmail.id,
+      !!existingByEmail.is_admin,
+      existingByEmail.token_version ?? 0,
+    );
     res.json({
       token,
       userId: existingByEmail.id,
@@ -143,7 +170,7 @@ authRoutes.post("/google", authLimiter, async (req, res) => {
     "INSERT INTO users (id, email, password_hash, google_id, email_verified, is_admin, last_login_at) VALUES (?, ?, '', ?, 1, ?, datetime('now'))",
   ).run(id, email, googleId, isAdmin ? 1 : 0);
 
-  const token = generateToken(id, isAdmin);
+  const token = generateToken(id, isAdmin, 0);
   res.status(201).json({ token, userId: id, email, isAdmin });
 });
 
@@ -200,7 +227,7 @@ authRoutes.post("/register", authLimiter, (req, res) => {
     return;
   }
 
-  const token = generateToken(id, true);
+  const token = generateToken(id, true, 0);
   res.status(201).json({ token, userId: id, email, isAdmin: true });
 });
 
@@ -221,7 +248,7 @@ authRoutes.post("/login", authLimiter, (req, res) => {
   const db = getDb();
   const user = db
     .prepare(
-      "SELECT id, email, password_hash, is_admin, is_banned FROM users WHERE email = ?",
+      "SELECT id, email, password_hash, is_admin, is_banned, totp_enabled, token_version FROM users WHERE email = ?",
     )
     .get(email) as any;
 
@@ -253,10 +280,24 @@ authRoutes.post("/login", authLimiter, (req, res) => {
     user.is_admin = 1;
   }
 
+  // Password check passed — if 2FA is enabled, don't issue the real session
+  // JWT yet. Hand back a short-lived challenge token instead; the client
+  // must complete POST /api/auth/2fa/login with the current TOTP code
+  // before a real token (and last_login_at bump) is granted.
+  if (user.totp_enabled) {
+    const challengeToken = generateTwoFactorChallengeToken(user.id);
+    res.json({ requiresTwoFactor: true, challengeToken });
+    return;
+  }
+
   db.prepare(
     "UPDATE users SET last_login_at = datetime('now') WHERE id = ?",
   ).run(user.id);
-  const token = generateToken(user.id, !!user.is_admin);
+  const token = generateToken(
+    user.id,
+    !!user.is_admin,
+    user.token_version ?? 0,
+  );
   res.json({
     token,
     userId: user.id,
@@ -304,11 +345,322 @@ authRoutes.post(
     }
 
     const newHash = hashPassword(newPassword);
-    db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(
-      newHash,
+    // Bumping token_version invalidates every previously issued JWT for
+    // this account — including the one used to make this very request —
+    // so a stolen-but-not-yet-noticed token stops working the moment the
+    // legitimate owner changes their password.
+    db.prepare(
+      "UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?",
+    ).run(newHash, req.userId);
+
+    res.json({ message: "Heslo bylo změněno. Přihlaste se prosím znovu." });
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Password reset (self-hosted mode only — cloud mode uses Google sign-in
+// and has no local password to reset)
+// ---------------------------------------------------------------------------
+
+authRoutes.post("/forgot-password", authLimiter, async (req, res) => {
+  if (!isSelfHosted()) {
+    res.status(410).json({
+      error:
+        "Obnova hesla není v cloud režimu dostupná. Použijte přihlášení přes Google.",
+    });
+    return;
+  }
+
+  const { email } = req.body;
+  if (!email) {
+    res.status(400).json({ error: "E-mail je povinný" });
+    return;
+  }
+
+  // Always the same response regardless of whether the account exists (or
+  // is banned) — the whole point is that a caller can't use this endpoint
+  // to enumerate registered emails.
+  const genericResponse = {
+    message:
+      "Pokud tento e-mail existuje, byl na něj odeslán odkaz pro obnovení hesla",
+  };
+
+  const db = getDb();
+  const user = db
+    .prepare(
+      "SELECT id, email, is_banned FROM users WHERE LOWER(email) = LOWER(?)",
+    )
+    .get(email) as any;
+
+  if (!user || user.is_banned) {
+    res.json(genericResponse);
+    return;
+  }
+
+  const rawToken = generateResetToken();
+  db.prepare(
+    "INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)",
+  ).run(uuidv4(), user.id, hashResetToken(rawToken), resetTokenExpiresAt());
+
+  const resetUrl = `${resolveAppUrl(req)}/reset-password?token=${rawToken}`;
+
+  // No email transport configured yet is a normal, expected state for a
+  // fresh self-hosted install (see services/emailService.ts) — the request
+  // still "succeeds" from the caller's perspective, it just falls back to
+  // an operator manually relaying the link instead of silently pretending
+  // an email went out. Same honest-degradation pattern as the DJI Cloud
+  // bridge when its env vars are unset.
+  if (isEmailConfigured()) {
+    try {
+      await sendPasswordResetEmail(user.email, resetUrl);
+    } catch (err) {
+      console.error("[password-reset] SMTP delivery failed:", err);
+      console.error(
+        `[password-reset] manual relay needed — send this link to ${user.email}: ${resetUrl}`,
+      );
+    }
+  } else {
+    console.error(
+      `[password-reset] SMTP not configured — manually relay this link to ${user.email}: ${resetUrl}`,
+    );
+  }
+
+  res.json(genericResponse);
+});
+
+authRoutes.post("/reset-password", authLimiter, (req, res) => {
+  if (!isSelfHosted()) {
+    res.status(410).json({
+      error:
+        "Obnova hesla není v cloud režimu dostupná. Použijte přihlášení přes Google.",
+    });
+    return;
+  }
+
+  const { token, newPassword } = req.body;
+  if (!token || !newPassword) {
+    res.status(400).json({ error: "Token a nové heslo jsou povinné" });
+    return;
+  }
+  if (newPassword.length < 6) {
+    res.status(400).json({ error: "Nové heslo musí mít alespoň 6 znaků" });
+    return;
+  }
+
+  const db = getDb();
+  const tokenHash = hashResetToken(token);
+  const record = db
+    .prepare(
+      "SELECT id, user_id, expires_at, used FROM password_reset_tokens WHERE token_hash = ?",
+    )
+    .get(tokenHash) as any;
+
+  const invalidTokenError = {
+    error: "Odkaz pro obnovení hesla je neplatný nebo již vypršel",
+  };
+
+  if (
+    !record ||
+    record.used ||
+    new Date(record.expires_at).getTime() < Date.now()
+  ) {
+    res.status(400).json(invalidTokenError);
+    return;
+  }
+
+  const newHash = hashPassword(newPassword);
+
+  // Same reasoning as change-password: bump token_version so every session
+  // issued before the reset (including one an attacker may have obtained)
+  // is invalidated immediately.
+  const applyReset = db.transaction(() => {
+    db.prepare(
+      "UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ?",
+    ).run(newHash, record.user_id);
+    db.prepare("UPDATE password_reset_tokens SET used = 1 WHERE id = ?").run(
+      record.id,
+    );
+  });
+  applyReset();
+
+  res.json({
+    message: "Heslo bylo úspěšně změněno. Přihlaste se prosím znovu.",
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Current user profile (used by the account settings dialog to show 2FA state)
+// ---------------------------------------------------------------------------
+
+authRoutes.get("/me", authMiddleware, (req: AuthRequest, res) => {
+  const db = getDb();
+  const user = db
+    .prepare("SELECT email, is_admin, totp_enabled FROM users WHERE id = ?")
+    .get(req.userId) as any;
+
+  if (!user) {
+    res.status(401).json({ error: "Uživatel nenalezen" });
+    return;
+  }
+
+  res.json({
+    email: user.email,
+    isAdmin: !!user.is_admin,
+    totpEnabled: !!user.totp_enabled,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2FA (TOTP)
+// ---------------------------------------------------------------------------
+
+authRoutes.post(
+  "/2fa/setup",
+  authLimiter,
+  authMiddleware,
+  (req: AuthRequest, res) => {
+    const db = getDb();
+    const user = db
+      .prepare("SELECT email, totp_enabled FROM users WHERE id = ?")
+      .get(req.userId) as any;
+
+    if (!user) {
+      res.status(401).json({ error: "Uživatel nenalezen" });
+      return;
+    }
+    if (user.totp_enabled) {
+      res.status(400).json({ error: "Dvoufázové ověření je již zapnuté" });
+      return;
+    }
+
+    // Generated and stored as "pending" — it only takes effect once
+    // /2fa/verify confirms the user actually has it in their authenticator
+    // app (otherwise a mistyped/never-completed setup could lock them out).
+    const secret = generateTotpSecret();
+    db.prepare("UPDATE users SET totp_secret = ? WHERE id = ?").run(
+      secret,
       req.userId,
     );
 
-    res.json({ message: "Heslo bylo změněno" });
+    res.json({ secret, otpauthUrl: totpKeyUri(user.email, secret) });
   },
 );
+
+authRoutes.post(
+  "/2fa/verify",
+  authLimiter,
+  authMiddleware,
+  (req: AuthRequest, res) => {
+    const { code } = req.body;
+    if (!code) {
+      res.status(400).json({ error: "Kód je povinný" });
+      return;
+    }
+
+    const db = getDb();
+    const user = db
+      .prepare("SELECT totp_secret FROM users WHERE id = ?")
+      .get(req.userId) as any;
+
+    if (!user?.totp_secret) {
+      res
+        .status(400)
+        .json({ error: "Nastavení dvoufázového ověření nebylo zahájeno" });
+      return;
+    }
+
+    if (!verifyTotpCode(user.totp_secret, code)) {
+      res.status(401).json({ error: "Neplatný kód" });
+      return;
+    }
+
+    db.prepare("UPDATE users SET totp_enabled = 1 WHERE id = ?").run(
+      req.userId,
+    );
+    res.json({ message: "Dvoufázové ověření bylo zapnuto" });
+  },
+);
+
+authRoutes.post(
+  "/2fa/disable",
+  authLimiter,
+  authMiddleware,
+  (req: AuthRequest, res) => {
+    const { currentPassword } = req.body;
+    if (!currentPassword) {
+      res.status(400).json({ error: "Současné heslo je povinné" });
+      return;
+    }
+
+    const db = getDb();
+    const user = db
+      .prepare("SELECT password_hash FROM users WHERE id = ?")
+      .get(req.userId) as any;
+
+    if (
+      !user ||
+      !user.password_hash ||
+      !comparePassword(currentPassword, user.password_hash)
+    ) {
+      res.status(401).json({ error: "Současné heslo je nesprávné" });
+      return;
+    }
+
+    db.prepare(
+      "UPDATE users SET totp_enabled = 0, totp_secret = NULL WHERE id = ?",
+    ).run(req.userId);
+    res.json({ message: "Dvoufázové ověření bylo vypnuto" });
+  },
+);
+
+authRoutes.post("/2fa/login", authLimiter, (req, res) => {
+  const { challengeToken, code } = req.body;
+  if (!challengeToken || !code) {
+    res.status(400).json({ error: "Challenge token a kód jsou povinné" });
+    return;
+  }
+
+  const challenge = verifyTwoFactorChallengeToken(challengeToken);
+  if (!challenge) {
+    res.status(401).json({ error: "Neplatný nebo vypršený challenge token" });
+    return;
+  }
+
+  const db = getDb();
+  const user = db
+    .prepare(
+      "SELECT id, email, is_admin, is_banned, totp_secret, totp_enabled, token_version FROM users WHERE id = ?",
+    )
+    .get(challenge.userId) as any;
+
+  // totp_enabled could have been turned off between the first login step
+  // and this one — treat that the same as an invalid challenge rather than
+  // silently granting a token through a code check that no longer applies.
+  if (!user || !user.totp_enabled || !user.totp_secret) {
+    res.status(401).json({ error: "Neplatný nebo vypršený challenge token" });
+    return;
+  }
+  if (user.is_banned) {
+    res.status(403).json({ error: "Váš účet byl pozastaven", banned: true });
+    return;
+  }
+  if (!verifyTotpCode(user.totp_secret, code)) {
+    res.status(401).json({ error: "Neplatný kód" });
+    return;
+  }
+
+  db.prepare(
+    "UPDATE users SET last_login_at = datetime('now') WHERE id = ?",
+  ).run(user.id);
+  const token = generateToken(
+    user.id,
+    !!user.is_admin,
+    user.token_version ?? 0,
+  );
+  res.json({
+    token,
+    userId: user.id,
+    email: user.email,
+    isAdmin: !!user.is_admin,
+  });
+});

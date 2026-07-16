@@ -39,6 +39,7 @@ function resetStore() {
     isLoading: false,
     needsVerification: false,
     hasRestored: false,
+    twoFactorChallenge: null,
   });
   vi.stubGlobal("localStorage", createMemoryStorage());
 }
@@ -110,5 +111,73 @@ describe("authStore.register", () => {
     ).rejects.toThrow("Registration is closed");
 
     expect(useAuthStore.getState().isLoading).toBe(false);
+  });
+});
+
+describe("authStore.login — 2FA challenge", () => {
+  beforeEach(() => {
+    resetStore();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("stores the challenge token and reports requiresTwoFactor instead of signing in", async () => {
+    mockedApi.post.mockResolvedValue({
+      requiresTwoFactor: true,
+      challengeToken: "challenge-abc",
+    });
+
+    const result = await useAuthStore
+      .getState()
+      .login("twofa@test.dev", "secret123");
+
+    expect(result).toEqual({ requiresTwoFactor: true });
+    expect(useAuthStore.getState().token).toBeNull();
+    expect(useAuthStore.getState().twoFactorChallenge).toBe("challenge-abc");
+  });
+
+  it("signs in normally when the account has no 2FA enabled", async () => {
+    mockedApi.post.mockResolvedValue({
+      token: "tok789",
+      userId: "u1",
+      email: "user@test.dev",
+      isAdmin: false,
+    });
+
+    const result = await useAuthStore
+      .getState()
+      .login("user@test.dev", "secret123");
+
+    expect(result).toEqual({ requiresTwoFactor: false });
+    expect(useAuthStore.getState().token).toBe("tok789");
+  });
+
+  it("loginWithTwoFactorCode throws when no challenge is pending", async () => {
+    await expect(
+      useAuthStore.getState().loginWithTwoFactorCode("123456"),
+    ).rejects.toThrow();
+  });
+
+  it("loginWithTwoFactorCode completes sign-in and clears the challenge", async () => {
+    useAuthStore.setState({ twoFactorChallenge: "challenge-abc" });
+    mockedApi.post.mockResolvedValue({
+      token: "tok999",
+      userId: "u1",
+      email: "twofa@test.dev",
+      isAdmin: false,
+    });
+
+    await useAuthStore.getState().loginWithTwoFactorCode("123456");
+
+    const state = useAuthStore.getState();
+    expect(state.token).toBe("tok999");
+    expect(state.twoFactorChallenge).toBeNull();
+    expect(mockedApi.post).toHaveBeenCalledWith("/auth/2fa/login", {
+      challengeToken: "challenge-abc",
+      code: "123456",
+    });
   });
 });

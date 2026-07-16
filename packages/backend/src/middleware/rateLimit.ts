@@ -67,5 +67,6 @@ export const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
+  skip: skipInTests,
   message: { error: "Příliš mnoho pokusů, zkuste to prosím znovu později" },
 });

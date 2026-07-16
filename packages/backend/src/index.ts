@@ -26,18 +26,55 @@ const PORT = process.env.PORT || 3001;
 // Trust reverse proxy (e.g. nginx, Docker) so rate limiting uses real client IP
 app.set("trust proxy", 1);
 
-// Security headers. CSP and COEP are disabled because the SPA embeds Mapbox GL
-// (web workers loaded from blob: URLs) and, in cloud mode, Google OAuth — a strict
-// CSP/COEP breaks both. All other baseline headers (nosniff, frameguard, HSTS,
-// referrer-policy, …) are applied. Tightening CSP is tracked as a follow-up.
+// Security headers. CSP allowlists exactly what the SPA needs at runtime:
+// - Mapbox GL (tiles/styles/geocoding over `connect-src`, its web workers
+//   loaded from blob: URLs over `worker-src`, and raster/vector tile images
+//   over `img-src`).
+// - Google Identity Services (cloud mode's "Sign in with Google" button),
+//   which injects its own <script> from accounts.google.com and renders its
+//   button/One Tap prompt in a same-origin-adjacent iframe.
+// - Google Fonts (index.html's Inter stylesheet + font files).
+// COEP stays disabled — it's unrelated to CSP and enabling it has previously
+// broken the Mapbox GL / Google OAuth combination in this app.
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "https://accounts.google.com"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https:"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+        connectSrc: [
+          "'self'",
+          "https://api.mapbox.com",
+          "https://events.mapbox.com",
+          "https://*.tiles.mapbox.com",
+          "https://accounts.google.com",
+        ],
+        workerSrc: ["'self'", "blob:"],
+        frameSrc: ["'self'", "https://accounts.google.com"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+      },
+    },
     crossOriginEmbedderPolicy: false,
     // Allow Google OAuth popups (cloud mode) to message back to the opener.
     crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   }),
 );
+
+// Helmet dropped Permissions-Policy support (no browser standardized it the
+// way Feature-Policy was), so it's set directly here. Disables three
+// sensitive browser APIs the app has no legitimate use for.
+app.use((_req, res, next) => {
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()",
+  );
+  next();
+});
 
 // CORS configuration. The SPA is served same-origin (and dev uses the Vite /api
 // proxy), so cross-origin access is only needed for split deployments. When

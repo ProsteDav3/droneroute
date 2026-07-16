@@ -170,6 +170,54 @@ export function initDb(): void {
     );
   `);
 
+  // Migration: create password_reset_tokens table. Only the hash of the
+  // reset token is ever stored — the raw token exists solely in the emailed
+  // (or console-logged) link, never at rest, so a DB read can't be turned
+  // into an account takeover.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token_hash ON password_reset_tokens(token_hash)`,
+  );
+
+  // Migration: add totp_secret column if missing (for existing DBs) — holds
+  // the pending or confirmed TOTP secret for 2FA.
+  try {
+    database.exec(`ALTER TABLE users ADD COLUMN totp_secret TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Migration: add totp_enabled column if missing (for existing DBs)
+  try {
+    database.exec(
+      `ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0`,
+    );
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Migration: add token_version column if missing (for existing DBs) —
+  // embedded in every issued JWT; bumping it (on password change/reset)
+  // invalidates every previously issued token for that account immediately,
+  // without needing a server-side session/token blocklist.
+  try {
+    database.exec(
+      `ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0`,
+    );
+  } catch {
+    // Column already exists — ignore
+  }
+
   // Ensure ADMIN_EMAIL user has admin privileges (cloud mode)
   const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
   const adminEmail = process.env.ADMIN_EMAIL || "";

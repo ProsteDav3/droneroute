@@ -10,8 +10,15 @@ interface AuthState {
   isLoading: boolean;
   needsVerification: boolean;
   hasRestored: boolean;
+  /** Set by `login` when the account has 2FA enabled; consumed by `loginWithTwoFactorCode`. */
+  twoFactorChallenge: string | null;
 
-  login: (email: string, password: string) => Promise<void>;
+  login: (
+    email: string,
+    password: string,
+  ) => Promise<{ requiresTwoFactor: boolean }>;
+  loginWithTwoFactorCode: (code: string) => Promise<void>;
+  cancelTwoFactorChallenge: () => void;
   register: (
     email: string,
     password: string,
@@ -21,9 +28,11 @@ interface AuthState {
   logout: () => void;
   restore: () => void;
   setNeedsVerification: (value: boolean) => void;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPassword: (token: string, newPassword: string) => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   token: null,
   email: null,
   userId: null,
@@ -31,8 +40,52 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: false,
   needsVerification: false,
   hasRestored: false,
+  twoFactorChallenge: null,
 
   login: async (email, password) => {
+    set({ isLoading: true });
+    try {
+      const res = await api.post<{
+        token?: string;
+        userId?: string;
+        email?: string;
+        isAdmin?: boolean;
+        requiresTwoFactor?: boolean;
+        challengeToken?: string;
+      }>("/auth/login", { email, password });
+
+      if (res.requiresTwoFactor) {
+        set({
+          isLoading: false,
+          twoFactorChallenge: res.challengeToken ?? null,
+        });
+        return { requiresTwoFactor: true };
+      }
+
+      localStorage.setItem("droneroute_token", res.token!);
+      localStorage.setItem("droneroute_email", res.email!);
+      localStorage.setItem("droneroute_is_admin", String(res.isAdmin));
+      set({
+        token: res.token!,
+        email: res.email!,
+        userId: res.userId!,
+        isAdmin: !!res.isAdmin,
+        isLoading: false,
+        needsVerification: false,
+        twoFactorChallenge: null,
+      });
+      return { requiresTwoFactor: false };
+    } catch (err) {
+      set({ isLoading: false });
+      throw err;
+    }
+  },
+
+  loginWithTwoFactorCode: async (code: string) => {
+    const challengeToken = get().twoFactorChallenge;
+    if (!challengeToken) {
+      throw new Error("Chybí platná výzva pro dvoufázové ověření");
+    }
     set({ isLoading: true });
     try {
       const res = await api.post<{
@@ -40,7 +93,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         userId: string;
         email: string;
         isAdmin: boolean;
-      }>("/auth/login", { email, password });
+      }>("/auth/2fa/login", { challengeToken, code });
       localStorage.setItem("droneroute_token", res.token);
       localStorage.setItem("droneroute_email", res.email);
       localStorage.setItem("droneroute_is_admin", String(res.isAdmin));
@@ -51,12 +104,15 @@ export const useAuthStore = create<AuthState>((set) => ({
         isAdmin: res.isAdmin,
         isLoading: false,
         needsVerification: false,
+        twoFactorChallenge: null,
       });
     } catch (err) {
       set({ isLoading: false });
       throw err;
     }
   },
+
+  cancelTwoFactorChallenge: () => set({ twoFactorChallenge: null }),
 
   register: async (email, password, bootstrapToken) => {
     set({ isLoading: true });
@@ -120,6 +176,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       userId: null,
       isAdmin: false,
       needsVerification: false,
+      twoFactorChallenge: null,
     });
     useMissionStore.getState().clearMission();
   },
@@ -137,5 +194,16 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   setNeedsVerification: (value: boolean) => {
     set({ needsVerification: value });
+  },
+
+  forgotPassword: async (email: string) => {
+    await api.post<{ message: string }>("/auth/forgot-password", { email });
+  },
+
+  resetPassword: async (token: string, newPassword: string) => {
+    await api.post<{ message: string }>("/auth/reset-password", {
+      token,
+      newPassword,
+    });
   },
 }));

@@ -25,7 +25,7 @@ a log aggregator or filter by severity.
   paginated) returns these entries with both emails joined in. The admin
   page has a new "Historie akcí" (action history) tab showing this log.
 - **Health endpoint.** `GET /api/health` now returns `{ status, uptimeSeconds,
-  dbOk, timestamp }` instead of a bare `{ status: "ok" }`. It runs a cheap
+dbOk, timestamp }` instead of a bare `{ status: "ok" }`. It runs a cheap
   `SELECT 1` against the database and reports `status: "degraded"` (still
   HTTP 200, so a monitor can tell "reachable but unhealthy" apart from
   "unreachable") if that fails. No authentication required, matching its use

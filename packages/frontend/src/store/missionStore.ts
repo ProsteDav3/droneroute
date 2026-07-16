@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { useStore } from "zustand";
+import { temporal } from "zundo";
 import type {
   Waypoint,
   MissionConfig,
@@ -194,734 +196,910 @@ interface MissionState {
   setDirty: (dirty: boolean) => void;
 }
 
-export const useMissionStore = create<MissionState>((set, get) => ({
-  missionId: null,
-  missionGeneration: 0,
-  missionName: DEFAULT_MISSION_NAME,
-  missionClient: "",
-  dirty: false,
-  config: { ...DEFAULT_MISSION_CONFIG },
-  waypoints: [],
-  selectedWaypointIndices: new Set<number>(),
-  lastSelectedWaypointIndex: null,
-  pois: [],
-  selectedPoiId: null,
-  obstacles: [],
-  selectedObstacleId: null,
-  isDrawingObstacle: false,
-  drawingVertices: [],
-  buildings: [],
-  selectedBuildingId: null,
-  isDrawingBuilding: false,
-  buildingDrawMode: "rectangle",
-  drawingBuildingVertices: [],
-  isAddingWaypoint: true,
-  isAddingPoi: false,
-  templateMode: null,
-  flyToTarget: null,
-  setFlyToTarget: (target) => set({ flyToTarget: target }),
-  pendingOrbitParams: null,
-  setPendingOrbitParams: (params) => set({ pendingOrbitParams: params }),
-  pendingPresetLoad: null,
-  setPendingPresetLoad: (load) =>
-    set((state) => ({
-      pendingPresetLoad: load,
-      // Loading a preset always means "start a fresh template," never
-      // "continue editing the one currently open" — without this, loading
-      // a same-type preset while "Edit template" is active would silently
-      // overwrite the group being edited on Apply (handleApply branches on
-      // editingTemplateGroupId to call replaceTemplateGroup instead of
-      // appendWaypoints). Centralized here so every caller gets this for
-      // free instead of having to remember to clear it themselves.
-      editingTemplateGroupId: load ? null : state.editingTemplateGroupId,
-    })),
-  templateGroups: {},
-  editingTemplateGroupId: null,
-  setEditingTemplateGroupId: (id) => set({ editingTemplateGroupId: id }),
-  currentPage: "editor",
-  shareToken: null,
-  setCurrentPage: (page) => set({ currentPage: page }),
-  setShareToken: (token) => set({ shareToken: token }),
-
-  setMissionName: (name) => set({ missionName: name, dirty: true }),
-  setMissionClient: (client) => set({ missionClient: client, dirty: true }),
-  setMissionId: (id) => set({ missionId: id }),
-
-  setConfig: (updates) =>
-    set((state) => ({
-      config: { ...state.config, ...updates },
-      dirty: true,
-    })),
-
-  addWaypoint: (lat, lng) => {
-    const isFirstPointOfMission =
-      get().waypoints.length === 0 && get().pois.length === 0;
-    const generation = get().missionGeneration;
-    set((state) => {
-      const index = state.waypoints.length;
-      const newWaypoint: Waypoint = {
-        ...DEFAULT_WAYPOINT,
-        index,
-        name: `Bod trasy ${index + 1}`,
-        latitude: lat,
-        longitude: lng,
-        actions: [],
-      };
-      return {
-        waypoints: [...state.waypoints, newWaypoint],
-        selectedWaypointIndices: new Set([index]),
-        lastSelectedWaypointIndex: index,
-        dirty: true,
-      };
-    });
-    if (isFirstPointOfMission) {
-      void autoNameFromLocation(lat, lng, generation);
-    }
-  },
-
-  updateWaypoint: (index, updates) =>
-    set((state) => ({
-      waypoints: state.waypoints.map((wp) =>
-        wp.index === index ? { ...wp, ...updates } : wp,
-      ),
-      dirty: true,
-    })),
-
-  removeWaypoint: (index) =>
-    set((state) => {
-      const filtered = state.waypoints
-        .filter((wp) => wp.index !== index)
-        .map((wp, i) => ({ ...wp, index: i }));
-
-      // Rebuild selection: remove the deleted index, adjust indices above it
-      const newSelection = new Set<number>();
-      for (const idx of state.selectedWaypointIndices) {
-        if (idx === index) continue;
-        newSelection.add(idx > index ? idx - 1 : idx);
-      }
-
-      return {
-        waypoints: filtered,
-        selectedWaypointIndices: newSelection,
-        lastSelectedWaypointIndex:
-          state.lastSelectedWaypointIndex === index
-            ? null
-            : state.lastSelectedWaypointIndex !== null &&
-                state.lastSelectedWaypointIndex > index
-              ? state.lastSelectedWaypointIndex - 1
-              : state.lastSelectedWaypointIndex,
-        dirty: true,
-      };
-    }),
-
-  moveWaypoint: (index, lat, lng) =>
-    set((state) => ({
-      waypoints: state.waypoints.map((wp) =>
-        wp.index === index ? { ...wp, latitude: lat, longitude: lng } : wp,
-      ),
-      dirty: true,
-    })),
-
-  selectWaypoint: (index, mode = "replace") =>
-    set((state) => {
-      if (index === null) {
-        return {
-          selectedWaypointIndices: new Set<number>(),
-          lastSelectedWaypointIndex: null,
-        };
-      }
-
-      switch (mode) {
-        case "replace":
-          return {
-            selectedWaypointIndices: new Set([index]),
-            lastSelectedWaypointIndex: index,
-          };
-
-        case "toggle": {
-          const next = new Set(state.selectedWaypointIndices);
-          if (next.has(index)) {
-            next.delete(index);
-          } else {
-            next.add(index);
-          }
-          return {
-            selectedWaypointIndices: next,
-            lastSelectedWaypointIndex: next.size > 0 ? index : null,
-          };
-        }
-
-        case "range": {
-          const anchor = state.lastSelectedWaypointIndex;
-          if (anchor === null) {
-            return {
-              selectedWaypointIndices: new Set([index]),
-              lastSelectedWaypointIndex: index,
-            };
-          }
-          const start = Math.min(anchor, index);
-          const end = Math.max(anchor, index);
-          const rangeSet = new Set(state.selectedWaypointIndices);
-          for (let i = start; i <= end; i++) {
-            rangeSet.add(i);
-          }
-          return {
-            selectedWaypointIndices: rangeSet,
-            // Keep the anchor so subsequent Shift+clicks extend from the same origin
-            lastSelectedWaypointIndex: anchor,
-          };
-        }
-      }
-    }),
-
-  selectAllWaypoints: () =>
-    set((state) => ({
-      selectedWaypointIndices: new Set(state.waypoints.map((wp) => wp.index)),
-      lastSelectedWaypointIndex: state.waypoints.length > 0 ? 0 : null,
-    })),
-
-  clearWaypointSelection: () =>
-    set({
-      selectedWaypointIndices: new Set<number>(),
-      lastSelectedWaypointIndex: null,
-    }),
-
-  removeSelectedWaypoints: () =>
-    set((state) => {
-      if (state.selectedWaypointIndices.size === 0) return state;
-      const filtered = state.waypoints
-        .filter((wp) => !state.selectedWaypointIndices.has(wp.index))
-        .map((wp, i) => ({ ...wp, index: i }));
-      return {
-        waypoints: filtered,
-        selectedWaypointIndices: new Set<number>(),
-        lastSelectedWaypointIndex: null,
-        dirty: true,
-      };
-    }),
-
-  updateSelectedWaypoints: (updates) =>
-    set((state) => ({
-      waypoints: state.waypoints.map((wp) =>
-        state.selectedWaypointIndices.has(wp.index)
-          ? { ...wp, ...updates }
-          : wp,
-      ),
-      dirty: true,
-    })),
-
-  updateAllWaypoints: (updates) =>
-    set((state) => ({
-      waypoints: state.waypoints.map((wp) => ({ ...wp, ...updates })),
-      dirty: true,
-    })),
-
-  reorderWaypoints: (fromIndex, toIndex) =>
-    set((state) => {
-      const items = [...state.waypoints];
-      const [moved] = items.splice(fromIndex, 1);
-      items.splice(toIndex, 0, moved);
-      // Re-index after reorder
-      const reindexed = items.map((wp, i) => ({ ...wp, index: i }));
-      return {
-        waypoints: reindexed,
-        selectedWaypointIndices: new Set([toIndex]),
-        lastSelectedWaypointIndex: toIndex,
-        dirty: true,
-      };
-    }),
-
-  setIsAddingWaypoint: (adding) =>
-    set((state) => ({
-      isAddingWaypoint: adding,
-      isAddingPoi: adding ? false : state.isAddingPoi,
-      isDrawingObstacle: adding ? false : state.isDrawingObstacle,
-      isDrawingBuilding: adding ? false : state.isDrawingBuilding,
-      templateMode: adding ? null : state.templateMode,
-    })),
-
-  addAction: (waypointIndex, action) =>
-    set((state) => ({
-      waypoints: state.waypoints.map((wp) =>
-        wp.index === waypointIndex
-          ? { ...wp, actions: [...wp.actions, action] }
-          : wp,
-      ),
-      dirty: true,
-    })),
-
-  updateAction: (waypointIndex, actionId, updates) =>
-    set((state) => ({
-      waypoints: state.waypoints.map((wp) =>
-        wp.index === waypointIndex
-          ? {
-              ...wp,
-              actions: wp.actions.map((a) =>
-                a.actionId === actionId ? { ...a, ...updates } : a,
-              ),
-            }
-          : wp,
-      ),
-      dirty: true,
-    })),
-
-  removeAction: (waypointIndex, actionId) =>
-    set((state) => ({
-      waypoints: state.waypoints.map((wp) =>
-        wp.index === waypointIndex
-          ? {
-              ...wp,
-              actions: wp.actions.filter((a) => a.actionId !== actionId),
-            }
-          : wp,
-      ),
-      dirty: true,
-    })),
-
-  // POI actions
-  addPoi: (lat, lng) => {
-    const isFirstPointOfMission =
-      get().waypoints.length === 0 && get().pois.length === 0;
-    const generation = get().missionGeneration;
-    set((state) => {
-      const building = state.buildings.find(
-        (b) => b.vertices.length >= 3 && pointInPolygon([lat, lng], b.vertices),
-      );
-
-      const poi: PointOfInterest = {
-        id: crypto.randomUUID(),
-        name: `POI ${state.pois.length + 1}`,
-        latitude: lat,
-        longitude: lng,
-        height: building ? building.height : 0,
-      };
-
-      // A POI dropped on a building: pre-fill the Orbit panel with a
-      // recommended altitude/radius/gimbal pitch for orbiting it, instead
-      // of generating a route automatically.
-      const pendingOrbitParams = building
-        ? orbitParamsForBuilding(
-            building,
-            WIDE_CAMERA_FOV[state.config.payloadEnumValue]?.vfovDeg,
-          )
-        : state.pendingOrbitParams;
-
-      return {
-        pois: [...state.pois, poi],
-        selectedPoiId: poi.id,
-        pendingOrbitParams,
-        dirty: true,
-      };
-    });
-    if (isFirstPointOfMission) {
-      void autoNameFromLocation(lat, lng, generation);
-    }
-  },
-
-  updatePoi: (id, updates) =>
-    set((state) => ({
-      pois: state.pois.map((p) => (p.id === id ? { ...p, ...updates } : p)),
-      dirty: true,
-    })),
-
-  removePoi: (id) =>
-    set((state) => ({
-      pois: state.pois.filter((p) => p.id !== id),
-      selectedPoiId: state.selectedPoiId === id ? null : state.selectedPoiId,
-      // Clear poiId references on waypoints
-      waypoints: state.waypoints.map((wp) =>
-        wp.poiId === id ? { ...wp, poiId: undefined } : wp,
-      ),
-      dirty: true,
-    })),
-
-  movePoi: (id, lat, lng) =>
-    set((state) => ({
-      pois: state.pois.map((p) =>
-        p.id === id ? { ...p, latitude: lat, longitude: lng } : p,
-      ),
-      dirty: true,
-    })),
-
-  selectPoi: (id) => set({ selectedPoiId: id }),
-
-  setIsAddingPoi: (adding) =>
-    set((state) => ({
-      isAddingPoi: adding,
-      isAddingWaypoint: adding ? false : state.isAddingWaypoint,
-      isDrawingObstacle: adding ? false : state.isDrawingObstacle,
-      isDrawingBuilding: adding ? false : state.isDrawingBuilding,
-      templateMode: adding ? null : state.templateMode,
-    })),
-
-  // Obstacle actions
-  addObstacle: (vertices) =>
-    set((state) => {
-      const obstacle: Obstacle = {
-        id: crypto.randomUUID(),
-        name: `Obstacle ${state.obstacles.length + 1}`,
-        description: "",
-        vertices,
-      };
-      return {
-        obstacles: [...state.obstacles, obstacle],
-        selectedObstacleId: obstacle.id,
-        isDrawingObstacle: false,
-        drawingVertices: [],
-        dirty: true,
-      };
-    }),
-
-  updateObstacle: (id, updates) =>
-    set((state) => ({
-      obstacles: state.obstacles.map((o) =>
-        o.id === id ? { ...o, ...updates } : o,
-      ),
-      dirty: true,
-    })),
-
-  removeObstacle: (id) =>
-    set((state) => ({
-      obstacles: state.obstacles.filter((o) => o.id !== id),
-      selectedObstacleId:
-        state.selectedObstacleId === id ? null : state.selectedObstacleId,
-      dirty: true,
-    })),
-
-  moveObstacleVertex: (id, vertexIndex, lat, lng) =>
-    set((state) => ({
-      obstacles: state.obstacles.map((o) => {
-        if (o.id !== id) return o;
-        const vertices = [...o.vertices] as [number, number][];
-        vertices[vertexIndex] = [lat, lng];
-        return { ...o, vertices };
-      }),
-      dirty: true,
-    })),
-
-  addObstacleVertex: (id, afterIndex, lat, lng) =>
-    set((state) => ({
-      obstacles: state.obstacles.map((o) => {
-        if (o.id !== id) return o;
-        const vertices = [...o.vertices] as [number, number][];
-        vertices.splice(afterIndex + 1, 0, [lat, lng]);
-        return { ...o, vertices };
-      }),
-      dirty: true,
-    })),
-
-  removeObstacleVertex: (id, vertexIndex) =>
-    set((state) => ({
-      obstacles: state.obstacles.map((o) => {
-        if (o.id !== id || o.vertices.length <= 3) return o;
-        const vertices = o.vertices.filter(
-          (_: [number, number], i: number) => i !== vertexIndex,
-        );
-        return { ...o, vertices };
-      }),
-      dirty: true,
-    })),
-
-  selectObstacle: (id) => set({ selectedObstacleId: id }),
-
-  setIsDrawingObstacle: (drawing) =>
-    set((state) => ({
-      isDrawingObstacle: drawing,
-      isAddingWaypoint: drawing ? false : state.isAddingWaypoint,
-      isAddingPoi: drawing ? false : state.isAddingPoi,
-      isDrawingBuilding: drawing ? false : state.isDrawingBuilding,
-      templateMode: drawing ? null : state.templateMode,
-      selectedWaypointIndices: drawing
-        ? new Set<number>()
-        : state.selectedWaypointIndices,
-      selectedPoiId: drawing ? null : state.selectedPoiId,
-      drawingVertices: drawing ? [] : state.drawingVertices,
-    })),
-
-  setDrawingVertices: (vertices) => set({ drawingVertices: vertices }),
-
-  // Building actions
-  addBuilding: (vertices, height) =>
-    set((state) => {
-      const building: Building = {
-        id: crypto.randomUUID(),
-        name: `Building ${state.buildings.length + 1}`,
-        height,
-        vertices,
-      };
-      return {
-        buildings: [...state.buildings, building],
-        selectedBuildingId: building.id,
-        isDrawingBuilding: false,
-        drawingBuildingVertices: [],
-        dirty: true,
-      };
-    }),
-
-  updateBuilding: (id, updates) =>
-    set((state) => ({
-      buildings: state.buildings.map((b) =>
-        b.id === id ? { ...b, ...updates } : b,
-      ),
-      dirty: true,
-    })),
-
-  removeBuilding: (id) =>
-    set((state) => ({
-      buildings: state.buildings.filter((b) => b.id !== id),
-      selectedBuildingId:
-        state.selectedBuildingId === id ? null : state.selectedBuildingId,
-      dirty: true,
-    })),
-
-  moveBuildingVertex: (id, vertexIndex, lat, lng) =>
-    set((state) => ({
-      buildings: state.buildings.map((b) => {
-        if (b.id !== id) return b;
-        const vertices = [...b.vertices] as [number, number][];
-        vertices[vertexIndex] = [lat, lng];
-        return { ...b, vertices };
-      }),
-      dirty: true,
-    })),
-
-  addBuildingVertex: (id, afterIndex, lat, lng) =>
-    set((state) => ({
-      buildings: state.buildings.map((b) => {
-        if (b.id !== id) return b;
-        const vertices = [...b.vertices] as [number, number][];
-        vertices.splice(afterIndex + 1, 0, [lat, lng]);
-        return { ...b, vertices };
-      }),
-      dirty: true,
-    })),
-
-  removeBuildingVertex: (id, vertexIndex) =>
-    set((state) => ({
-      buildings: state.buildings.map((b) => {
-        if (b.id !== id || b.vertices.length <= 3) return b;
-        const vertices = b.vertices.filter(
-          (_: [number, number], i: number) => i !== vertexIndex,
-        );
-        return { ...b, vertices };
-      }),
-      dirty: true,
-    })),
-
-  selectBuilding: (id) => set({ selectedBuildingId: id }),
-
-  setIsDrawingBuilding: (drawing) =>
-    set((state) => ({
-      isDrawingBuilding: drawing,
-      isAddingWaypoint: drawing ? false : state.isAddingWaypoint,
-      isAddingPoi: drawing ? false : state.isAddingPoi,
-      isDrawingObstacle: drawing ? false : state.isDrawingObstacle,
-      templateMode: drawing ? null : state.templateMode,
-      selectedWaypointIndices: drawing
-        ? new Set<number>()
-        : state.selectedWaypointIndices,
-      selectedPoiId: drawing ? null : state.selectedPoiId,
-      drawingBuildingVertices: drawing ? [] : state.drawingBuildingVertices,
-    })),
-
-  setBuildingDrawMode: (mode) =>
-    set({ buildingDrawMode: mode, drawingBuildingVertices: [] }),
-
-  setDrawingBuildingVertices: (vertices) =>
-    set({ drawingBuildingVertices: vertices }),
-
-  setTemplateMode: (mode) =>
-    set({
-      templateMode: mode,
-      isAddingWaypoint: false,
-      isAddingPoi: false,
-      isDrawingObstacle: false,
-      isDrawingBuilding: false,
-      selectedWaypointIndices: new Set(),
-      selectedPoiId: null,
-    }),
-
-  appendWaypoints: (newWps, newPois, templateGroup) => {
-    // Templates (Orbit/Grid/Facade/Solar/Pencil/Corridor/Turbine) are the other way a brand
-    // new mission gets its first content, alongside the manual
-    // addWaypoint/addPoi clicks — auto-naming only wired up for those two
-    // missed every template-created mission entirely.
-    const wasEmptyMission =
-      get().waypoints.length === 0 && get().pois.length === 0;
-    const generation = get().missionGeneration;
-    const firstLocation = newPois?.[0]
-      ? { lat: newPois[0].latitude, lng: newPois[0].longitude }
-      : newWps[0]
-        ? { lat: newWps[0].latitude, lng: newWps[0].longitude }
-        : null;
-
-    set((state) => {
-      const startIndex = state.waypoints.length;
-      const groupId = templateGroup ? crypto.randomUUID() : undefined;
-
-      const fullWaypoints: Waypoint[] = newWps.map((wp, i) => ({
-        ...wp,
-        index: startIndex + i,
-        name: `Bod trasy ${startIndex + i + 1}`,
-        ...(groupId ? { templateGroupId: groupId } : {}),
-      }));
-
-      const fullPois: PointOfInterest[] = (newPois || []).map((p) => ({
-        ...p,
-        id: crypto.randomUUID(),
-        ...(groupId ? { templateGroupId: groupId } : {}),
-      }));
-
-      // If orbit template created a POI, link the waypoints to it
-      if (fullPois.length === 1) {
-        const poiId = fullPois[0].id;
-        for (const wp of fullWaypoints) {
-          if (wp.headingMode === "fixed") {
-            // Convert to towardPOI mode for orbit waypoints
-            wp.headingMode = "towardPOI";
-            wp.poiId = poiId;
-          }
-        }
-      }
-
-      return {
-        waypoints: [...state.waypoints, ...fullWaypoints],
-        pois: [...state.pois, ...fullPois],
-        templateGroups:
-          groupId && templateGroup
-            ? { ...state.templateGroups, [groupId]: templateGroup }
-            : state.templateGroups,
-        selectedWaypointIndices: new Set(fullWaypoints.map((wp) => wp.index)),
-        lastSelectedWaypointIndex:
-          fullWaypoints.length > 0
-            ? fullWaypoints[fullWaypoints.length - 1].index
-            : state.lastSelectedWaypointIndex,
-        templateMode: null,
-        dirty: true,
-      };
-    });
-
-    if (wasEmptyMission && firstLocation) {
-      void autoNameFromLocation(
-        firstLocation.lat,
-        firstLocation.lng,
-        generation,
-      );
-    }
-  },
-
-  replaceTemplateGroup: (groupId, newWps, newPois, params) =>
-    set((state) => {
-      const existingGroup = state.templateGroups[groupId];
-      if (!existingGroup) return state;
-
-      const remainingWaypoints = state.waypoints
-        .filter((wp) => wp.templateGroupId !== groupId)
-        .map((wp, i) => ({ ...wp, index: i }));
-      const remainingPois = state.pois.filter(
-        (p) => p.templateGroupId !== groupId,
-      );
-      const startIndex = remainingWaypoints.length;
-
-      const fullWaypoints: Waypoint[] = newWps.map((wp, i) => ({
-        ...wp,
-        index: startIndex + i,
-        name: `Bod trasy ${startIndex + i + 1}`,
-        templateGroupId: groupId,
-      }));
-
-      const fullPois: PointOfInterest[] = newPois.map((p) => ({
-        ...p,
-        id: crypto.randomUUID(),
-        templateGroupId: groupId,
-      }));
-
-      if (fullPois.length === 1) {
-        const poiId = fullPois[0].id;
-        for (const wp of fullWaypoints) {
-          if (wp.headingMode === "fixed") {
-            wp.headingMode = "towardPOI";
-            wp.poiId = poiId;
-          }
-        }
-      }
-
-      return {
-        waypoints: [...remainingWaypoints, ...fullWaypoints],
-        pois: [...remainingPois, ...fullPois],
-        templateGroups: {
-          ...state.templateGroups,
-          [groupId]: { type: existingGroup.type, params },
-        },
-        selectedWaypointIndices: new Set(fullWaypoints.map((wp) => wp.index)),
-        lastSelectedWaypointIndex:
-          fullWaypoints.length > 0
-            ? fullWaypoints[fullWaypoints.length - 1].index
-            : state.lastSelectedWaypointIndex,
-        templateMode: null,
-        editingTemplateGroupId: null,
-        dirty: true,
-      };
-    }),
-
-  loadMission: (data) =>
-    set((state) => ({
-      missionId: data.id || null,
-      missionGeneration: state.missionGeneration + 1,
-      missionName: data.name,
-      missionClient: data.client || "",
-      config: data.config,
-      waypoints: data.waypoints,
-      pois: data.pois || [],
-      obstacles: data.obstacles || [],
-      buildings: data.buildings || [],
-      selectedWaypointIndices: new Set<number>(),
-      lastSelectedWaypointIndex: null,
-      selectedPoiId: null,
-      selectedObstacleId: null,
-      selectedBuildingId: null,
-      // Template params are now persisted with the saved mission, so a
-      // waypoint/POI's templateGroupId from a previous session still
-      // resolves to real params after a save/reload round-trip — "Edit
-      // template" keeps working instead of degrading to plain waypoints.
-      templateGroups: data.templateGroups || {},
-      editingTemplateGroupId: null,
-      pendingOrbitParams: null,
-      pendingPresetLoad: null,
-      dirty: false,
-    })),
-
-  clearMission: () => {
-    const prefs = usePreferencesStore.getState().preferences;
-    set((state) => ({
+/**
+ * Fields tracked for undo/redo — deliberately excludes selection state
+ * (selectedWaypointIndices, selectedPoiId, ...) and transient UI mode flags
+ * (isAddingWaypoint, templateMode, drawing vertices, ...). Undoing should
+ * step through content edits, not clicks/tool-mode changes.
+ */
+function partializeForHistory(state: MissionState) {
+  return {
+    missionName: state.missionName,
+    missionClient: state.missionClient,
+    config: state.config,
+    waypoints: state.waypoints,
+    pois: state.pois,
+    obstacles: state.obstacles,
+    buildings: state.buildings,
+    templateGroups: state.templateGroups,
+  };
+}
+
+export const useMissionStore = create<MissionState>()(
+  temporal(
+    (set, get) => ({
       missionId: null,
-      missionGeneration: state.missionGeneration + 1,
+      missionGeneration: 0,
       missionName: DEFAULT_MISSION_NAME,
       missionClient: "",
-      config: { ...DEFAULT_MISSION_CONFIG, ...prefs.missionDefaults },
+      dirty: false,
+      config: { ...DEFAULT_MISSION_CONFIG },
       waypoints: [],
-      pois: [],
-      obstacles: [],
-      buildings: [],
       selectedWaypointIndices: new Set<number>(),
       lastSelectedWaypointIndex: null,
+      pois: [],
       selectedPoiId: null,
+      obstacles: [],
       selectedObstacleId: null,
-      selectedBuildingId: null,
       isDrawingObstacle: false,
       drawingVertices: [],
+      buildings: [],
+      selectedBuildingId: null,
       isDrawingBuilding: false,
+      buildingDrawMode: "rectangle",
       drawingBuildingVertices: [],
+      isAddingWaypoint: true,
+      isAddingPoi: false,
+      templateMode: null,
+      flyToTarget: null,
+      setFlyToTarget: (target) => set({ flyToTarget: target }),
+      pendingOrbitParams: null,
+      setPendingOrbitParams: (params) => set({ pendingOrbitParams: params }),
+      pendingPresetLoad: null,
+      setPendingPresetLoad: (load) =>
+        set((state) => ({
+          pendingPresetLoad: load,
+          // Loading a preset always means "start a fresh template," never
+          // "continue editing the one currently open" — without this, loading
+          // a same-type preset while "Edit template" is active would silently
+          // overwrite the group being edited on Apply (handleApply branches on
+          // editingTemplateGroupId to call replaceTemplateGroup instead of
+          // appendWaypoints). Centralized here so every caller gets this for
+          // free instead of having to remember to clear it themselves.
+          editingTemplateGroupId: load ? null : state.editingTemplateGroupId,
+        })),
       templateGroups: {},
       editingTemplateGroupId: null,
-      pendingOrbitParams: null,
-      pendingPresetLoad: null,
-      dirty: false,
-    }));
-  },
+      setEditingTemplateGroupId: (id) => set({ editingTemplateGroupId: id }),
+      currentPage: "editor",
+      shareToken: null,
+      setCurrentPage: (page) => set({ currentPage: page }),
+      setShareToken: (token) => set({ shareToken: token }),
 
-  setDirty: (dirty) => set({ dirty }),
-}));
+      setMissionName: (name) => set({ missionName: name, dirty: true }),
+      setMissionClient: (client) => set({ missionClient: client, dirty: true }),
+      setMissionId: (id) => set({ missionId: id }),
+
+      setConfig: (updates) =>
+        set((state) => ({
+          config: { ...state.config, ...updates },
+          dirty: true,
+        })),
+
+      addWaypoint: (lat, lng) => {
+        const isFirstPointOfMission =
+          get().waypoints.length === 0 && get().pois.length === 0;
+        const generation = get().missionGeneration;
+        set((state) => {
+          const index = state.waypoints.length;
+          const newWaypoint: Waypoint = {
+            ...DEFAULT_WAYPOINT,
+            index,
+            name: `Bod trasy ${index + 1}`,
+            latitude: lat,
+            longitude: lng,
+            actions: [],
+          };
+          return {
+            waypoints: [...state.waypoints, newWaypoint],
+            selectedWaypointIndices: new Set([index]),
+            lastSelectedWaypointIndex: index,
+            dirty: true,
+          };
+        });
+        if (isFirstPointOfMission) {
+          void autoNameFromLocation(lat, lng, generation);
+        }
+      },
+
+      updateWaypoint: (index, updates) =>
+        set((state) => ({
+          waypoints: state.waypoints.map((wp) =>
+            wp.index === index ? { ...wp, ...updates } : wp,
+          ),
+          dirty: true,
+        })),
+
+      removeWaypoint: (index) =>
+        set((state) => {
+          const filtered = state.waypoints
+            .filter((wp) => wp.index !== index)
+            .map((wp, i) => ({ ...wp, index: i }));
+
+          // Rebuild selection: remove the deleted index, adjust indices above it
+          const newSelection = new Set<number>();
+          for (const idx of state.selectedWaypointIndices) {
+            if (idx === index) continue;
+            newSelection.add(idx > index ? idx - 1 : idx);
+          }
+
+          return {
+            waypoints: filtered,
+            selectedWaypointIndices: newSelection,
+            lastSelectedWaypointIndex:
+              state.lastSelectedWaypointIndex === index
+                ? null
+                : state.lastSelectedWaypointIndex !== null &&
+                    state.lastSelectedWaypointIndex > index
+                  ? state.lastSelectedWaypointIndex - 1
+                  : state.lastSelectedWaypointIndex,
+            dirty: true,
+          };
+        }),
+
+      moveWaypoint: (index, lat, lng) =>
+        set((state) => ({
+          waypoints: state.waypoints.map((wp) =>
+            wp.index === index ? { ...wp, latitude: lat, longitude: lng } : wp,
+          ),
+          dirty: true,
+        })),
+
+      selectWaypoint: (index, mode = "replace") =>
+        set((state) => {
+          if (index === null) {
+            return {
+              selectedWaypointIndices: new Set<number>(),
+              lastSelectedWaypointIndex: null,
+            };
+          }
+
+          switch (mode) {
+            case "replace":
+              return {
+                selectedWaypointIndices: new Set([index]),
+                lastSelectedWaypointIndex: index,
+              };
+
+            case "toggle": {
+              const next = new Set(state.selectedWaypointIndices);
+              if (next.has(index)) {
+                next.delete(index);
+              } else {
+                next.add(index);
+              }
+              return {
+                selectedWaypointIndices: next,
+                lastSelectedWaypointIndex: next.size > 0 ? index : null,
+              };
+            }
+
+            case "range": {
+              const anchor = state.lastSelectedWaypointIndex;
+              if (anchor === null) {
+                return {
+                  selectedWaypointIndices: new Set([index]),
+                  lastSelectedWaypointIndex: index,
+                };
+              }
+              const start = Math.min(anchor, index);
+              const end = Math.max(anchor, index);
+              const rangeSet = new Set(state.selectedWaypointIndices);
+              for (let i = start; i <= end; i++) {
+                rangeSet.add(i);
+              }
+              return {
+                selectedWaypointIndices: rangeSet,
+                // Keep the anchor so subsequent Shift+clicks extend from the same origin
+                lastSelectedWaypointIndex: anchor,
+              };
+            }
+          }
+        }),
+
+      selectAllWaypoints: () =>
+        set((state) => ({
+          selectedWaypointIndices: new Set(
+            state.waypoints.map((wp) => wp.index),
+          ),
+          lastSelectedWaypointIndex: state.waypoints.length > 0 ? 0 : null,
+        })),
+
+      clearWaypointSelection: () =>
+        set({
+          selectedWaypointIndices: new Set<number>(),
+          lastSelectedWaypointIndex: null,
+        }),
+
+      removeSelectedWaypoints: () =>
+        set((state) => {
+          if (state.selectedWaypointIndices.size === 0) return state;
+          const filtered = state.waypoints
+            .filter((wp) => !state.selectedWaypointIndices.has(wp.index))
+            .map((wp, i) => ({ ...wp, index: i }));
+          return {
+            waypoints: filtered,
+            selectedWaypointIndices: new Set<number>(),
+            lastSelectedWaypointIndex: null,
+            dirty: true,
+          };
+        }),
+
+      updateSelectedWaypoints: (updates) =>
+        set((state) => ({
+          waypoints: state.waypoints.map((wp) =>
+            state.selectedWaypointIndices.has(wp.index)
+              ? { ...wp, ...updates }
+              : wp,
+          ),
+          dirty: true,
+        })),
+
+      updateAllWaypoints: (updates) =>
+        set((state) => ({
+          waypoints: state.waypoints.map((wp) => ({ ...wp, ...updates })),
+          dirty: true,
+        })),
+
+      reorderWaypoints: (fromIndex, toIndex) =>
+        set((state) => {
+          const items = [...state.waypoints];
+          const [moved] = items.splice(fromIndex, 1);
+          items.splice(toIndex, 0, moved);
+          // Re-index after reorder
+          const reindexed = items.map((wp, i) => ({ ...wp, index: i }));
+          return {
+            waypoints: reindexed,
+            selectedWaypointIndices: new Set([toIndex]),
+            lastSelectedWaypointIndex: toIndex,
+            dirty: true,
+          };
+        }),
+
+      setIsAddingWaypoint: (adding) =>
+        set((state) => ({
+          isAddingWaypoint: adding,
+          isAddingPoi: adding ? false : state.isAddingPoi,
+          isDrawingObstacle: adding ? false : state.isDrawingObstacle,
+          isDrawingBuilding: adding ? false : state.isDrawingBuilding,
+          templateMode: adding ? null : state.templateMode,
+        })),
+
+      addAction: (waypointIndex, action) =>
+        set((state) => ({
+          waypoints: state.waypoints.map((wp) =>
+            wp.index === waypointIndex
+              ? { ...wp, actions: [...wp.actions, action] }
+              : wp,
+          ),
+          dirty: true,
+        })),
+
+      updateAction: (waypointIndex, actionId, updates) =>
+        set((state) => ({
+          waypoints: state.waypoints.map((wp) =>
+            wp.index === waypointIndex
+              ? {
+                  ...wp,
+                  actions: wp.actions.map((a) =>
+                    a.actionId === actionId ? { ...a, ...updates } : a,
+                  ),
+                }
+              : wp,
+          ),
+          dirty: true,
+        })),
+
+      removeAction: (waypointIndex, actionId) =>
+        set((state) => ({
+          waypoints: state.waypoints.map((wp) =>
+            wp.index === waypointIndex
+              ? {
+                  ...wp,
+                  actions: wp.actions.filter((a) => a.actionId !== actionId),
+                }
+              : wp,
+          ),
+          dirty: true,
+        })),
+
+      // POI actions
+      addPoi: (lat, lng) => {
+        const isFirstPointOfMission =
+          get().waypoints.length === 0 && get().pois.length === 0;
+        const generation = get().missionGeneration;
+        set((state) => {
+          const building = state.buildings.find(
+            (b) =>
+              b.vertices.length >= 3 && pointInPolygon([lat, lng], b.vertices),
+          );
+
+          const poi: PointOfInterest = {
+            id: crypto.randomUUID(),
+            name: `POI ${state.pois.length + 1}`,
+            latitude: lat,
+            longitude: lng,
+            height: building ? building.height : 0,
+          };
+
+          // A POI dropped on a building: pre-fill the Orbit panel with a
+          // recommended altitude/radius/gimbal pitch for orbiting it, instead
+          // of generating a route automatically.
+          const pendingOrbitParams = building
+            ? orbitParamsForBuilding(
+                building,
+                WIDE_CAMERA_FOV[state.config.payloadEnumValue]?.vfovDeg,
+              )
+            : state.pendingOrbitParams;
+
+          return {
+            pois: [...state.pois, poi],
+            selectedPoiId: poi.id,
+            pendingOrbitParams,
+            dirty: true,
+          };
+        });
+        if (isFirstPointOfMission) {
+          void autoNameFromLocation(lat, lng, generation);
+        }
+      },
+
+      updatePoi: (id, updates) =>
+        set((state) => ({
+          pois: state.pois.map((p) => (p.id === id ? { ...p, ...updates } : p)),
+          dirty: true,
+        })),
+
+      removePoi: (id) =>
+        set((state) => ({
+          pois: state.pois.filter((p) => p.id !== id),
+          selectedPoiId:
+            state.selectedPoiId === id ? null : state.selectedPoiId,
+          // Clear poiId references on waypoints
+          waypoints: state.waypoints.map((wp) =>
+            wp.poiId === id ? { ...wp, poiId: undefined } : wp,
+          ),
+          dirty: true,
+        })),
+
+      movePoi: (id, lat, lng) =>
+        set((state) => ({
+          pois: state.pois.map((p) =>
+            p.id === id ? { ...p, latitude: lat, longitude: lng } : p,
+          ),
+          dirty: true,
+        })),
+
+      selectPoi: (id) => set({ selectedPoiId: id }),
+
+      setIsAddingPoi: (adding) =>
+        set((state) => ({
+          isAddingPoi: adding,
+          isAddingWaypoint: adding ? false : state.isAddingWaypoint,
+          isDrawingObstacle: adding ? false : state.isDrawingObstacle,
+          isDrawingBuilding: adding ? false : state.isDrawingBuilding,
+          templateMode: adding ? null : state.templateMode,
+        })),
+
+      // Obstacle actions
+      addObstacle: (vertices) =>
+        set((state) => {
+          const obstacle: Obstacle = {
+            id: crypto.randomUUID(),
+            name: `Obstacle ${state.obstacles.length + 1}`,
+            description: "",
+            vertices,
+          };
+          return {
+            obstacles: [...state.obstacles, obstacle],
+            selectedObstacleId: obstacle.id,
+            isDrawingObstacle: false,
+            drawingVertices: [],
+            dirty: true,
+          };
+        }),
+
+      updateObstacle: (id, updates) =>
+        set((state) => ({
+          obstacles: state.obstacles.map((o) =>
+            o.id === id ? { ...o, ...updates } : o,
+          ),
+          dirty: true,
+        })),
+
+      removeObstacle: (id) =>
+        set((state) => ({
+          obstacles: state.obstacles.filter((o) => o.id !== id),
+          selectedObstacleId:
+            state.selectedObstacleId === id ? null : state.selectedObstacleId,
+          dirty: true,
+        })),
+
+      moveObstacleVertex: (id, vertexIndex, lat, lng) =>
+        set((state) => ({
+          obstacles: state.obstacles.map((o) => {
+            if (o.id !== id) return o;
+            const vertices = [...o.vertices] as [number, number][];
+            vertices[vertexIndex] = [lat, lng];
+            return { ...o, vertices };
+          }),
+          dirty: true,
+        })),
+
+      addObstacleVertex: (id, afterIndex, lat, lng) =>
+        set((state) => ({
+          obstacles: state.obstacles.map((o) => {
+            if (o.id !== id) return o;
+            const vertices = [...o.vertices] as [number, number][];
+            vertices.splice(afterIndex + 1, 0, [lat, lng]);
+            return { ...o, vertices };
+          }),
+          dirty: true,
+        })),
+
+      removeObstacleVertex: (id, vertexIndex) =>
+        set((state) => ({
+          obstacles: state.obstacles.map((o) => {
+            if (o.id !== id || o.vertices.length <= 3) return o;
+            const vertices = o.vertices.filter(
+              (_: [number, number], i: number) => i !== vertexIndex,
+            );
+            return { ...o, vertices };
+          }),
+          dirty: true,
+        })),
+
+      selectObstacle: (id) => set({ selectedObstacleId: id }),
+
+      setIsDrawingObstacle: (drawing) =>
+        set((state) => ({
+          isDrawingObstacle: drawing,
+          isAddingWaypoint: drawing ? false : state.isAddingWaypoint,
+          isAddingPoi: drawing ? false : state.isAddingPoi,
+          isDrawingBuilding: drawing ? false : state.isDrawingBuilding,
+          templateMode: drawing ? null : state.templateMode,
+          selectedWaypointIndices: drawing
+            ? new Set<number>()
+            : state.selectedWaypointIndices,
+          selectedPoiId: drawing ? null : state.selectedPoiId,
+          drawingVertices: drawing ? [] : state.drawingVertices,
+        })),
+
+      setDrawingVertices: (vertices) => set({ drawingVertices: vertices }),
+
+      // Building actions
+      addBuilding: (vertices, height) =>
+        set((state) => {
+          const building: Building = {
+            id: crypto.randomUUID(),
+            name: `Building ${state.buildings.length + 1}`,
+            height,
+            vertices,
+          };
+          return {
+            buildings: [...state.buildings, building],
+            selectedBuildingId: building.id,
+            isDrawingBuilding: false,
+            drawingBuildingVertices: [],
+            dirty: true,
+          };
+        }),
+
+      updateBuilding: (id, updates) =>
+        set((state) => ({
+          buildings: state.buildings.map((b) =>
+            b.id === id ? { ...b, ...updates } : b,
+          ),
+          dirty: true,
+        })),
+
+      removeBuilding: (id) =>
+        set((state) => ({
+          buildings: state.buildings.filter((b) => b.id !== id),
+          selectedBuildingId:
+            state.selectedBuildingId === id ? null : state.selectedBuildingId,
+          dirty: true,
+        })),
+
+      moveBuildingVertex: (id, vertexIndex, lat, lng) =>
+        set((state) => ({
+          buildings: state.buildings.map((b) => {
+            if (b.id !== id) return b;
+            const vertices = [...b.vertices] as [number, number][];
+            vertices[vertexIndex] = [lat, lng];
+            return { ...b, vertices };
+          }),
+          dirty: true,
+        })),
+
+      addBuildingVertex: (id, afterIndex, lat, lng) =>
+        set((state) => ({
+          buildings: state.buildings.map((b) => {
+            if (b.id !== id) return b;
+            const vertices = [...b.vertices] as [number, number][];
+            vertices.splice(afterIndex + 1, 0, [lat, lng]);
+            return { ...b, vertices };
+          }),
+          dirty: true,
+        })),
+
+      removeBuildingVertex: (id, vertexIndex) =>
+        set((state) => ({
+          buildings: state.buildings.map((b) => {
+            if (b.id !== id || b.vertices.length <= 3) return b;
+            const vertices = b.vertices.filter(
+              (_: [number, number], i: number) => i !== vertexIndex,
+            );
+            return { ...b, vertices };
+          }),
+          dirty: true,
+        })),
+
+      selectBuilding: (id) => set({ selectedBuildingId: id }),
+
+      setIsDrawingBuilding: (drawing) =>
+        set((state) => ({
+          isDrawingBuilding: drawing,
+          isAddingWaypoint: drawing ? false : state.isAddingWaypoint,
+          isAddingPoi: drawing ? false : state.isAddingPoi,
+          isDrawingObstacle: drawing ? false : state.isDrawingObstacle,
+          templateMode: drawing ? null : state.templateMode,
+          selectedWaypointIndices: drawing
+            ? new Set<number>()
+            : state.selectedWaypointIndices,
+          selectedPoiId: drawing ? null : state.selectedPoiId,
+          drawingBuildingVertices: drawing ? [] : state.drawingBuildingVertices,
+        })),
+
+      setBuildingDrawMode: (mode) =>
+        set({ buildingDrawMode: mode, drawingBuildingVertices: [] }),
+
+      setDrawingBuildingVertices: (vertices) =>
+        set({ drawingBuildingVertices: vertices }),
+
+      setTemplateMode: (mode) =>
+        set({
+          templateMode: mode,
+          isAddingWaypoint: false,
+          isAddingPoi: false,
+          isDrawingObstacle: false,
+          isDrawingBuilding: false,
+          selectedWaypointIndices: new Set(),
+          selectedPoiId: null,
+        }),
+
+      appendWaypoints: (newWps, newPois, templateGroup) => {
+        // Templates (Orbit/Grid/Facade/Solar/Pencil/Corridor/Turbine) are the other way a brand
+        // new mission gets its first content, alongside the manual
+        // addWaypoint/addPoi clicks — auto-naming only wired up for those two
+        // missed every template-created mission entirely.
+        const wasEmptyMission =
+          get().waypoints.length === 0 && get().pois.length === 0;
+        const generation = get().missionGeneration;
+        const firstLocation = newPois?.[0]
+          ? { lat: newPois[0].latitude, lng: newPois[0].longitude }
+          : newWps[0]
+            ? { lat: newWps[0].latitude, lng: newWps[0].longitude }
+            : null;
+
+        set((state) => {
+          const startIndex = state.waypoints.length;
+          const groupId = templateGroup ? crypto.randomUUID() : undefined;
+
+          const fullWaypoints: Waypoint[] = newWps.map((wp, i) => ({
+            ...wp,
+            index: startIndex + i,
+            name: `Bod trasy ${startIndex + i + 1}`,
+            ...(groupId ? { templateGroupId: groupId } : {}),
+          }));
+
+          const fullPois: PointOfInterest[] = (newPois || []).map((p) => ({
+            ...p,
+            id: crypto.randomUUID(),
+            ...(groupId ? { templateGroupId: groupId } : {}),
+          }));
+
+          // If orbit template created a POI, link the waypoints to it
+          if (fullPois.length === 1) {
+            const poiId = fullPois[0].id;
+            for (const wp of fullWaypoints) {
+              if (wp.headingMode === "fixed") {
+                // Convert to towardPOI mode for orbit waypoints
+                wp.headingMode = "towardPOI";
+                wp.poiId = poiId;
+              }
+            }
+          }
+
+          return {
+            waypoints: [...state.waypoints, ...fullWaypoints],
+            pois: [...state.pois, ...fullPois],
+            templateGroups:
+              groupId && templateGroup
+                ? { ...state.templateGroups, [groupId]: templateGroup }
+                : state.templateGroups,
+            selectedWaypointIndices: new Set(
+              fullWaypoints.map((wp) => wp.index),
+            ),
+            lastSelectedWaypointIndex:
+              fullWaypoints.length > 0
+                ? fullWaypoints[fullWaypoints.length - 1].index
+                : state.lastSelectedWaypointIndex,
+            templateMode: null,
+            dirty: true,
+          };
+        });
+
+        if (wasEmptyMission && firstLocation) {
+          void autoNameFromLocation(
+            firstLocation.lat,
+            firstLocation.lng,
+            generation,
+          );
+        }
+      },
+
+      replaceTemplateGroup: (groupId, newWps, newPois, params) =>
+        set((state) => {
+          const existingGroup = state.templateGroups[groupId];
+          if (!existingGroup) return state;
+
+          const remainingWaypoints = state.waypoints
+            .filter((wp) => wp.templateGroupId !== groupId)
+            .map((wp, i) => ({ ...wp, index: i }));
+          const remainingPois = state.pois.filter(
+            (p) => p.templateGroupId !== groupId,
+          );
+          const startIndex = remainingWaypoints.length;
+
+          const fullWaypoints: Waypoint[] = newWps.map((wp, i) => ({
+            ...wp,
+            index: startIndex + i,
+            name: `Bod trasy ${startIndex + i + 1}`,
+            templateGroupId: groupId,
+          }));
+
+          const fullPois: PointOfInterest[] = newPois.map((p) => ({
+            ...p,
+            id: crypto.randomUUID(),
+            templateGroupId: groupId,
+          }));
+
+          if (fullPois.length === 1) {
+            const poiId = fullPois[0].id;
+            for (const wp of fullWaypoints) {
+              if (wp.headingMode === "fixed") {
+                wp.headingMode = "towardPOI";
+                wp.poiId = poiId;
+              }
+            }
+          }
+
+          return {
+            waypoints: [...remainingWaypoints, ...fullWaypoints],
+            pois: [...remainingPois, ...fullPois],
+            templateGroups: {
+              ...state.templateGroups,
+              [groupId]: { type: existingGroup.type, params },
+            },
+            selectedWaypointIndices: new Set(
+              fullWaypoints.map((wp) => wp.index),
+            ),
+            lastSelectedWaypointIndex:
+              fullWaypoints.length > 0
+                ? fullWaypoints[fullWaypoints.length - 1].index
+                : state.lastSelectedWaypointIndex,
+            templateMode: null,
+            editingTemplateGroupId: null,
+            dirty: true,
+          };
+        }),
+
+      loadMission: (data) => {
+        set((state) => ({
+          missionId: data.id || null,
+          missionGeneration: state.missionGeneration + 1,
+          missionName: data.name,
+          missionClient: data.client || "",
+          config: data.config,
+          waypoints: data.waypoints,
+          pois: data.pois || [],
+          obstacles: data.obstacles || [],
+          buildings: data.buildings || [],
+          selectedWaypointIndices: new Set<number>(),
+          lastSelectedWaypointIndex: null,
+          selectedPoiId: null,
+          selectedObstacleId: null,
+          selectedBuildingId: null,
+          // Template params are now persisted with the saved mission, so a
+          // waypoint/POI's templateGroupId from a previous session still
+          // resolves to real params after a save/reload round-trip — "Edit
+          // template" keeps working instead of degrading to plain waypoints.
+          templateGroups: data.templateGroups || {},
+          editingTemplateGroupId: null,
+          pendingOrbitParams: null,
+          pendingPresetLoad: null,
+          dirty: false,
+        }));
+        // Loading a different mission shouldn't let the user undo "back into"
+        // whatever was open before it — that history belongs to a different
+        // mission entirely.
+        useMissionStore.temporal.getState().clear();
+      },
+
+      clearMission: () => {
+        const prefs = usePreferencesStore.getState().preferences;
+        set((state) => ({
+          missionId: null,
+          missionGeneration: state.missionGeneration + 1,
+          missionName: DEFAULT_MISSION_NAME,
+          missionClient: "",
+          config: { ...DEFAULT_MISSION_CONFIG, ...prefs.missionDefaults },
+          waypoints: [],
+          pois: [],
+          obstacles: [],
+          buildings: [],
+          selectedWaypointIndices: new Set<number>(),
+          lastSelectedWaypointIndex: null,
+          selectedPoiId: null,
+          selectedObstacleId: null,
+          selectedBuildingId: null,
+          isDrawingObstacle: false,
+          drawingVertices: [],
+          isDrawingBuilding: false,
+          drawingBuildingVertices: [],
+          templateGroups: {},
+          editingTemplateGroupId: null,
+          pendingOrbitParams: null,
+          pendingPresetLoad: null,
+          dirty: false,
+        }));
+        useMissionStore.temporal.getState().clear();
+      },
+
+      setDirty: (dirty) => set({ dirty }),
+    }),
+    {
+      partialize: partializeForHistory,
+      equality: (a, b) => JSON.stringify(a) === JSON.stringify(b),
+      limit: 50,
+    },
+  ),
+);
+
+/**
+ * Reactive undo/redo controls for components — wraps `useMissionStore.temporal`
+ * (a zundo-managed vanilla store) with zustand's `useStore` so React re-renders
+ * when the history changes.
+ */
+export function useMissionHistory() {
+  const pastCount = useStore(
+    useMissionStore.temporal,
+    (s) => s.pastStates.length,
+  );
+  const futureCount = useStore(
+    useMissionStore.temporal,
+    (s) => s.futureStates.length,
+  );
+  const { undo, redo, clear } = useMissionStore.temporal.getState();
+  return {
+    undo: () => undo(),
+    redo: () => redo(),
+    clear,
+    canUndo: pastCount > 0,
+    canRedo: futureCount > 0,
+  };
+}
+
+const DRAFT_KEY = "droneroute_draft_v1";
+const AUTOSAVE_DEBOUNCE_MS = 2000;
+
+export interface MissionDraft {
+  savedAt: string;
+  missionId: string | null;
+  missionName: string;
+  missionClient: string;
+  config: MissionConfig;
+  waypoints: Waypoint[];
+  pois: PointOfInterest[];
+  obstacles: Obstacle[];
+  buildings: Building[];
+  templateGroups: Record<string, TemplateGroup>;
+}
+
+let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** False in non-browser contexts (SSR, Node test environment) — autosave is a no-op there. */
+function hasLocalStorage(): boolean {
+  return typeof localStorage !== "undefined";
+}
+
+// Debounced localStorage autosave: survives a crashed tab/browser between
+// saves. Skipped for a still-empty mission (nothing worth recovering) and
+// for selection/UI-only updates (same "did content actually change" check
+// used for undo history, just compared by reference instead of JSON.stringify
+// since this only needs to decide whether to (re)start the debounce timer,
+// not whether to record a full history entry).
+useMissionStore.subscribe((state, prevState) => {
+  if (!state.dirty || !hasLocalStorage()) return;
+  if (
+    state.waypoints === prevState.waypoints &&
+    state.pois === prevState.pois &&
+    state.obstacles === prevState.obstacles &&
+    state.buildings === prevState.buildings &&
+    state.config === prevState.config &&
+    state.missionName === prevState.missionName &&
+    state.missionClient === prevState.missionClient &&
+    state.templateGroups === prevState.templateGroups
+  ) {
+    return;
+  }
+
+  if (autosaveTimer) clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => {
+    const s = useMissionStore.getState();
+    if (s.waypoints.length === 0 && s.pois.length === 0) return;
+    const draft: MissionDraft = {
+      savedAt: new Date().toISOString(),
+      missionId: s.missionId,
+      missionName: s.missionName,
+      missionClient: s.missionClient,
+      config: s.config,
+      waypoints: s.waypoints,
+      pois: s.pois,
+      obstacles: s.obstacles,
+      buildings: s.buildings,
+      templateGroups: s.templateGroups,
+    };
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      // Storage full/unavailable — autosave is a convenience, never worth
+      // throwing over.
+    }
+  }, AUTOSAVE_DEBOUNCE_MS);
+});
+
+/** Reads the pending autosaved draft, if any, without side effects. */
+export function peekMissionDraft(): MissionDraft | null {
+  if (!hasLocalStorage()) return null;
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as MissionDraft;
+  } catch {
+    return null;
+  }
+}
+
+/** Discards the pending autosaved draft without loading it. */
+export function clearMissionDraft(): void {
+  if (!hasLocalStorage()) return;
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // ignore — nothing to discard if storage is unavailable
+  }
+}
+
+/** Loads a previously autosaved draft into the store as the active mission. */
+export function restoreMissionDraft(draft: MissionDraft): void {
+  useMissionStore.getState().loadMission({
+    id: draft.missionId || undefined,
+    name: draft.missionName,
+    client: draft.missionClient,
+    config: draft.config,
+    waypoints: draft.waypoints,
+    pois: draft.pois,
+    obstacles: draft.obstacles,
+    buildings: draft.buildings,
+    templateGroups: draft.templateGroups,
+  });
+  // The draft represents unsaved edits — loadMission resets `dirty` to
+  // false, but the user still needs to explicitly save this content.
+  useMissionStore.setState({ dirty: true });
+  clearMissionDraft();
+}
 
 /**
  * Reverse-geocodes the mission's first placed point into a human-readable

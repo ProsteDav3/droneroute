@@ -7,7 +7,7 @@ Configure your drone model, camera, altitude reference, and safety options for t
 - **Choose your drone model**: M300 RTK, M350 RTK, M30/M30T, M30 Dock, Mavic 3E/3T/3M/3D/3TD, Mini 4 Pro, Matrice 4T (default for new missions — see note below).
 - **Choose a camera/payload** available for the selected drone.
 - **Set a global flight speed** and takeoff security height.
-- **Set a target flight duration instead of a speed**: enter how long the flight should take (in seconds) and click "Dopočítat rychlost" to have the flight speed computed backward from the current route — handy when the flight time itself is the actual constraint (for example, a construction time-lapse project where every one of dozens of individual revisit flights needs to fit a fixed video-length budget) rather than a specific speed. Reports when the target isn't achievable within the app's supported speed range for the current route.
+- **Set a target flight duration instead of a speed**: enter how long the flight should take (in seconds) and click "Dopočítat rychlost" to have the flight speed computed backward from the current route — handy when the flight time itself is the actual constraint (for example, a construction time-lapse project where every one of dozens of individual revisit flights needs to fit a fixed video-length budget) rather than a specific speed. Reports when the target isn't achievable within the app's supported speed range for the current route. By default, waypoints with their own individually-set speed keep it unaffected; if the mission has any, a checkbox appears to override them too and put the whole mission on one uniform, computed speed instead.
 - **Choose a height reference**:
   - Relative to start point.
   - EGM96 (MSL) — altitude above mean sea level.

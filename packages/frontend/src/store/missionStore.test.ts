@@ -596,3 +596,32 @@ describe("missionStore — mission identity and address auto-naming", () => {
     expect(calledUrl).toContain("14.5,50.1");
   });
 });
+
+describe("missionStore — updateAllWaypoints", () => {
+  beforeEach(() => {
+    useMissionStore.getState().clearMission();
+  });
+
+  it("applies the given updates to every waypoint, regardless of selection", () => {
+    useMissionStore.getState().appendWaypoints([
+      { ...baseWaypoint(50, 14), useGlobalSpeed: false, speed: 3 },
+      { ...baseWaypoint(50.001, 14), useGlobalSpeed: false, speed: 4 },
+    ]);
+    // Only select the first waypoint — updateAllWaypoints must still touch both.
+    useMissionStore.getState().selectWaypoint(0);
+
+    useMissionStore.getState().updateAllWaypoints({ useGlobalSpeed: true });
+
+    const { waypoints } = useMissionStore.getState();
+    expect(waypoints.every((wp) => wp.useGlobalSpeed)).toBe(true);
+  });
+
+  it("marks the mission dirty", () => {
+    useMissionStore.getState().appendWaypoints([baseWaypoint(50, 14)]);
+    useMissionStore.setState({ dirty: false });
+
+    useMissionStore.getState().updateAllWaypoints({ useGlobalSpeed: true });
+
+    expect(useMissionStore.getState().dirty).toBe(true);
+  });
+});

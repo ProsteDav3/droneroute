@@ -103,6 +103,7 @@ interface MissionState {
   clearWaypointSelection: () => void;
   removeSelectedWaypoints: () => void;
   updateSelectedWaypoints: (updates: Partial<Waypoint>) => void;
+  updateAllWaypoints: (updates: Partial<Waypoint>) => void;
   reorderWaypoints: (fromIndex: number, toIndex: number) => void;
   setIsAddingWaypoint: (adding: boolean) => void;
   addAction: (waypointIndex: number, action: WaypointAction) => void;
@@ -406,6 +407,12 @@ export const useMissionStore = create<MissionState>((set, get) => ({
           ? { ...wp, ...updates }
           : wp,
       ),
+      dirty: true,
+    })),
+
+  updateAllWaypoints: (updates) =>
+    set((state) => ({
+      waypoints: state.waypoints.map((wp) => ({ ...wp, ...updates })),
       dirty: true,
     })),
 

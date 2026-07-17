@@ -1,7 +1,13 @@
+import type mapboxgl from "mapbox-gl";
 import { useRef, useState, useCallback, useEffect } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useMissionStore } from "@/store/missionStore";
 import type { SelectionMode } from "@/store/missionStore";
+import { queryElevationProfileWithRetry } from "@/lib/terrain";
+
+interface ElevationGraphProps {
+  mapRef: React.RefObject<mapboxgl.Map | null>;
+}
 
 const GRAPH_HEIGHT = 100;
 const PAD_TOP = 14;
@@ -16,11 +22,56 @@ const MIN_SPACING = 44;
 
 const LS_KEY = "elevationChartOpen";
 
-export function ElevationGraph() {
+export function ElevationGraph({ mapRef }: ElevationGraphProps) {
   const waypoints = useMissionStore((s) => s.waypoints);
   const selectedIndices = useMissionStore((s) => s.selectedWaypointIndices);
   const updateWaypoint = useMissionStore((s) => s.updateWaypoint);
   const selectWaypoint = useMissionStore((s) => s.selectWaypoint);
+  const heightMode = useMissionStore((s) => s.config.heightMode);
+
+  // Real ground elevation at each waypoint (meters above sea level, from the
+  // map's DEM terrain — see lib/terrain.ts), converted below into the same
+  // reference frame as the plotted waypoint heights so it can share the Y
+  // axis. `null` entries (terrain data not yet loaded / unavailable) are
+  // simply omitted from the terrain line rather than drawn as 0.
+  const [groundElevations, setGroundElevations] = useState<(number | null)[]>(
+    [],
+  );
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || waypoints.length === 0) {
+      setGroundElevations([]);
+      return;
+    }
+    let cancelled = false;
+    queryElevationProfileWithRetry(
+      map,
+      waypoints.map((wp) => ({ lat: wp.latitude, lng: wp.longitude })),
+    ).then((elevations) => {
+      if (!cancelled) setGroundElevations(elevations);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Re-query whenever the set of waypoint positions changes (length is a
+    // cheap proxy — a full deep-equality check isn't worth it here).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    mapRef,
+    waypoints.length,
+    waypoints.map((wp) => `${wp.latitude},${wp.longitude}`).join(";"),
+  ]);
+
+  // Ground elevation expressed in the same units as wp.height: relative to
+  // the launch point's own ground elevation for the two AGL-ish modes, or
+  // directly (already sea-level-referenced) for EGM96.
+  const launchGroundElevation = groundElevations[0] ?? null;
+  const groundRelative: (number | null)[] = groundElevations.map((g) => {
+    if (g === null) return null;
+    if (heightMode === "EGM96") return g;
+    if (launchGroundElevation === null) return null;
+    return g - launchGroundElevation;
+  });
 
   const svgRef = useRef<SVGSVGElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -80,11 +131,16 @@ export function ElevationGraph() {
   const heights = waypoints.map((wp) =>
     draggingIndex === wp.index && dragHeight !== null ? dragHeight : wp.height,
   );
-  const rawMin = Math.min(...heights);
-  const rawMax = Math.max(...heights);
+  const knownGround = groundRelative.filter((g): g is number => g !== null);
+  const rawMin = Math.min(...heights, ...knownGround);
+  const rawMax = Math.max(...heights, ...knownGround);
   const spread = rawMax - rawMin;
   const yPad = Math.max(spread * 0.25, 10);
-  const yMin = Math.max(0, Math.floor(rawMin - yPad));
+  // Terrain can legitimately sit below 0 (ground lower than the launch
+  // point) or above the flight path (the collision case this graph exists
+  // to make visible), so the floor only clamps to 0 when no ground data
+  // pulls the range lower — not unconditionally like before.
+  const yMin = Math.min(0, Math.floor(rawMin - yPad));
   const yMax = Math.ceil(rawMax + yPad);
 
   const toX = useCallback(
@@ -315,6 +371,38 @@ export function ElevationGraph() {
                 );
               }
               return lines;
+            })()}
+
+            {/* Real ground elevation profile — filled area under a line, so
+                a stretch of the flight path dipping into it reads as an
+                obvious "terrain in the way" collision rather than two lines
+                that happen to cross. Only points with resolved terrain data
+                are plotted; a null in the middle breaks the line rather
+                than drawing through a guessed value. */}
+            {(() => {
+              const knownPoints = groundRelative
+                .map((g, i) => (g === null ? null : { x: toX(i), y: toY(g) }))
+                .filter((p): p is { x: number; y: number } => p !== null);
+              if (knownPoints.length < 2) return null;
+              const linePath = knownPoints
+                .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+                .join(" ");
+              const areaPath =
+                `M ${knownPoints[0].x} ${GRAPH_HEIGHT} ` +
+                knownPoints.map((p) => `L ${p.x} ${p.y}`).join(" ") +
+                ` L ${knownPoints[knownPoints.length - 1].x} ${GRAPH_HEIGHT} Z`;
+              return (
+                <g>
+                  <path d={areaPath} fill="#78716c" opacity={0.25} />
+                  <path
+                    d={linePath}
+                    fill="none"
+                    stroke="#a8a29e"
+                    strokeWidth={1.5}
+                    strokeDasharray="3 2"
+                  />
+                </g>
+              );
             })()}
 
             {/* Edge-to-edge dotted line segments between circles */}

@@ -1,8 +1,12 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   useMissionStore,
   DEFAULT_MISSION_NAME,
+  peekMissionDraft,
+  restoreMissionDraft,
+  clearMissionDraft,
   type TemplateGroup,
+  type MissionDraft,
 } from "./missionStore";
 import { useConfigStore } from "./configStore";
 import { DEFAULT_ORBIT_PARAMS, destinationPoint } from "@/lib/templates";
@@ -623,5 +627,122 @@ describe("missionStore — updateAllWaypoints", () => {
     useMissionStore.getState().updateAllWaypoints({ useGlobalSpeed: true });
 
     expect(useMissionStore.getState().dirty).toBe(true);
+  });
+});
+
+describe("missionStore — undo/redo history", () => {
+  beforeEach(() => {
+    useMissionStore.getState().clearMission();
+  });
+
+  it("undo reverts the last content change and redo re-applies it", () => {
+    useMissionStore.getState().appendWaypoints([baseWaypoint(50, 14)]);
+    expect(useMissionStore.getState().waypoints).toHaveLength(1);
+
+    useMissionStore.temporal.getState().undo();
+    expect(useMissionStore.getState().waypoints).toHaveLength(0);
+
+    useMissionStore.temporal.getState().redo();
+    expect(useMissionStore.getState().waypoints).toHaveLength(1);
+  });
+
+  it("does not record a history entry for selection-only changes", () => {
+    useMissionStore
+      .getState()
+      .appendWaypoints([baseWaypoint(50, 14), baseWaypoint(50.001, 14)]);
+    const pastCountAfterContent =
+      useMissionStore.temporal.getState().pastStates.length;
+
+    useMissionStore.getState().selectWaypoint(1);
+
+    expect(useMissionStore.temporal.getState().pastStates.length).toBe(
+      pastCountAfterContent,
+    );
+  });
+
+  it("clears history when a mission is loaded or cleared", () => {
+    useMissionStore.getState().appendWaypoints([baseWaypoint(50, 14)]);
+    expect(
+      useMissionStore.temporal.getState().pastStates.length,
+    ).toBeGreaterThan(0);
+
+    useMissionStore.getState().clearMission();
+
+    expect(useMissionStore.temporal.getState().pastStates.length).toBe(0);
+    expect(useMissionStore.temporal.getState().futureStates.length).toBe(0);
+  });
+});
+
+describe("missionStore — autosave draft", () => {
+  const memoryStorage = new Map<string, string>();
+  const mockLocalStorage = {
+    getItem: (key: string) => memoryStorage.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      memoryStorage.set(key, value);
+    },
+    removeItem: (key: string) => {
+      memoryStorage.delete(key);
+    },
+  };
+
+  beforeEach(() => {
+    useMissionStore.getState().clearMission();
+    memoryStorage.clear();
+    vi.stubGlobal("localStorage", mockLocalStorage);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("does not autosave a still-empty mission", () => {
+    // setDirty alone leaves every content field's reference unchanged, which
+    // the subscriber's own no-op check already short-circuits on — that
+    // would make this test pass without ever exercising the *inner*
+    // still-empty guard inside the debounced callback. Change missionName
+    // instead: it passes the subscriber's reference check and schedules the
+    // timer, so the assertion below actually depends on the empty-mission
+    // guard, not just on the timer never having been armed.
+    useMissionStore.getState().setMissionName("Prázdná mise");
+    vi.advanceTimersByTime(3000);
+
+    expect(peekMissionDraft()).toBeNull();
+  });
+
+  it("autosaves after the debounce once the mission has content", () => {
+    useMissionStore.getState().appendWaypoints([baseWaypoint(50, 14)]);
+    vi.advanceTimersByTime(2100);
+
+    const draft = peekMissionDraft();
+    expect(draft).not.toBeNull();
+    expect(draft?.waypoints).toHaveLength(1);
+  });
+
+  it("restoreMissionDraft loads the draft as the active mission and clears it", () => {
+    useMissionStore.getState().appendWaypoints([baseWaypoint(50, 14)]);
+    vi.advanceTimersByTime(2100);
+    const draft = peekMissionDraft() as MissionDraft;
+    expect(draft).not.toBeNull();
+
+    useMissionStore.getState().clearMission();
+    expect(useMissionStore.getState().waypoints).toHaveLength(0);
+
+    restoreMissionDraft(draft);
+
+    expect(useMissionStore.getState().waypoints).toHaveLength(1);
+    expect(useMissionStore.getState().dirty).toBe(true);
+    expect(peekMissionDraft()).toBeNull();
+  });
+
+  it("clearMissionDraft discards the pending draft", () => {
+    useMissionStore.getState().appendWaypoints([baseWaypoint(50, 14)]);
+    vi.advanceTimersByTime(2100);
+    expect(peekMissionDraft()).not.toBeNull();
+
+    clearMissionDraft();
+
+    expect(peekMissionDraft()).toBeNull();
   });
 });

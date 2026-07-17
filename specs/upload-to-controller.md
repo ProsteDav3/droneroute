@@ -9,6 +9,9 @@ Send a mission file directly to a DJI controller connected to your computer.
   controllers (DJI Fly) and enterprise controllers like DJI RC Plus / RC
   Plus 2 running DJI Pilot 2 (e.g. paired with a Matrice 4T).
 - Choose which controller to upload to if more than one is connected.
+- Alternatively, upload straight to a SkyRoute server's DJI Cloud
+  platform with `--cloud` — no USB cable or connected controller
+  required; the mission shows up in DJI Pilot 2's Cloud tab instead.
 
 ## How it works
 
@@ -18,6 +21,20 @@ Send a mission file directly to a DJI controller connected to your computer.
 4. On DJI Fly controllers, the mission appears as a new route, ready to
    fly. On DJI Pilot 2 controllers, open Pilot 2's import/route-library
    screen to find and load the uploaded file.
+
+### Uploading to DJI Cloud instead
+
+1. Run `npx @prostedav3/droneroute login` once to sign in to your
+   SkyRoute server (prompts for server URL, email, and password) — the
+   auth token is cached locally.
+2. Run `npx @prostedav3/droneroute mission.kmz --cloud` to upload
+   straight into the server's configured DJI Cloud platform.
+3. Open DJI Pilot 2's Cloud tab on the remote controller to find the
+   uploaded mission.
+
+This requires the mission to have at least 2 waypoints, and the target
+server to have a DJI Cloud platform configured and support self-hosted
+(email/password) login.
 
 ## Good to know
 

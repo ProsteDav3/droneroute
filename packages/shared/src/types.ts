@@ -338,6 +338,8 @@ export interface Mission {
   name: string;
   /** Free-text client/project name, for organizing missions across a drone service business's clients. Null/absent when unset. */
   client?: string | null;
+  /** Free-text single folder tag for organizing the mission list (e.g. "2026 inspections"). Null/absent when unset. */
+  folder?: string | null;
   createdAt: string;
   updatedAt: string;
   userId?: string;
@@ -362,6 +364,46 @@ export interface SharedMission {
   waypoints: Waypoint[];
   pois: PointOfInterest[];
   obstacles: Obstacle[];
+}
+
+/** Minimal, read-only mission data for the public embed widget (`GET /api/embed/:shareToken`) — deliberately excludes the owner's email, the mission's DB id, and the share token itself. */
+export interface EmbedMission {
+  name: string;
+  config: MissionConfig;
+  waypoints: Waypoint[];
+  pois: PointOfInterest[];
+  obstacles: Obstacle[];
+}
+
+// ── Mission comments ─────────────────────────────────────
+
+/** A visitor comment left on a publicly shared mission. Posting requires only a display name, not an account. */
+export interface MissionComment {
+  id: string;
+  authorName: string;
+  text: string;
+  createdAt: string;
+}
+
+// ── Mission versions ─────────────────────────────────────
+
+/** Full editable content of a mission at the moment a version snapshot was taken. */
+export interface MissionVersionSnapshot {
+  name: string;
+  client: string | null;
+  folder: string | null;
+  config: MissionConfig;
+  waypoints: Waypoint[];
+  pois: PointOfInterest[];
+  obstacles: Obstacle[];
+  buildings: Building[];
+  templateGroups: Record<string, TemplateGroupData>;
+}
+
+/** Lightweight list-item shape returned by `GET /api/missions/:id/versions` (no snapshot payload — fetch by id to restore). */
+export interface MissionVersionSummary {
+  id: string;
+  createdAt: string;
 }
 
 // ── Weather ──────────────────────────────────────────────

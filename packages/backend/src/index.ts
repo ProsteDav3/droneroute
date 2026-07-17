@@ -3,7 +3,9 @@ import cors from "cors";
 import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
+import swaggerUi from "swagger-ui-express";
 import { initDb } from "./models/db.js";
+import { buildOpenApiSpec } from "./lib/openapi.js";
 import { missionRoutes } from "./routes/missions.js";
 import { kmzRoutes } from "./routes/kmz.js";
 import { authRoutes } from "./routes/auth.js";
@@ -86,6 +88,18 @@ app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+// API docs (Swagger UI + raw spec) — non-production only. The generated
+// spec reflects the full internal API shape, so it stays off in production
+// by default rather than being exposed publicly; enable it deliberately
+// (e.g. behind an admin check) if a deployment needs it there.
+if (process.env.NODE_ENV !== "production") {
+  const openApiSpec = buildOpenApiSpec();
+  app.get("/api/docs.json", (_req, res) => {
+    res.json(openApiSpec);
+  });
+  app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
+}
+
 // Public config (exposes non-secret settings to the frontend)
 app.get("/api/config", (_req, res) => {
   const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
@@ -96,6 +110,20 @@ app.get("/api/config", (_req, res) => {
     djiCloudEnabled: isDjiCloudConfigured(),
     defaultMapView: resolveDefaultMapView(),
   });
+});
+
+// Embed widget page (public, read-only mission preview meant to be placed
+// in an <iframe> on a third-party site). Helmet's frameguard defaults to
+// `SAMEORIGIN`, which would block exactly that use case, so this route
+// explicitly removes the header before falling through to the same SPA
+// `index.html` the client-side router uses to render EmbedMissionPage.
+// NOTE for reviewers: if a future security-hardening pass adds a stricter
+// global frame-ancestors/X-Frame-Options policy, this route needs to stay
+// as (or become) the one deliberate exception — everything else should
+// keep the strict default.
+app.get("/embed/:token", (_req, res) => {
+  res.removeHeader("X-Frame-Options");
+  res.sendFile(path.join(frontendDist, "index.html"));
 });
 
 // SPA fallback (Express 5 syntax)

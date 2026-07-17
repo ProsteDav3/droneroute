@@ -3,6 +3,7 @@ import {
   validateMissionCreate,
   validateMissionUpdate,
   validateMissionGeometry,
+  validateMissionComment,
 } from "./missionValidation.js";
 
 const validWaypoint = {
@@ -243,6 +244,96 @@ describe("validateMissionUpdate", () => {
     expect(validateMissionUpdate({ client: "a".repeat(201) })).toBe(
       "neplatný klient/zakázka",
     );
+  });
+
+  it("accepts an omitted, empty, or well-formed folder field", () => {
+    expect(validateMissionUpdate({ folder: undefined })).toBeNull();
+    expect(validateMissionUpdate({ folder: "" })).toBeNull();
+    expect(validateMissionUpdate({ folder: "2026 inspekce" })).toBeNull();
+  });
+
+  it("rejects a non-string folder field", () => {
+    expect(validateMissionUpdate({ folder: 123 })).toBe("neplatná složka");
+    expect(validateMissionUpdate({ folder: "a".repeat(201) })).toBe(
+      "neplatná složka",
+    );
+  });
+});
+
+describe("validateMissionCreate — folder field", () => {
+  it("accepts a missing or well-formed folder", () => {
+    expect(validateMissionCreate(validCreate)).toBeNull();
+    expect(
+      validateMissionCreate({ ...validCreate, folder: "2026 inspekce" }),
+    ).toBeNull();
+  });
+
+  it("rejects a non-string folder", () => {
+    expect(validateMissionCreate({ ...validCreate, folder: 123 })).toBe(
+      "neplatná složka",
+    );
+  });
+});
+
+describe("validateMissionComment", () => {
+  it("accepts a well-formed comment", () => {
+    expect(
+      validateMissionComment({ authorName: "Jana", text: "Pěkná trasa!" }),
+    ).toBeNull();
+  });
+
+  it("rejects a missing, blank, or non-string author name", () => {
+    expect(validateMissionComment({ text: "Text" })).toBe(
+      "neplatné jméno autora",
+    );
+    expect(validateMissionComment({ authorName: "   ", text: "Text" })).toBe(
+      "neplatné jméno autora",
+    );
+    expect(validateMissionComment({ authorName: 123, text: "Text" })).toBe(
+      "neplatné jméno autora",
+    );
+  });
+
+  it("rejects an author name over 80 characters", () => {
+    expect(
+      validateMissionComment({ authorName: "a".repeat(81), text: "Text" }),
+    ).toBe("neplatné jméno autora");
+  });
+
+  it("accepts an author name exactly at the 80-character cap", () => {
+    expect(
+      validateMissionComment({ authorName: "a".repeat(80), text: "Text" }),
+    ).toBeNull();
+  });
+
+  it("rejects a missing, blank, or non-string comment text", () => {
+    expect(validateMissionComment({ authorName: "Jana" })).toBe(
+      "neplatný text komentáře",
+    );
+    expect(validateMissionComment({ authorName: "Jana", text: "   " })).toBe(
+      "neplatný text komentáře",
+    );
+    expect(validateMissionComment({ authorName: "Jana", text: 123 })).toBe(
+      "neplatný text komentáře",
+    );
+  });
+
+  it("rejects comment text over 2000 characters", () => {
+    expect(
+      validateMissionComment({
+        authorName: "Jana",
+        text: "a".repeat(2001),
+      }),
+    ).toBe("neplatný text komentáře");
+  });
+
+  it("accepts comment text exactly at the 2000-character cap", () => {
+    expect(
+      validateMissionComment({
+        authorName: "Jana",
+        text: "a".repeat(2000),
+      }),
+    ).toBeNull();
   });
 });
 

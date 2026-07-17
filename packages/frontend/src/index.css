@@ -193,3 +193,13 @@ body {
 .mapboxgl-ctrl-geocoder--button {
   background: none !important;
 }
+
+/* Geolocate ("my location") control — match app dark theme */
+.mapboxgl-ctrl-bottom-right .mapboxgl-ctrl-group {
+  background-color: rgba(10, 22, 40, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4) !important;
+}
+.mapboxgl-ctrl-geolocate .mapboxgl-ctrl-icon {
+  filter: invert(1) brightness(1.6);
+}

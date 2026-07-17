@@ -7,7 +7,7 @@ export function UndoRedoControls() {
   const { undo, redo, canUndo, canRedo } = useMissionHistory();
 
   return (
-    <div className="absolute top-4 left-4 z-10 flex gap-1">
+    <div className="absolute top-14 left-4 z-10 flex gap-1">
       <Button
         variant="outline"
         size="icon"

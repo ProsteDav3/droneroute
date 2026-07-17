@@ -82,3 +82,11 @@ When your server has a DJI Cloud platform configured (see [Upload to controller]
 - The sidebar's **DJI Cloud — zařízení** panel lists every device bound to the workspace (aircraft and remote controllers), each with an online/offline indicator, live battery percentage when online, device model, and how long ago it last logged into the platform.
 - Recent Health Management System (HMS) warnings reported by the aircraft — a fault code, a battery cell imbalance, and similar — appear at the bottom of the same panel.
 - All of this updates automatically over a live connection; no manual refresh needed.
+
+### Live mission progress
+
+While a device is online and flying, a "Průběh mise" badge appears at the top of the map showing percent complete and an ETA to the last waypoint, worked out by matching the aircraft's live position against the currently open mission's own flight path.
+
+- In the waypoint list, every waypoint the aircraft has already flown past gets a green checkmark badge and is dimmed, so you can see progress at a glance without watching the map.
+- The ETA needs the aircraft to be moving at a meaningful speed — it shows "ETA neznámá" while stationary or just after takeoff, rather than an unreliable estimate.
+- This assumes the mission open in the editor is the one actually flying — with one aircraft active at a time (the common case), that holds; it isn't a per-mission dispatch tracker for multiple simultaneous flights.

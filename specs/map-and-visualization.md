@@ -136,3 +136,14 @@ The sidebar's **Média** panel lists photos and videos the aircraft or remote co
 ### Live video
 
 The sidebar's **Živý přenos** panel lists every camera lens currently capable of streaming (i.e. currently online) — pick one to start watching. The aircraft pushes its feed to the server's own video relay and it plays back right there in the panel; stop it with the button below the player when you're done. If nothing is listed, no device is currently online with a camera. Self-hosted instances need `DJI_CLOUD_LIVE_HLS_BASE_URL` configured (see `.env.example`) for playback to work here — without it, starting a feed still works (the aircraft is still commanded to stream), there's just no video shown in this panel.
+
+### Flight track recording (actual vs. planned)
+
+A fleet without a DJI Dock has no after-the-fact flight history to pull from the cloud platform — there is no "flight task" record for a manually flown RC mission. Instead, the sidebar's **Záznam letu** panel lets you record the aircraft's actual GPS trace live, while flying:
+
+- Click **Začít nahrávat let** before takeoff (the target device must be online — the focused device if more than one is bound, or the only bound device otherwise). The server appends a point every couple of seconds from the same live telemetry the map marker uses, tied to whichever mission is currently open.
+- Click **Zastavit nahrávání** after landing to end the recording.
+- Past recordings for the currently open mission are listed below, each with its start time. Click the eye icon to draw that recording's actual flown path on the map as a solid amber line, next to the dashed planned route — a quick visual check of how closely the flight matched the plan. Click it again (or open a different mission) to hide it.
+- The trash icon deletes a recording permanently.
+
+Recordings are tied to the mission open in the editor when you start recording, not retroactively — start it before the flight, not after.

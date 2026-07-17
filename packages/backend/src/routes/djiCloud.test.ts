@@ -842,3 +842,108 @@ describe("POST /api/dji-cloud/live/stop", () => {
     expect(res.body.success).toBe(true);
   });
 });
+
+describe("DJI Cloud personal account linking", () => {
+  it("GET /account/link requires authentication", async () => {
+    const res = await request(app).get("/api/dji-cloud/account/link");
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /account/link reports unlinked by default", async () => {
+    const res = await request(app)
+      .get("/api/dji-cloud/account/link")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ linked: false });
+  });
+
+  it("POST /account/link rejects missing credentials", async () => {
+    const res = await request(app)
+      .post("/api/dji-cloud/account/link")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ username: "pilot" });
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /account/link rejects credentials the platform doesn't accept", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(
+          jsonResponse({ code: -1, message: "Bad credentials", data: null }),
+        ),
+    );
+    const res = await request(app)
+      .post("/api/dji-cloud/account/link")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ username: "wrong", password: "wrong" });
+    expect(res.status).toBe(400);
+
+    const status = await request(app)
+      .get("/api/dji-cloud/account/link")
+      .set("Authorization", `Bearer ${token}`);
+    expect(status.body.linked).toBe(false);
+  });
+
+  it("POST /account/link verifies and stores valid credentials", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(loginOk()));
+    const linkRes = await request(app)
+      .post("/api/dji-cloud/account/link")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ username: "pilot-personal", password: "pilot-pw" });
+    expect(linkRes.status).toBe(200);
+    expect(linkRes.body.success).toBe(true);
+
+    const status = await request(app)
+      .get("/api/dji-cloud/account/link")
+      .set("Authorization", `Bearer ${token}`);
+    expect(status.body).toEqual({
+      linked: true,
+      username: "pilot-personal",
+      linkedAt: expect.any(String),
+    });
+  });
+
+  it("subsequent actions authenticate with the linked account, not the service account", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(loginOk()));
+    await request(app)
+      .post("/api/dji-cloud/account/link")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ username: "pilot-personal", password: "pilot-pw" });
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(waylinesListEmpty());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .get("/api/dji-cloud/waylines")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+
+    const [, loginInit] = fetchMock.mock.calls[0];
+    const loginBody = JSON.parse(loginInit.body);
+    expect(loginBody.username).toBe("pilot-personal");
+    expect(loginBody.password).toBe("pilot-pw");
+  });
+
+  it("DELETE /account/link removes the linked account", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(loginOk()));
+    await request(app)
+      .post("/api/dji-cloud/account/link")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ username: "pilot-personal", password: "pilot-pw" });
+
+    const delRes = await request(app)
+      .delete("/api/dji-cloud/account/link")
+      .set("Authorization", `Bearer ${token}`);
+    expect(delRes.status).toBe(200);
+
+    const status = await request(app)
+      .get("/api/dji-cloud/account/link")
+      .set("Authorization", `Bearer ${token}`);
+    expect(status.body).toEqual({ linked: false });
+  });
+});

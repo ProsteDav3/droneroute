@@ -18,6 +18,9 @@ import {
   listLiveCapacity,
   startLiveStream,
   stopLiveStream,
+  linkDjiCloudAccount,
+  unlinkDjiCloudAccount,
+  getDjiCloudAccountStatus,
 } from "../services/djiCloud.js";
 import {
   ensureTelemetryBridgeConnected,
@@ -156,6 +159,7 @@ djiCloudRoutes.post(
       const { waylineName } = await uploadMissionToDjiCloud(
         mission.name,
         buffer,
+        req.userId,
       );
 
       res.json({ waylineName });
@@ -250,7 +254,7 @@ djiCloudRoutes.post(
           kmz: await generateKmzBuffer(segment),
         })),
       );
-      const { count } = await uploadSegmentsToDjiCloud(kmzSegments);
+      const { count } = await uploadSegmentsToDjiCloud(kmzSegments, req.userId);
 
       res.json({ count });
     } catch (err) {
@@ -273,22 +277,26 @@ djiCloudRoutes.post(
 
 // Devices bound to the workspace (aircraft/RCs) — read-only, so any signed-in
 // user can see fleet status without needing admin rights.
-djiCloudRoutes.get("/devices", authMiddleware, async (_req, res) => {
-  try {
-    if (!requireConfigured(res)) return;
-    const devices = await listBoundDevices();
-    res.json({ devices });
-  } catch (err) {
-    logger.error({ err }, "DJI Cloud device list error");
-    res.status(502).json({ error: "Načtení zařízení z DJI Cloud selhalo" });
-  }
-});
+djiCloudRoutes.get(
+  "/devices",
+  authMiddleware,
+  async (req: AuthRequest, res) => {
+    try {
+      if (!requireConfigured(res)) return;
+      const devices = await listBoundDevices(req.userId);
+      res.json({ devices });
+    } catch (err) {
+      logger.error({ err }, "DJI Cloud device list error");
+      res.status(502).json({ error: "Načtení zařízení z DJI Cloud selhalo" });
+    }
+  },
+);
 
 // Recent Health Management System messages (aircraft-reported warnings).
-djiCloudRoutes.get("/hms", authMiddleware, async (_req, res) => {
+djiCloudRoutes.get("/hms", authMiddleware, async (req: AuthRequest, res) => {
   try {
     if (!requireConfigured(res)) return;
-    const messages = await listHmsMessages();
+    const messages = await listHmsMessages(req.userId);
     res.json({ messages });
   } catch (err) {
     logger.error({ err }, "DJI Cloud HMS error");
@@ -300,10 +308,10 @@ djiCloudRoutes.get("/hms", authMiddleware, async (_req, res) => {
 // *triggering* a flight via a DJI Dock (autonomous drone-in-a-box hardware)
 // — a handheld RC can't be commanded to take off — so this bridge exposes
 // job history/progress, not job creation.
-djiCloudRoutes.get("/jobs", authMiddleware, async (_req, res) => {
+djiCloudRoutes.get("/jobs", authMiddleware, async (req: AuthRequest, res) => {
   try {
     if (!requireConfigured(res)) return;
-    const jobs = await listWaylineJobs();
+    const jobs = await listWaylineJobs(req.userId);
     res.json({ jobs });
   } catch (err) {
     logger.error({ err }, "DJI Cloud jobs list error");
@@ -313,16 +321,20 @@ djiCloudRoutes.get("/jobs", authMiddleware, async (_req, res) => {
 
 // Lists the KMZ files currently in the workspace's wayline library, for a
 // management view (see listWaylines' own doc comment for the endpoint).
-djiCloudRoutes.get("/waylines", authMiddleware, async (_req, res) => {
-  try {
-    if (!requireConfigured(res)) return;
-    const waylines = await listWaylines();
-    res.json({ waylines });
-  } catch (err) {
-    logger.error({ err }, "DJI Cloud waylines list error");
-    res.status(502).json({ error: "Načtení waylines z DJI Cloud selhalo" });
-  }
-});
+djiCloudRoutes.get(
+  "/waylines",
+  authMiddleware,
+  async (req: AuthRequest, res) => {
+    try {
+      if (!requireConfigured(res)) return;
+      const waylines = await listWaylines(req.userId);
+      res.json({ waylines });
+    } catch (err) {
+      logger.error({ err }, "DJI Cloud waylines list error");
+      res.status(502).json({ error: "Načtení waylines z DJI Cloud selhalo" });
+    }
+  },
+);
 
 // Removes a wayline from the workspace's library (e.g. a timestamped
 // duplicate from a retried upload). Rate-limited like the upload routes —
@@ -339,7 +351,7 @@ djiCloudRoutes.delete(
         res.status(400).json({ error: "Chybí ID wayline" });
         return;
       }
-      await deleteWayline(waylineId);
+      await deleteWayline(waylineId, req.userId);
       res.json({ success: true });
     } catch (err) {
       logger.error({ err }, "DJI Cloud wayline delete error");
@@ -402,7 +414,7 @@ djiCloudRoutes.get("/media", authMiddleware, async (req: AuthRequest, res) => {
       50,
       Math.max(1, Number(req.query.pageSize) || 20),
     );
-    const result = await listMediaFiles(page, pageSize);
+    const result = await listMediaFiles(page, pageSize, req.userId);
     res.json(result);
   } catch (err) {
     logger.error({ err }, "DJI Cloud media list error");
@@ -424,7 +436,7 @@ djiCloudRoutes.get(
         res.status(400).json({ error: "Chybí ID souboru" });
         return;
       }
-      const url = await getMediaFileDownloadUrl(fileId);
+      const url = await getMediaFileDownloadUrl(fileId, req.userId);
       res.json({ url });
     } catch (err) {
       logger.error({ err }, "DJI Cloud media URL error");
@@ -438,10 +450,10 @@ djiCloudRoutes.get(
 djiCloudRoutes.get(
   "/live/capacity",
   authMiddleware,
-  async (_req: AuthRequest, res) => {
+  async (req: AuthRequest, res) => {
     try {
       if (!requireConfigured(res)) return;
-      const devices = await listLiveCapacity();
+      const devices = await listLiveCapacity(req.userId);
       res.json({ devices });
     } catch (err) {
       logger.error({ err }, "DJI Cloud live capacity error");
@@ -467,7 +479,7 @@ djiCloudRoutes.post(
         res.status(400).json({ error: "Chybí video_id" });
         return;
       }
-      const { hlsUrl } = await startLiveStream(videoId);
+      const { hlsUrl } = await startLiveStream(videoId, req.userId);
       res.json({ success: true, hlsUrl });
     } catch (err) {
       logger.error({ err }, "DJI Cloud live start error");
@@ -488,7 +500,7 @@ djiCloudRoutes.post(
         res.status(400).json({ error: "Chybí video_id" });
         return;
       }
-      await stopLiveStream(videoId);
+      await stopLiveStream(videoId, req.userId);
       res.json({ success: true });
     } catch (err) {
       logger.error({ err }, "DJI Cloud live stop error");
@@ -625,3 +637,50 @@ djiCloudRoutes.delete(
     res.json({ success: true });
   },
 );
+
+// Personal DJI Cloud account linking: lets a SkyRoute user attribute their
+// own uploads/actions to their own account on the platform instead of the
+// one shared DJI_CLOUD_USERNAME service account (see djiCloud.ts's
+// resolveConfig). Rate-limited like the other account-mutating auth routes
+// — it's an authenticated call that attempts a real login against the
+// platform on every call.
+djiCloudRoutes.post(
+  "/account/link",
+  strictLimiter,
+  authMiddleware,
+  async (req: AuthRequest, res) => {
+    try {
+      if (!requireConfigured(res)) return;
+      const { username, password } = req.body;
+      if (typeof username !== "string" || !username) {
+        res.status(400).json({ error: "Chybí uživatelské jméno" });
+        return;
+      }
+      if (typeof password !== "string" || !password) {
+        res.status(400).json({ error: "Chybí heslo" });
+        return;
+      }
+      await linkDjiCloudAccount(req.userId!, username, password);
+      res.json({ success: true });
+    } catch (err) {
+      logger.error({ err }, "DJI Cloud account link error");
+      res.status(400).json({
+        error:
+          "Propojení s DJI Cloud selhalo — zkontrolujte přihlašovací údaje",
+      });
+    }
+  },
+);
+
+djiCloudRoutes.delete(
+  "/account/link",
+  authMiddleware,
+  (req: AuthRequest, res) => {
+    unlinkDjiCloudAccount(req.userId!);
+    res.json({ success: true });
+  },
+);
+
+djiCloudRoutes.get("/account/link", authMiddleware, (req: AuthRequest, res) => {
+  res.json(getDjiCloudAccountStatus(req.userId!));
+});

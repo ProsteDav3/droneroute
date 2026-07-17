@@ -95,11 +95,15 @@ change. This is automatic; there's no separate "sign out everywhere"
 button, because a password change already implies you want old sessions
 gone.
 
+## Linking your own DJI Cloud account
+
+When a deployment has DJI Cloud configured (see the DJI Cloud sections of [Map and visualization](map-and-visualization.md)), every upload, media browse, and other cloud action normally runs under one shared service account — the platform sees every SkyRoute user's activity as coming from that one account. From the **Account** tab of the settings dialog, you can link your own DJI Cloud platform web account instead: enter its username and password, and SkyRoute verifies them with a real login before saving. Once linked, your uploads and other cloud actions are attributed to you personally on the platform rather than the shared account. Unlink at any time to fall back to the shared account. Your DJI Cloud password is stored encrypted, never in plain text.
+
 ## Settings dialog
 
 Click the settings icon (gear) next to your avatar to open the settings dialog. It has three tabs:
 
-- **Account** — view your email, change your password, and turn two-factor authentication on or off (self-hosted only).
+- **Account** — view your email, change your password, turn two-factor authentication on or off (self-hosted only), and, when this deployment has DJI Cloud configured, link your own DJI Cloud platform account (see below).
 - **Visualization** — choose your default view mode (2D or 3D), map style (satellite or street), and unit system (metric or imperial). These defaults are applied when the app loads.
 - **Mission defaults** — set default values for new missions: drone model, payload, flight speed, takeoff height, max battery, height reference, heading mode, fly-to mode, finish action, RC lost action, and transit speed. When you create a new mission, these defaults are used instead of the hardcoded factory defaults.
 

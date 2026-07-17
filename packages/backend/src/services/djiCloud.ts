@@ -4,12 +4,23 @@
  * mission KMZ files into the platform's wayline library so they appear in
  * the RC's Cloud tab without any manual file transfer.
  *
- * Configured entirely through environment variables; when they're absent
- * the feature is disabled and the UI hides its button:
+ * The server-wide bridge is configured through environment variables; when
+ * they're absent the feature is disabled entirely and the UI hides its
+ * button:
  * - DJI_CLOUD_URL       e.g. https://dji-cloud.example.com (no trailing /)
  * - DJI_CLOUD_USERNAME  a web (user_type 1) account on the platform
  * - DJI_CLOUD_PASSWORD
+ *
+ * Individual SkyRoute users can additionally link their own DJI Cloud web
+ * account (see linkDjiCloudAccount below) so their uploads/actions are
+ * attributed to them on the platform instead of the one shared service
+ * account — every function below takes an optional `userId` and prefers
+ * that user's own linked credentials when present, falling back to the
+ * server-wide service account otherwise.
  */
+
+import { getDb } from "../models/db.js";
+import { encryptSecret, decryptSecret } from "../lib/encryption.js";
 
 interface DjiCloudConfig {
   url: string;
@@ -17,8 +28,9 @@ interface DjiCloudConfig {
   password: string;
 }
 
-/** Read at call time (not module load) so tests can stub the env. */
-function readConfig(): DjiCloudConfig | null {
+/** Server-wide service-account config, read at call time (not module load)
+ * so tests can stub the env. */
+function readServiceConfig(): DjiCloudConfig | null {
   const url = process.env.DJI_CLOUD_URL?.replace(/\/+$/, "");
   const username = process.env.DJI_CLOUD_USERNAME;
   const password = process.env.DJI_CLOUD_PASSWORD;
@@ -26,8 +38,81 @@ function readConfig(): DjiCloudConfig | null {
   return { url, username, password };
 }
 
+interface DjiCloudAccountRow {
+  dji_username: string;
+  dji_password_encrypted: string;
+}
+
+/** Resolves which credentials to authenticate a call with: the given
+ * user's own linked DJI Cloud account if they have one, otherwise the
+ * server-wide service account. The platform URL always comes from the
+ * server-wide config — a linked account is just a different login on the
+ * same configured platform, not a way to point at a different server. */
+function resolveConfig(userId?: string): DjiCloudConfig | null {
+  const serviceConfig = readServiceConfig();
+  if (!serviceConfig) return null;
+  if (!userId) return serviceConfig;
+
+  const row = getDb()
+    .prepare(
+      "SELECT dji_username, dji_password_encrypted FROM dji_cloud_accounts WHERE user_id = ?",
+    )
+    .get(userId) as DjiCloudAccountRow | undefined;
+  if (!row) return serviceConfig;
+
+  return {
+    url: serviceConfig.url,
+    username: row.dji_username,
+    password: decryptSecret(row.dji_password_encrypted),
+  };
+}
+
 export function isDjiCloudConfigured(): boolean {
-  return readConfig() !== null;
+  return readServiceConfig() !== null;
+}
+
+/** Verifies the given credentials against the configured platform (a real
+ * login attempt) and, on success, stores them encrypted for this user —
+ * replacing any previously linked account. Throws the same way `login`
+ * does if the credentials are rejected, so the route can surface a clear
+ * error instead of silently storing something that doesn't work. */
+export async function linkDjiCloudAccount(
+  userId: string,
+  username: string,
+  password: string,
+): Promise<void> {
+  const serviceConfig = readServiceConfig();
+  if (!serviceConfig) throw new Error("DJI Cloud není nakonfigurován");
+  await login({ url: serviceConfig.url, username, password });
+
+  getDb()
+    .prepare(
+      `INSERT INTO dji_cloud_accounts (user_id, dji_username, dji_password_encrypted, linked_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(user_id) DO UPDATE SET
+         dji_username = excluded.dji_username,
+         dji_password_encrypted = excluded.dji_password_encrypted,
+         linked_at = excluded.linked_at`,
+    )
+    .run(userId, username, encryptSecret(password));
+}
+
+export function unlinkDjiCloudAccount(userId: string): void {
+  getDb()
+    .prepare("DELETE FROM dji_cloud_accounts WHERE user_id = ?")
+    .run(userId);
+}
+
+export function getDjiCloudAccountStatus(
+  userId: string,
+): { linked: true; username: string; linkedAt: string } | { linked: false } {
+  const row = getDb()
+    .prepare(
+      "SELECT dji_username, linked_at FROM dji_cloud_accounts WHERE user_id = ?",
+    )
+    .get(userId) as { dji_username: string; linked_at: string } | undefined;
+  if (!row) return { linked: false };
+  return { linked: true, username: row.dji_username, linkedAt: row.linked_at };
 }
 
 interface DjiLoginData {
@@ -115,8 +200,10 @@ export interface DjiDeviceSummary {
  * first page is fetched with a generous size rather than implementing full
  * pagination here).
  */
-export async function listBoundDevices(): Promise<DjiDeviceSummary[]> {
-  const cfg = readConfig();
+export async function listBoundDevices(
+  userId?: string,
+): Promise<DjiDeviceSummary[]> {
+  const cfg = resolveConfig(userId);
   if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
   const { token, workspaceId } = await login(cfg);
   const data = await authedGet<{ list: DjiDeviceSummary[] }>(
@@ -142,8 +229,10 @@ export interface DjiHmsMessage {
  * fault, low battery cell imbalance), surfaced so a pilot can see them
  * before a flight instead of only in DJI Pilot 2's own UI.
  */
-export async function listHmsMessages(): Promise<DjiHmsMessage[]> {
-  const cfg = readConfig();
+export async function listHmsMessages(
+  userId?: string,
+): Promise<DjiHmsMessage[]> {
+  const cfg = resolveConfig(userId);
   if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
   const { token, workspaceId } = await login(cfg);
   const data = await authedGet<{ list: DjiHmsMessage[] }>(
@@ -173,8 +262,10 @@ export interface DjiWaylineJob {
  * changelog for why "remote flight task dispatch" is narrower in scope
  * than originally imagined.
  */
-export async function listWaylineJobs(): Promise<DjiWaylineJob[]> {
-  const cfg = readConfig();
+export async function listWaylineJobs(
+  userId?: string,
+): Promise<DjiWaylineJob[]> {
+  const cfg = resolveConfig(userId);
   if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
   const { token, workspaceId } = await login(cfg);
   const data = await authedGet<{ list: DjiWaylineJob[] }>(
@@ -196,7 +287,10 @@ export async function getMqttSessionCredentials(): Promise<{
   username: string;
   password: string;
 } | null> {
-  const cfg = readConfig();
+  // Always the server-wide service account, not a per-user one: this feeds
+  // a single, process-wide MQTT bridge connection (mqttTelemetry.ts) shared
+  // by every request, not a per-call authenticated action.
+  const cfg = readServiceConfig();
   if (!cfg) return null;
   const session = await login(cfg);
   if (!session.mqttUsername || !session.mqttPassword) return null;
@@ -223,8 +317,10 @@ export interface DjiWaylineSummary {
  * collision so an upload can overwrite instead of piling up timestamped
  * duplicates.
  */
-export async function listWaylines(): Promise<DjiWaylineSummary[]> {
-  const cfg = readConfig();
+export async function listWaylines(
+  userId?: string,
+): Promise<DjiWaylineSummary[]> {
+  const cfg = resolveConfig(userId);
   if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
   const { token, workspaceId } = await login(cfg);
   const data = await authedGet<{ list: DjiWaylineSummary[] }>(
@@ -259,8 +355,11 @@ async function deleteWaylineAuthed(
  * timestamped duplicate created by a retried upload, or a mission that's
  * no longer needed) — `/wayline/api/v1/workspaces/{workspace_id}/waylines/{id}`.
  */
-export async function deleteWayline(waylineId: string): Promise<void> {
-  const cfg = readConfig();
+export async function deleteWayline(
+  waylineId: string,
+  userId?: string,
+): Promise<void> {
+  const cfg = resolveConfig(userId);
   if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
   const { token, workspaceId } = await login(cfg);
   await deleteWaylineAuthed(cfg, token, workspaceId, waylineId);
@@ -406,8 +505,9 @@ async function uploadOne(
 export async function uploadMissionToDjiCloud(
   missionName: string,
   kmz: Buffer,
+  userId?: string,
 ): Promise<{ waylineName: string }> {
-  const cfg = readConfig();
+  const cfg = resolveConfig(userId);
   if (!cfg) {
     throw new Error("DJI Cloud není nakonfigurován");
   }
@@ -465,8 +565,9 @@ export interface DjiMediaFile {
 export async function listMediaFiles(
   page = 1,
   pageSize = 20,
+  userId?: string,
 ): Promise<{ list: DjiMediaFile[]; total: number }> {
-  const cfg = readConfig();
+  const cfg = resolveConfig(userId);
   if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
   const { token, workspaceId } = await login(cfg);
   const data = await authedGet<{
@@ -488,8 +589,11 @@ export async function listMediaFiles(
  * URL) can be handed back to the frontend to link to directly instead of
  * proxying the file's bytes through this server.
  */
-export async function getMediaFileDownloadUrl(fileId: string): Promise<string> {
-  const cfg = readConfig();
+export async function getMediaFileDownloadUrl(
+  fileId: string,
+  userId?: string,
+): Promise<string> {
+  const cfg = resolveConfig(userId);
   if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
   const { token, workspaceId } = await login(cfg);
   const res = await fetch(
@@ -534,8 +638,10 @@ export interface DjiLiveCapacityDevice {
  * platform derives this from which devices are online, so it's empty
  * whenever nothing is connected. `GET manage/api/v1/live/capacity`.
  */
-export async function listLiveCapacity(): Promise<DjiLiveCapacityDevice[]> {
-  const cfg = readConfig();
+export async function listLiveCapacity(
+  userId?: string,
+): Promise<DjiLiveCapacityDevice[]> {
+  const cfg = resolveConfig(userId);
   if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
   const { token, workspaceId } = await login(cfg);
   return authedGet<DjiLiveCapacityDevice[]>(
@@ -600,8 +706,9 @@ function buildHlsUrl(videoId: string): string | null {
  */
 export async function startLiveStream(
   videoId: string,
+  userId?: string,
 ): Promise<{ hlsUrl: string | null }> {
-  const cfg = readConfig();
+  const cfg = resolveConfig(userId);
   if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
   const { token } = await login(cfg);
   await authedPost(cfg, token, "/manage/api/v1/live/streams/start", {
@@ -613,8 +720,11 @@ export async function startLiveStream(
 }
 
 /** Stops a live feed previously started with `startLiveStream`. `POST manage/api/v1/live/streams/stop`. */
-export async function stopLiveStream(videoId: string): Promise<void> {
-  const cfg = readConfig();
+export async function stopLiveStream(
+  videoId: string,
+  userId?: string,
+): Promise<void> {
+  const cfg = resolveConfig(userId);
   if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
   const { token } = await login(cfg);
   await authedPost(cfg, token, "/manage/api/v1/live/streams/stop", {
@@ -631,8 +741,9 @@ export async function stopLiveStream(videoId: string): Promise<void> {
  */
 export async function uploadSegmentsToDjiCloud(
   segments: { name: string; kmz: Buffer }[],
+  userId?: string,
 ): Promise<{ count: number }> {
-  const cfg = readConfig();
+  const cfg = resolveConfig(userId);
   if (!cfg) {
     throw new Error("DJI Cloud není nakonfigurován");
   }

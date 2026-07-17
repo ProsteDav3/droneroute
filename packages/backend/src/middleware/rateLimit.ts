@@ -1,4 +1,5 @@
 import rateLimit from "express-rate-limit";
+import { SqliteRateLimitStore } from "./sqliteRateLimitStore.js";
 
 /**
  * Disable rate limiting under `vitest` (NODE_ENV=test), where every request
@@ -8,6 +9,16 @@ import rateLimit from "express-rate-limit";
  */
 const skipInTests = () => process.env.NODE_ENV === "test";
 
+/**
+ * Each limiter gets its own `SqliteRateLimitStore` instance (own `prefix`,
+ * own `windowMs`) backed by the shared `rate_limit_hits` SQLite table — see
+ * `sqliteRateLimitStore.ts`. This replaces express-rate-limit's default
+ * in-memory `MemoryStore`, which resets on every redeploy and doesn't
+ * survive Fly.io's `auto_stop_machines` cold starts. A single `Store`
+ * instance must never be shared across multiple limiters (they'd collide on
+ * the same IP-derived key), so every limiter below constructs its own.
+ */
+
 /** Global rate limiter — 100 requests per minute per IP. */
 export const globalLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -15,6 +26,7 @@ export const globalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: skipInTests,
+  store: new SqliteRateLimitStore({ prefix: "global", windowMs: 60 * 1000 }),
   message: { error: "Příliš mnoho požadavků, zkuste to prosím znovu později" },
 });
 
@@ -25,6 +37,7 @@ export const strictLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: skipInTests,
+  store: new SqliteRateLimitStore({ prefix: "strict", windowMs: 60 * 1000 }),
   message: { error: "Příliš mnoho požadavků, zkuste to prosím znovu později" },
 });
 
@@ -39,6 +52,7 @@ export const airspaceLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  store: new SqliteRateLimitStore({ prefix: "airspace", windowMs: 60 * 1000 }),
   message: { error: "Příliš mnoho požadavků, zkuste to prosím znovu později" },
 });
 
@@ -53,6 +67,7 @@ export const weatherLimiter = rateLimit({
   max: 30,
   standardHeaders: true,
   legacyHeaders: false,
+  store: new SqliteRateLimitStore({ prefix: "weather", windowMs: 60 * 1000 }),
   message: { error: "Příliš mnoho požadavků, zkuste to prosím znovu později" },
 });
 
@@ -68,6 +83,10 @@ export const authLimiter = rateLimit({
   legacyHeaders: false,
   skipSuccessfulRequests: true,
   skip: skipInTests,
+  store: new SqliteRateLimitStore({
+    prefix: "auth",
+    windowMs: 15 * 60 * 1000,
+  }),
   message: { error: "Příliš mnoho pokusů, zkuste to prosím znovu později" },
 });
 

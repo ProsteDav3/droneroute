@@ -52,6 +52,29 @@ const isRegistrationOpen = () =>
 // registration.
 const bootstrapToken = () => process.env.BOOTSTRAP_TOKEN || null;
 
+/**
+ * @openapi
+ * /auth/status:
+ *   get:
+ *     summary: Check whether registration is open
+ *     description: >
+ *       Self-hosted deployments bootstrap a single founder/admin account:
+ *       registration is open only until the very first account is created.
+ *     tags: [Auth]
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Registration status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 registrationOpen:
+ *                   type: boolean
+ *                 requiresBootstrapToken:
+ *                   type: boolean
+ */
 // Rely on the app-wide globalLimiter here rather than authLimiter: this
 // route always returns 200, and authLimiter's skipSuccessfulRequests would
 // make it exempt from any real limiting.
@@ -63,6 +86,37 @@ authRoutes.get("/status", (_req, res) => {
   });
 });
 
+/**
+ * @openapi
+ * /auth/google:
+ *   post:
+ *     summary: Sign in with Google (cloud mode only)
+ *     description: >
+ *       Verifies the Google ID token, then links/creates the local account.
+ *       Returns 404 when the deployment runs in self-hosted mode.
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [credential]
+ *             properties:
+ *               credential:
+ *                 type: string
+ *                 description: The Google ID token from `@react-oauth/google`.
+ *     responses:
+ *       200:
+ *         description: Signed in to an existing account
+ *       201:
+ *         description: New account created and signed in
+ *       401:
+ *         description: Invalid Google credential
+ *       403:
+ *         description: Account is banned
+ */
 // ---------------------------------------------------------------------------
 // Google OAuth sign-in (cloud mode only)
 // ---------------------------------------------------------------------------
@@ -174,6 +228,55 @@ authRoutes.post("/google", authLimiter, async (req, res) => {
   res.status(201).json({ token, userId: id, email, isAdmin });
 });
 
+/**
+ * @openapi
+ * /auth/register:
+ *   post:
+ *     summary: Bootstrap the first (founder/admin) account (self-hosted only)
+ *     description: >
+ *       Only succeeds while registration is open (no users exist yet). Every
+ *       account after the first must be created by that admin via
+ *       `/admin/users`. Returns 410 in cloud mode (use `/auth/google`).
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *                 minLength: 6
+ *               bootstrapToken:
+ *                 type: string
+ *                 description: Required only when `BOOTSTRAP_TOKEN` is set server-side.
+ *     responses:
+ *       201:
+ *         description: Founder account created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                 userId:
+ *                   type: string
+ *                 email:
+ *                   type: string
+ *                 isAdmin:
+ *                   type: boolean
+ *       400:
+ *         description: Missing/invalid email or password
+ *       403:
+ *         description: Registration is closed, or bootstrap token is wrong
+ */
 // ---------------------------------------------------------------------------
 // Password-based routes (self-hosted mode only)
 // ---------------------------------------------------------------------------
@@ -231,6 +334,48 @@ authRoutes.post("/register", authLimiter, (req, res) => {
   res.status(201).json({ token, userId: id, email, isAdmin: true });
 });
 
+/**
+ * @openapi
+ * /auth/login:
+ *   post:
+ *     summary: Sign in with email + password (self-hosted mode only)
+ *     description: Returns 410 in cloud mode (use `/auth/google`).
+ *     tags: [Auth]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Signed in
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                 userId:
+ *                   type: string
+ *                 email:
+ *                   type: string
+ *                 isAdmin:
+ *                   type: boolean
+ *       401:
+ *         description: Invalid email or password
+ *       403:
+ *         description: Account is banned
+ */
 authRoutes.post("/login", authLimiter, (req, res) => {
   if (!isSelfHosted()) {
     res.status(410).json({

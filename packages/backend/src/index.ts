@@ -3,7 +3,9 @@ import cors from "cors";
 import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
+import swaggerUi from "swagger-ui-express";
 import { initDb } from "./models/db.js";
+import { buildOpenApiSpec } from "./lib/openapi.js";
 import { missionRoutes } from "./routes/missions.js";
 import { kmzRoutes } from "./routes/kmz.js";
 import { authRoutes } from "./routes/auth.js";
@@ -118,6 +120,18 @@ app.use("/api", sharedRoutes);
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+// API docs (Swagger UI + raw spec) — non-production only. The generated
+// spec reflects the full internal API shape, so it stays off in production
+// by default rather than being exposed publicly; enable it deliberately
+// (e.g. behind an admin check) if a deployment needs it there.
+if (process.env.NODE_ENV !== "production") {
+  const openApiSpec = buildOpenApiSpec();
+  app.get("/api/docs.json", (_req, res) => {
+    res.json(openApiSpec);
+  });
+  app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
+}
 
 // Public config (exposes non-secret settings to the frontend)
 app.get("/api/config", (_req, res) => {

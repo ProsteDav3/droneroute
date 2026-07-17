@@ -30,6 +30,7 @@ import {
 import {
   startFlightTrackSession,
   stopFlightTrackSessionForDevice,
+  isRecording,
   listFlightTrackSessions,
   getFlightTrackSession,
   getFlightTrackPoints,
@@ -559,6 +560,21 @@ djiCloudRoutes.post(
     const { deviceSn } = req.body;
     if (typeof deviceSn !== "string" || !deviceSn) {
       res.status(400).json({ error: "Chybí deviceSn" });
+      return;
+    }
+    const activeSessionId = isRecording(deviceSn);
+    if (!activeSessionId) {
+      res.json({ success: true });
+      return;
+    }
+    const session = getFlightTrackSession(activeSessionId);
+    const owned = session
+      ? session.missionId
+        ? isMissionOwnedByUser(session.missionId, req.userId!)
+        : session.userId === req.userId
+      : false;
+    if (!owned) {
+      res.status(403).json({ error: "Nemáte oprávnění" });
       return;
     }
     stopFlightTrackSessionForDevice(deviceSn);

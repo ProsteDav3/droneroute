@@ -31,7 +31,7 @@ function offsetMeters(
 }
 
 /** Bearing from point 1 to point 2 in degrees (0 = north, CW). */
-function bearingTo(
+export function bearingTo(
   lat1: number,
   lng1: number,
   lat2: number,
@@ -46,7 +46,7 @@ function bearingTo(
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
 }
 
-function resolveHeading(wp: Waypoint, pois: PointOfInterest[]): number {
+export function resolveHeading(wp: Waypoint, pois: PointOfInterest[]): number {
   if (wp.headingMode === "towardPOI" && wp.poiId) {
     const poi = pois.find((p) => p.id === wp.poiId);
     if (poi) {

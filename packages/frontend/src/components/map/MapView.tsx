@@ -30,6 +30,12 @@ import { BuildingPolygon } from "./BuildingPolygon";
 import { AirspaceOverlay } from "./AirspaceOverlay";
 import { CameraFrustum } from "./CameraFrustum";
 import { DjiTelemetryMarkers } from "./DjiTelemetryMarkers";
+import { useFlightSimulationStore } from "@/store/flightSimulationStore";
+import {
+  buildSimulationFrames,
+  frameToWaypoint,
+  FRAMES_PER_SEGMENT,
+} from "@/lib/flightSimulation";
 import { Triangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -530,6 +536,20 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
   const addWaypoint = useMissionStore((s) => s.addWaypoint);
   const addPoi = useMissionStore((s) => s.addPoi);
   const addObstacle = useMissionStore((s) => s.addObstacle);
+  const simulationActive = useFlightSimulationStore((s) => s.isActive);
+  const simulationFrameIndex = useFlightSimulationStore((s) => s.frameIndex);
+  const simulationFrames = useMemo(
+    () =>
+      simulationActive
+        ? buildSimulationFrames(waypoints, pois, FRAMES_PER_SEGMENT)
+        : [],
+    [simulationActive, waypoints, pois],
+  );
+  const simulationFrame = simulationActive
+    ? simulationFrames[
+        Math.min(simulationFrameIndex, simulationFrames.length - 1)
+      ]
+    : undefined;
   const vizPrefs = usePreferencesStore((s) => s.preferences?.visualization);
   const [mapStyle, setMapStyle] = useState(
     vizPrefs?.mapStyle === "street"
@@ -687,14 +707,50 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
         {waypoints.map((wp) => (
           <WaypointMarker key={wp.index} waypoint={wp} is3D={is3D} />
         ))}
-        {selectedWaypointIndices.size === 1 &&
+        {simulationFrame ? (
+          <>
+            <CameraFrustum
+              waypoint={frameToWaypoint(simulationFrame)}
+              pois={pois}
+              is3D={is3D}
+            />
+            <Source
+              id="flight-simulation-drone"
+              type="geojson"
+              data={{
+                type: "Feature",
+                properties: {},
+                geometry: {
+                  type: "Point",
+                  coordinates: [
+                    simulationFrame.longitude,
+                    simulationFrame.latitude,
+                  ],
+                },
+              }}
+            >
+              <Layer
+                id="flight-simulation-drone-layer"
+                type="circle"
+                paint={{
+                  "circle-radius": 6,
+                  "circle-color": "#00c2ff",
+                  "circle-stroke-width": 2,
+                  "circle-stroke-color": "#ffffff",
+                }}
+              />
+            </Source>
+          </>
+        ) : (
+          selectedWaypointIndices.size === 1 &&
           (() => {
             const idx = [...selectedWaypointIndices][0];
             const wp = waypoints.find((w) => w.index === idx);
             return wp ? (
               <CameraFrustum waypoint={wp} pois={pois} is3D={is3D} />
             ) : null;
-          })()}
+          })()
+        )}
         {pois.map((poi) => (
           <PoiMarker key={poi.id} poi={poi} is3D={is3D} />
         ))}

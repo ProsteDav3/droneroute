@@ -75,6 +75,7 @@ import { WarningsPanel } from "@/components/mission/WarningsPanel";
 import { UndoRedoControls } from "@/components/mission/UndoRedoControls";
 import { DraftRecoveryBanner } from "@/components/mission/DraftRecoveryBanner";
 import { MissionProgressPanel } from "@/components/mission/MissionProgressPanel";
+import { FlightSimulationPanel } from "@/components/mission/FlightSimulationPanel";
 import type { Warning } from "@/components/mission/WarningsPanel";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { LoginGate } from "@/components/auth/LoginGate";
@@ -1408,6 +1409,7 @@ export default function App() {
         <MissionProgressPanel />
         <BulkActionToolbar />
         <WarningsPanel warnings={warnings} mapRef={mapRef} />
+        <FlightSimulationPanel />
       </div>
 
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}

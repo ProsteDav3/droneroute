@@ -1,3 +1,9 @@
+import { initSentry, Sentry, isSentryEnabled } from "./lib/sentry.js";
+
+// Must run before the modules below are imported so Sentry's
+// auto-instrumentation can hook into them — see lib/sentry.ts.
+initSentry();
+
 import express, { type ErrorRequestHandler } from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -185,6 +191,14 @@ app.get("/embed/:token", (_req, res) => {
 app.get("/{*splat}", (_req, res) => {
   res.sendFile(path.join(frontendDist, "index.html"));
 });
+
+// Reports unhandled errors to Sentry (no-op when SENTRY_DSN is unset — see
+// lib/sentry.ts). Must come before the app's own error handler below so
+// Sentry sees the error; it re-throws via `next(err)` internally so that
+// handler still runs afterward to shape the actual HTTP response.
+if (isSentryEnabled()) {
+  Sentry.setupExpressErrorHandler(app);
+}
 
 // Global error handler — log the full error server-side, never leak details
 // (stack traces, SQL, internal paths) to the client.

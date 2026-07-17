@@ -19,6 +19,10 @@ import { Button } from "@/components/ui/button";
 export function FlightSimulationPanel() {
   const waypoints = useMissionStore((s) => s.waypoints);
   const pois = useMissionStore((s) => s.pois);
+  const templateMode = useMissionStore((s) => s.templateMode);
+  const editingTemplateGroupId = useMissionStore(
+    (s) => s.editingTemplateGroupId,
+  );
   const { isActive, isPlaying, frameIndex, frameCount, speed } =
     useFlightSimulationStore();
   const { start, stop, togglePlay, setFrameIndex, setSpeed, advanceFrame } =
@@ -54,6 +58,16 @@ export function FlightSimulationPanel() {
   }, [isPlaying, speed, advanceFrame]);
 
   if (waypoints.length < 2) return null;
+
+  // Both this panel and TemplateConfigPanel render bottom-center over the
+  // map — TemplateConfigPanel lives inside Mapbox's own `.mapboxgl-map` div,
+  // which the library gives its own `z-index: 0` stacking context, so no
+  // z-index on our side can make it outrank a sibling like this one even
+  // though this panel's z-10 reads lower than the template panel's z-20.
+  // Hiding this panel whenever a template is being placed or edited avoids
+  // the two silently overlapping and swallowing clicks meant for the
+  // template panel's Apply/Cancel buttons.
+  if (templateMode || editingTemplateGroupId) return null;
 
   if (!isActive) {
     return (

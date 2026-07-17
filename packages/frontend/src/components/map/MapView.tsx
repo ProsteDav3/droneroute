@@ -15,6 +15,7 @@ import { useMissionStore } from "@/store/missionStore";
 import { useConfigStore } from "@/store/configStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { getObstacleWarnings } from "@/lib/geo";
+import { valueToGradientColor } from "@/lib/colorScale";
 import { WaypointMarker } from "./WaypointMarker";
 import { PoiMarker } from "./PoiMarker";
 import { MapToolbar } from "./MapToolbar";
@@ -286,6 +287,10 @@ function FitBoundsOnLoad() {
 function FlightPath({ is3D }: { is3D: boolean }) {
   const waypoints = useMissionStore((s) => s.waypoints);
   const obstacles = useMissionStore((s) => s.obstacles);
+  const config = useMissionStore((s) => s.config);
+  const routeColorMode = usePreferencesStore(
+    (s) => s.preferences?.visualization?.routeColorMode ?? "flat",
+  );
 
   const warnings = useMemo(
     () => getObstacleWarnings(waypoints, obstacles),
@@ -300,15 +305,47 @@ function FlightPath({ is3D }: { is3D: boolean }) {
     return set;
   }, [warnings]);
 
+  // Effective cruise speed for a waypoint's departing segment — same
+  // fallback lib/flightStats.ts's estimator uses (own speed when set,
+  // otherwise the mission's global speed).
+  const effectiveSpeed = useCallback(
+    (wp: (typeof waypoints)[number]) =>
+      wp.useGlobalSpeed ? config.autoFlightSpeed : wp.speed,
+    [config.autoFlightSpeed],
+  );
+
+  // Per-segment value range for the active color mode — segment color is
+  // normalized against the *whole mission's* min/max, not just the two
+  // endpoints, so the gradient is consistent across every segment.
+  const valueRange = useMemo(() => {
+    if (routeColorMode === "flat" || waypoints.length < 2) return null;
+    const values =
+      routeColorMode === "height"
+        ? waypoints.map((wp) => wp.height)
+        : waypoints.slice(0, -1).map((wp) => effectiveSpeed(wp));
+    return { min: Math.min(...values), max: Math.max(...values) };
+  }, [routeColorMode, waypoints, effectiveSpeed]);
+
   // 3D flight path segments (elevated)
   const geojson = useMemo(() => {
     if (waypoints.length < 2) return null;
     const features = waypoints.slice(0, -1).map((wp, i) => {
       const next = waypoints[i + 1];
+      let color = "#00c2ff";
+      if (valueRange) {
+        const value =
+          routeColorMode === "height"
+            ? (wp.height + next.height) / 2
+            : effectiveSpeed(wp);
+        color = valueToGradientColor(value, valueRange.min, valueRange.max);
+      }
+      // Obstacle warnings are a safety signal, not a style choice — always
+      // shown regardless of the active color mode.
+      if (warningSegments.has(wp.index)) color = "#ef4444";
       return {
         type: "Feature" as const,
         properties: {
-          color: warningSegments.has(wp.index) ? "#ef4444" : "#00c2ff",
+          color,
           zStart: wp.height,
           zEnd: next.height,
         },
@@ -322,7 +359,7 @@ function FlightPath({ is3D }: { is3D: boolean }) {
       };
     });
     return { type: "FeatureCollection" as const, features };
-  }, [waypoints, warningSegments]);
+  }, [waypoints, warningSegments, routeColorMode, valueRange, effectiveSpeed]);
 
   // Vertical dashed lines from ground to waypoint height
   // Use a tiny offset so the line has non-zero length (required for line-progress)

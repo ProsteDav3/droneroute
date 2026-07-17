@@ -550,6 +550,28 @@ export function AccountModal({ onClose }: AccountModalProps) {
               </div>
 
               <div>
+                <Label className="text-xs">Barvení trasy</Label>
+                <Select
+                  value={vizPrefs.routeColorMode ?? "flat"}
+                  onValueChange={(v) =>
+                    setVizPrefs((prev: VisualizationPreferences) => ({
+                      ...prev,
+                      routeColorMode: v as "flat" | "height" | "speed",
+                    }))
+                  }
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="flat">Žádné (jednotná barva)</SelectItem>
+                    <SelectItem value="height">Podle výšky</SelectItem>
+                    <SelectItem value="speed">Podle rychlosti</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
                 <Label className="text-xs">Jednotky</Label>
                 <Select
                   value={unitSystem}

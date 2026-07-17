@@ -29,6 +29,7 @@ import { ObstaclePolygon } from "./ObstaclePolygon";
 import { BuildingDrawHandler } from "./BuildingDrawHandler";
 import { BuildingPolygon } from "./BuildingPolygon";
 import { AirspaceOverlay } from "./AirspaceOverlay";
+import { FlightTrackOverlay } from "./FlightTrackOverlay";
 import { CustomLayersOverlay } from "./CustomLayersOverlay";
 import { CameraFrustum } from "./CameraFrustum";
 import { DjiTelemetryMarkers } from "./DjiTelemetryMarkers";
@@ -742,6 +743,7 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
         <MeasureToolHandler />
         <CustomLayersOverlay />
         <AirspaceOverlay />
+        <FlightTrackOverlay />
         {obstacles.map((obstacle) => (
           <ObstaclePolygon key={obstacle.id} obstacle={obstacle} />
         ))}

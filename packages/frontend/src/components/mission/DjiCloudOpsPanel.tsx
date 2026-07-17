@@ -4,6 +4,7 @@ import { useConfigStore } from "@/store/configStore";
 import { useDjiCloudOpsStore } from "@/store/djiCloudOpsStore";
 import { DjiMediaPanel } from "./DjiMediaPanel";
 import { DjiLiveVideoPanel } from "./DjiLiveVideoPanel";
+import { FlightTrackPanel } from "./FlightTrackPanel";
 
 const LS_KEY = "djiCloudOpsPanelOpen";
 
@@ -154,6 +155,7 @@ export function DjiCloudOpsPanel() {
           )}
           <DjiMediaPanel />
           <DjiLiveVideoPanel />
+          <FlightTrackPanel />
         </div>
       )}
     </div>

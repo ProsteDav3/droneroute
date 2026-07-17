@@ -349,6 +349,45 @@ export function initDb(): void {
       ON rate_limit_hits(reset_at);
   `);
 
+  // Migration: create flight_track_sessions/flight_track_points tables —
+  // records of a device's actual GPS trace during a flight (as opposed to
+  // `flight_logs`, which is just a manual date/duration/notes entry). Points
+  // are appended while a session is active (see services/flightTrack.ts),
+  // sourced from the same MQTT OSD telemetry the live map marker uses — this
+  // fleet has no DJI Dock, so there is no wayline-job history to pull an
+  // "actual flown path" from after the fact; recording it live while the
+  // pilot flies is the only way to get one.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS flight_track_sessions (
+      id TEXT PRIMARY KEY,
+      mission_id TEXT,
+      user_id TEXT NOT NULL,
+      device_sn TEXT NOT NULL,
+      started_at TEXT DEFAULT (datetime('now')),
+      ended_at TEXT,
+      FOREIGN KEY (mission_id) REFERENCES missions(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_flight_track_sessions_mission_id
+      ON flight_track_sessions(mission_id);
+
+    CREATE TABLE IF NOT EXISTS flight_track_points (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      recorded_at INTEGER NOT NULL,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      height REAL,
+      horizontal_speed REAL,
+      battery_percent REAL,
+      FOREIGN KEY (session_id) REFERENCES flight_track_sessions(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_flight_track_points_session_id
+      ON flight_track_points(session_id, recorded_at);
+  `);
+
   // Ensure ADMIN_EMAIL user has admin privileges (cloud mode)
   const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
   const adminEmail = process.env.ADMIN_EMAIL || "";

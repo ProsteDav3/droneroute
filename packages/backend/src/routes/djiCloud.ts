@@ -24,10 +24,26 @@ import {
   getTelemetrySnapshot,
   onTelemetryUpdate,
 } from "../services/mqttTelemetry.js";
+import {
+  startFlightTrackSession,
+  stopFlightTrackSessionForDevice,
+  listFlightTrackSessions,
+  getFlightTrackSession,
+  getFlightTrackPoints,
+  deleteFlightTrackSession,
+} from "../services/flightTrack.js";
+import { getDb } from "../models/db.js";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { globalLimiter, strictLimiter } from "../middleware/rateLimit.js";
 import { validateMissionGeometry } from "../services/missionValidation.js";
 import { logger } from "../lib/logger.js";
+
+function isMissionOwnedByUser(missionId: string, userId: string): boolean {
+  const mission = getDb()
+    .prepare("SELECT user_id FROM missions WHERE id = ?")
+    .get(missionId) as { user_id: string | null } | undefined;
+  return !!mission && mission.user_id === userId;
+}
 
 export const djiCloudRoutes = Router();
 
@@ -478,5 +494,134 @@ djiCloudRoutes.post(
       logger.error({ err }, "DJI Cloud live stop error");
       res.status(502).json({ error: "Zastavení živého přenosu selhalo" });
     }
+  },
+);
+
+// Flight track recording: this fleet has no DJI Dock, so there is no
+// after-the-fact "wayline job" history to compare a plan against (see the
+// /jobs route's doc comment) — instead the pilot starts recording before
+// takeoff, the server appends live OSD telemetry points as they arrive, and
+// stopping ends the session. The recorded points are then rendered as the
+// "actually flown" path next to the planned route in the mission editor.
+djiCloudRoutes.post(
+  "/flight-track/start",
+  strictLimiter,
+  authMiddleware,
+  async (req: AuthRequest, res) => {
+    try {
+      if (!requireConfigured(res)) return;
+      const { deviceSn, missionId } = req.body;
+      if (typeof deviceSn !== "string" || !deviceSn) {
+        res.status(400).json({ error: "Chybí deviceSn" });
+        return;
+      }
+      if (missionId != null) {
+        if (typeof missionId !== "string") {
+          res.status(400).json({ error: "Neplatné missionId" });
+          return;
+        }
+        if (!isMissionOwnedByUser(missionId, req.userId!)) {
+          res.status(403).json({ error: "Nemáte oprávnění k této misi" });
+          return;
+        }
+      }
+      await ensureTelemetryBridgeConnected();
+      const session = startFlightTrackSession(
+        req.userId!,
+        deviceSn,
+        missionId ?? null,
+      );
+      res.json({ session });
+    } catch (err) {
+      logger.error({ err }, "Flight track start error");
+      res.status(500).json({ error: "Spuštění nahrávání letu selhalo" });
+    }
+  },
+);
+
+djiCloudRoutes.post(
+  "/flight-track/stop",
+  strictLimiter,
+  authMiddleware,
+  (req: AuthRequest, res) => {
+    const { deviceSn } = req.body;
+    if (typeof deviceSn !== "string" || !deviceSn) {
+      res.status(400).json({ error: "Chybí deviceSn" });
+      return;
+    }
+    stopFlightTrackSessionForDevice(deviceSn);
+    res.json({ success: true });
+  },
+);
+
+// Past recorded sessions for a mission (owner only).
+djiCloudRoutes.get(
+  "/flight-track/sessions",
+  authMiddleware,
+  (req: AuthRequest, res) => {
+    const { missionId } = req.query;
+    if (typeof missionId !== "string" || !missionId) {
+      res.status(400).json({ error: "Parametr missionId je povinný" });
+      return;
+    }
+    if (!isMissionOwnedByUser(missionId, req.userId!)) {
+      res.status(403).json({ error: "Nemáte oprávnění k této misi" });
+      return;
+    }
+    res.json({ sessions: listFlightTrackSessions(missionId) });
+  },
+);
+
+// Track points for one recorded session (owner only, via the session's own
+// mission ownership — sessions with no mission belong only to their creator).
+djiCloudRoutes.get(
+  "/flight-track/sessions/:id/points",
+  authMiddleware,
+  (req: AuthRequest, res) => {
+    const sessionId = req.params.id;
+    if (typeof sessionId !== "string" || !sessionId) {
+      res.status(400).json({ error: "Chybí ID záznamu" });
+      return;
+    }
+    const session = getFlightTrackSession(sessionId);
+    if (!session) {
+      res.status(404).json({ error: "Záznam letu nebyl nalezen" });
+      return;
+    }
+    const owned = session.missionId
+      ? isMissionOwnedByUser(session.missionId, req.userId!)
+      : session.userId === req.userId;
+    if (!owned) {
+      res.status(403).json({ error: "Nemáte oprávnění" });
+      return;
+    }
+    res.json({ points: getFlightTrackPoints(session.id) });
+  },
+);
+
+djiCloudRoutes.delete(
+  "/flight-track/sessions/:id",
+  strictLimiter,
+  authMiddleware,
+  (req: AuthRequest, res) => {
+    const sessionId = req.params.id;
+    if (typeof sessionId !== "string" || !sessionId) {
+      res.status(400).json({ error: "Chybí ID záznamu" });
+      return;
+    }
+    const session = getFlightTrackSession(sessionId);
+    if (!session) {
+      res.status(404).json({ error: "Záznam letu nebyl nalezen" });
+      return;
+    }
+    const owned = session.missionId
+      ? isMissionOwnedByUser(session.missionId, req.userId!)
+      : session.userId === req.userId;
+    if (!owned) {
+      res.status(403).json({ error: "Nemáte oprávnění" });
+      return;
+    }
+    deleteFlightTrackSession(session.id);
+    res.json({ success: true });
   },
 );

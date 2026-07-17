@@ -39,6 +39,14 @@ When you switch to 3D:
 - Flight path and POI lines are flat.
 - Camera rotation and pitch are locked.
 
+## Flight simulation
+
+- Click the **"Simulace letu"** button (bottom-center of the map, appears once your mission has 2+ waypoints) to start an animated flythrough of the flight path.
+- A scrubber bar lets you play/pause, jump to any point in the flight, and change playback speed (0.5x–4x).
+- A camera frustum follows the simulated drone position, showing exactly what the camera would see — including gimbal pitch — at every point along the path, not just at each waypoint.
+- On legs where a waypoint's heading is set to **point toward a POI**, the simulated camera keeps tracking that POI continuously through the leg rather than snapping between fixed angles.
+- The readout shows which leg of the mission ("WP X / Y") the simulation is currently flying.
+
 ## How it works
 
 The map is the central workspace. Everything you do — placing waypoints, POIs, obstacles, or templates — happens directly on the map. The sidebar shows lists and settings, and the two stay in sync.

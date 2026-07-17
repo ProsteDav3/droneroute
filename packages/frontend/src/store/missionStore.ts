@@ -114,6 +114,10 @@ interface MissionState {
    * rather than one uniform value like `updateAllWaypoints`. */
   setWaypointHeights: (heights: Record<number, number>) => void;
   reorderWaypoints: (fromIndex: number, toIndex: number) => void;
+  /** Flips the whole route's flying order (last waypoint becomes first) —
+   * useful for time-lapse missions that should fly the same physical path
+   * back and forth. One undo-history entry. */
+  reverseWaypoints: () => void;
   setIsAddingWaypoint: (adding: boolean) => void;
   addAction: (waypointIndex: number, action: WaypointAction) => void;
   updateAction: (
@@ -467,6 +471,20 @@ export const useMissionStore = create<MissionState>()(
             waypoints: reindexed,
             selectedWaypointIndices: new Set([toIndex]),
             lastSelectedWaypointIndex: toIndex,
+            dirty: true,
+          };
+        }),
+
+      reverseWaypoints: () =>
+        set((state) => {
+          if (state.waypoints.length < 2) return state;
+          const reversed = [...state.waypoints]
+            .reverse()
+            .map((wp, i) => ({ ...wp, index: i }));
+          return {
+            waypoints: reversed,
+            selectedWaypointIndices: new Set<number>(),
+            lastSelectedWaypointIndex: null,
             dirty: true,
           };
         }),

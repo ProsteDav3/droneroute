@@ -16,6 +16,7 @@ import {
   Cable,
   Fan,
   Ruler,
+  ArrowLeftRight,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -112,6 +113,7 @@ export function MapToolbar() {
     obstacles,
     buildings,
     clearMission,
+    reverseWaypoints,
   } = useMissionStore();
   const isMeasuring = useMeasureStore((s) => s.isActive);
   const toggleMeasure = useMeasureStore((s) => s.toggle);
@@ -344,6 +346,18 @@ export function MapToolbar() {
           Esc
         </kbd>
       </Button>
+      {waypoints.length >= 2 && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={reverseWaypoints}
+          title="Obrátit směr trasy — poslední bod se stane prvním (u časosběrů se hodí letět tam-zpět)"
+          className="bg-background/90 backdrop-blur-sm"
+        >
+          <ArrowLeftRight className="h-4 w-4" />
+          <span className="text-xs">Obrátit trasu</span>
+        </Button>
+      )}
       {(waypoints.length > 0 ||
         pois.length > 0 ||
         obstacles.length > 0 ||

@@ -644,7 +644,12 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
         onClick={handleClick}
         doubleClickZoom={false}
         id="main-map"
-        terrain={is3D ? { source: "mapbox-dem", exaggeration: 1 } : undefined}
+        // Terrain stays "set" (never undefined) even in 2D mode, with
+        // exaggeration 0 so it renders perfectly flat — this is what lets
+        // `map.queryTerrainElevation()` return real ground elevation
+        // regardless of view mode, for the elevation graph's terrain
+        // profile and the terrain-collision check (see lib/terrain.ts).
+        terrain={{ source: "mapbox-dem", exaggeration: is3D ? 1 : 0 }}
         // Required for lib/pdfSnapshot.ts's canvas.toDataURL() capture --
         // without it the WebGL buffer is cleared right after each paint and
         // the snapshot comes back blank.

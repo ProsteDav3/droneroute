@@ -1,3 +1,4 @@
+import type mapboxgl from "mapbox-gl";
 import { AlertTriangle, X, ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMissionStore } from "@/store/missionStore";
@@ -5,16 +6,28 @@ import { useAirspaceStore } from "@/store/airspaceStore";
 import { getAirspaceWarnings, formatAirspaceWarningMessage } from "@/lib/geo";
 import { computeBoundingBox } from "@/lib/missionBounds";
 import { api } from "@/lib/api";
+import {
+  buildFlightPathSamples,
+  queryElevationProfileWithRetry,
+  findTerrainCollisions,
+} from "@/lib/terrain";
 
 export interface Warning {
   id: string;
-  type: "battery" | "obstacle" | "airspace";
+  type: "battery" | "obstacle" | "airspace" | "terrain";
   message: string;
 }
 
 interface WarningsPanelProps {
   warnings: Warning[];
+  mapRef: React.RefObject<mapboxgl.Map | null>;
 }
+
+/** Interior samples per flight leg for the terrain check — coarser than the
+ * elevation graph's own sampling (which is purely visual) since this drives
+ * a debounced background query, not a live-dragged UI. */
+const TERRAIN_CHECK_SAMPLES_PER_SEGMENT = 6;
+const TERRAIN_CHECK_DEBOUNCE_MS = 600;
 
 interface NotamLink {
   url: string;
@@ -74,10 +87,11 @@ function computePermitWarnings(permits: PermitApi[]): Warning[] {
  *     App.tsx, which is out of scope for this branch, so it self-fetches
  *     instead of being fed richer data top-down.
  */
-export function WarningsPanel({ warnings }: WarningsPanelProps) {
+export function WarningsPanel({ warnings, mapRef }: WarningsPanelProps) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const waypoints = useMissionStore((s) => s.waypoints);
   const missionId = useMissionStore((s) => s.missionId);
+  const heightMode = useMissionStore((s) => s.config.heightMode);
   const zones = useAirspaceStore((s) => s.zones);
   const airspaceEnabled = useAirspaceStore((s) => s.enabled);
 
@@ -119,6 +133,52 @@ export function WarningsPanel({ warnings }: WarningsPanelProps) {
     };
   }, [waypoints]);
 
+  // Terrain collision check — real ground elevation (from the map's DEM
+  // terrain, see lib/terrain.ts) vs. planned flight altitude along the
+  // path. Debounced since it fires a batch of terrain queries per change.
+  const [terrainWarnings, setTerrainWarnings] = useState<Warning[]>([]);
+  const terrainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (terrainTimerRef.current) clearTimeout(terrainTimerRef.current);
+    let cancelled = false;
+
+    const map = mapRef.current;
+    if (!map || waypoints.length < 2) {
+      setTerrainWarnings([]);
+      return;
+    }
+
+    terrainTimerRef.current = setTimeout(() => {
+      const samples = buildFlightPathSamples(
+        waypoints,
+        TERRAIN_CHECK_SAMPLES_PER_SEGMENT,
+      );
+      queryElevationProfileWithRetry(
+        map,
+        samples.map((s) => ({ lat: s.lat, lng: s.lng })),
+      ).then((elevations) => {
+        if (cancelled) return;
+        const collisions = findTerrainCollisions(
+          samples,
+          elevations,
+          heightMode,
+        );
+        setTerrainWarnings(
+          collisions.map((c) => ({
+            id: `terrain-${c.afterWaypointIndex}`,
+            type: "terrain" as const,
+            message: `Trasa letu je nad terénem příliš nízko za bodem WP${c.afterWaypointIndex + 1} — chybí až ${Math.round(c.shortfallM)} m výškové rezervy`,
+          })),
+        );
+      });
+    }, TERRAIN_CHECK_DEBOUNCE_MS);
+
+    return () => {
+      cancelled = true;
+      if (terrainTimerRef.current) clearTimeout(terrainTimerRef.current);
+    };
+  }, [waypoints, heightMode, mapRef]);
+
   // Permit expiry warnings for the current (saved) mission.
   const [permitWarnings, setPermitWarnings] = useState<Warning[]>([]);
   useEffect(() => {
@@ -141,8 +201,13 @@ export function WarningsPanel({ warnings }: WarningsPanelProps) {
   }, [missionId]);
 
   const allWarnings = useMemo(
-    () => [...warnings, ...zoneConflictWarnings, ...permitWarnings],
-    [warnings, zoneConflictWarnings, permitWarnings],
+    () => [
+      ...warnings,
+      ...zoneConflictWarnings,
+      ...permitWarnings,
+      ...terrainWarnings,
+    ],
+    [warnings, zoneConflictWarnings, permitWarnings, terrainWarnings],
   );
 
   const visible = allWarnings.filter((w) => !dismissed.has(w.id));
@@ -152,7 +217,8 @@ export function WarningsPanel({ warnings }: WarningsPanelProps) {
   return (
     <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1000] flex flex-col gap-1.5 pointer-events-none max-w-[600px] w-full px-4">
       {visible.map((w) => {
-        const isProhibited = w.id === "airspace-prohibited";
+        const isProhibited =
+          w.id === "airspace-prohibited" || w.type === "terrain";
         const borderColor = isProhibited
           ? "border-red-400"
           : "border-orange-400";

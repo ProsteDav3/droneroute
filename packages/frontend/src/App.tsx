@@ -1251,7 +1251,7 @@ export default function App() {
         <DjiWaylineLibraryPanel />
 
         {/* Elevation graph */}
-        <ElevationGraph />
+        <ElevationGraph mapRef={mapRef} />
 
         {/* Footer stats with colored icons */}
         <div className="px-3 py-2 border-t border-border flex items-center justify-between">
@@ -1407,7 +1407,7 @@ export default function App() {
         <DraftRecoveryBanner />
         <MissionProgressPanel />
         <BulkActionToolbar />
-        <WarningsPanel warnings={warnings} />
+        <WarningsPanel warnings={warnings} mapRef={mapRef} />
       </div>
 
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}

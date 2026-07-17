@@ -13,7 +13,7 @@ An interactive map where you plan flights and see everything at a glance.
 - See obstacle polygons drawn on the map.
 - Click extruded 3D buildings to **convert them to obstacles** via a popup.
 - Use the floating toolbar to switch between waypoint mode, POI mode, and template tools.
-- View an elevation graph below the waypoint list that shows altitude changes across the flight.
+- View an elevation graph below the waypoint list that shows altitude changes across the flight, with the real ground elevation along the path overlaid as a shaded terrain profile.
 - See live previews when configuring templates before placing them.
 
 ## 3D mode
@@ -72,6 +72,13 @@ You can overlay airspace restriction zones on the map to check for drone no-fly 
 
 - When your mission has waypoints, a "Zobrazit NOTAM pro tuto oblast" link appears next to the airspace warnings.
 - Live NOTAM data for the Czech Republic requires an authenticated session with the official AIM ČR briefing system (there's no public feed to fetch automatically) — the link takes you straight to that official portal so you can check NOTAMs for your mission's area and date yourself.
+
+## Terrain and ground clearance
+
+- The elevation graph (see [Mission planning](mission-planning.md)) overlays real ground elevation from Mapbox's terrain data along the flight path.
+- If the planned flight altitude comes within 15 m of the real ground anywhere along the path, a red warning banner appears at the bottom of the map naming the affected waypoint leg and how much clearance is missing — the same kind of banner used for prohibited airspace.
+- This check compares your mission's own height reference against the terrain: for "relativně od vzletového bodu" and "nad mořem (EGM96)" height modes it's a genuine pre-flight risk check. For "nad terénem" (above ground level) mode, the aircraft already follows the terrain live using its own sensors, so no static warning is shown for that mode.
+- Terrain data loads progressively as tiles become available — a brand-new mission or a far-off area may take a moment before the terrain line and warning appear.
 
 ## DJI Cloud live telemetry
 

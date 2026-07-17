@@ -70,6 +70,7 @@ const AdminPage = lazy(() =>
 );
 import { ElevationGraph } from "@/components/mission/ElevationGraph";
 import { DjiCloudOpsPanel } from "@/components/mission/DjiCloudOpsPanel";
+import { DjiWaylineLibraryPanel } from "@/components/mission/DjiWaylineLibraryPanel";
 import { WarningsPanel } from "@/components/mission/WarningsPanel";
 import { UndoRedoControls } from "@/components/mission/UndoRedoControls";
 import { DraftRecoveryBanner } from "@/components/mission/DraftRecoveryBanner";
@@ -1245,6 +1246,9 @@ export default function App() {
 
         {/* DJI Cloud fleet status (devices + HMS warnings) */}
         <DjiCloudOpsPanel />
+
+        {/* DJI Cloud wayline library management */}
+        <DjiWaylineLibraryPanel />
 
         {/* Elevation graph */}
         <ElevationGraph />

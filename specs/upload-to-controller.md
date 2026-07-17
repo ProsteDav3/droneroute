@@ -36,6 +36,12 @@ This requires the mission to have at least 2 waypoints, and the target
 server to have a DJI Cloud platform configured and support self-hosted
 (email/password) login.
 
+Re-uploading a mission with the same name overwrites the existing wayline in place, instead of piling up a new timestamped duplicate on every retry.
+
+### Managing the wayline library
+
+The web app's **DJI Cloud — wayline knihovna** panel (in the sidebar, below the fleet status panel, when your server has DJI Cloud configured) lists every file currently in the workspace's wayline library and lets you delete ones you no longer need — handy for cleaning up old missions or duplicates created before the overwrite behavior above existed.
+
 ## Good to know
 
 - This is a command-line tool — you run it from the terminal, not from the web app.

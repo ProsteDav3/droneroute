@@ -63,6 +63,16 @@ const loginOk = () =>
     data: { access_token: "dji-token", workspace_id: "ws-1" },
   });
 
+const waylinesListEmpty = () =>
+  jsonResponse({ code: 0, message: "success", data: { list: [] } });
+
+const waylinesListWith = (id: string, name: string) =>
+  jsonResponse({
+    code: 0,
+    message: "success",
+    data: { list: [{ id, name: `${name}.kmz` }] },
+  });
+
 beforeAll(async () => {
   initDb();
   const res = await request(app)
@@ -143,7 +153,7 @@ describe("POST /api/dji-cloud/upload", () => {
     expect(file.size).toBeGreaterThan(0);
   });
 
-  it("retries under a timestamped name when the platform rejects a duplicate", async () => {
+  it("overwrites in place (same name) when a duplicate is found in the library", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(loginOk())
@@ -154,6 +164,40 @@ describe("POST /api/dji-cloud/upload", () => {
           data: "",
         }),
       )
+      .mockResolvedValueOnce(waylinesListWith("old-wayline-1", "Cloud_test"))
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: "" }),
+      ) // delete
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: "" }),
+      ); // re-upload under the same name
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/upload")
+      .set("Authorization", `Bearer ${token}`)
+      .send(validBody);
+
+    expect(res.status).toBe(200);
+    expect(res.body.waylineName).toBe("Cloud_test");
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    const [deleteUrl, deleteInit] = fetchMock.mock.calls[3];
+    expect(deleteUrl).toContain("/waylines/old-wayline-1");
+    expect(deleteInit.method).toBe("DELETE");
+  });
+
+  it("falls back to a timestamped name when no matching wayline is found in the library", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: -1,
+          message: "The filename already exists.",
+          data: "",
+        }),
+      )
+      .mockResolvedValueOnce(waylinesListEmpty())
       .mockResolvedValueOnce(
         jsonResponse({ code: 0, message: "success", data: "" }),
       );
@@ -166,16 +210,17 @@ describe("POST /api/dji-cloud/upload", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.waylineName).toMatch(/^Cloud_test-\d{8}-\d{6}$/);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
-  it("returns 502 with a generic message (upstream detail stays server-side) when both attempts fail", async () => {
+  it("returns 502 with a generic message (upstream detail stays server-side) when every attempt fails", async () => {
     const rejected = () =>
       jsonResponse({ code: -1, message: "Storage unavailable.", data: "" });
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(loginOk())
       .mockResolvedValueOnce(rejected())
+      .mockResolvedValueOnce(waylinesListEmpty())
       .mockResolvedValueOnce(rejected());
     vi.stubGlobal("fetch", fetchMock);
 
@@ -271,6 +316,7 @@ describe("POST /api/dji-cloud/upload-segments", () => {
       .fn()
       .mockResolvedValueOnce(loginOk())
       .mockResolvedValueOnce(rejected())
+      .mockResolvedValueOnce(waylinesListEmpty())
       .mockResolvedValueOnce(rejected());
     vi.stubGlobal("fetch", fetchMock);
 
@@ -288,12 +334,14 @@ describe("POST /api/dji-cloud/upload-segments", () => {
   it("reports the partial count when a later segment fails after earlier ones uploaded", async () => {
     const rejected = () =>
       jsonResponse({ code: -1, message: "Storage unavailable.", data: "" });
-    // login, seg1 OK, then seg2 fails on both its attempt + duplicate retry.
+    // login, seg1 OK, then seg2 fails on its attempt, the library lookup
+    // finds nothing to overwrite, and its timestamped fallback also fails.
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(loginOk())
       .mockResolvedValueOnce(uploadOk())
       .mockResolvedValueOnce(rejected())
+      .mockResolvedValueOnce(waylinesListEmpty())
       .mockResolvedValueOnce(rejected());
     vi.stubGlobal("fetch", fetchMock);
 
@@ -423,6 +471,28 @@ describe("GET /api/dji-cloud/jobs", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.jobs).toHaveLength(1);
+  });
+});
+
+describe("GET /api/dji-cloud/waylines", () => {
+  it("requires authentication", async () => {
+    const res = await request(app).get("/api/dji-cloud/waylines");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns the wayline library listing", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(waylinesListWith("wl-1", "Cloud_test"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .get("/api/dji-cloud/waylines")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.waylines).toEqual([{ id: "wl-1", name: "Cloud_test.kmz" }]);
   });
 });
 

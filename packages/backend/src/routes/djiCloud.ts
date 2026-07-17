@@ -11,6 +11,7 @@ import {
   listBoundDevices,
   listHmsMessages,
   listWaylineJobs,
+  listWaylines,
   deleteWayline,
 } from "../services/djiCloud.js";
 import {
@@ -286,6 +287,19 @@ djiCloudRoutes.get("/jobs", authMiddleware, async (_req, res) => {
   } catch (err) {
     logger.error({ err }, "DJI Cloud jobs list error");
     res.status(502).json({ error: "Načtení úloh z DJI Cloud selhalo" });
+  }
+});
+
+// Lists the KMZ files currently in the workspace's wayline library, for a
+// management view (see listWaylines' own doc comment for the endpoint).
+djiCloudRoutes.get("/waylines", authMiddleware, async (_req, res) => {
+  try {
+    if (!requireConfigured(res)) return;
+    const waylines = await listWaylines();
+    res.json({ waylines });
+  } catch (err) {
+    logger.error({ err }, "DJI Cloud waylines list error");
+    res.status(502).json({ error: "Načtení waylines z DJI Cloud selhalo" });
   }
 });
 

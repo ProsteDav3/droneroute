@@ -37,8 +37,11 @@ import { useFlightSimulationStore } from "@/store/flightSimulationStore";
 import {
   buildSimulationFrames,
   frameToWaypoint,
+  interpolateHeading,
   FRAMES_PER_SEGMENT,
+  type SimulationFrame,
 } from "@/lib/flightSimulation";
+import { queryElevationProfile, fillMissingElevations } from "@/lib/terrain";
 import { MeasureToolHandler } from "./MeasureToolHandler";
 import { useMeasureStore } from "@/store/measureStore";
 import { Triangle, Building2 } from "lucide-react";
@@ -174,13 +177,63 @@ function SceneSetup({ is3D, mapStyle }: { is3D: boolean; mapStyle: string }) {
   return null;
 }
 
+/** Converts a DJI gimbal pitch (0° = horizon, -90° = straight down, the
+ * convention used everywhere else in this app) to a Mapbox FreeCameraOptions
+ * pitch (0° = straight down, 90° = horizon) — the two scales run opposite
+ * directions from the same zero point. */
+function gimbalPitchToMapboxPitch(gimbalPitchDeg: number): number {
+  return Math.max(0, Math.min(180, 90 + gimbalPitchDeg));
+}
+
+/** Linearly interpolates between two adjacent simulation frames — since
+ * every frame in `buildSimulationFrames`' own 24-per-leg output is already
+ * itself a linear sample along a straight waypoint-to-waypoint leg,
+ * blending two adjacent ones is exactly equivalent to sampling the route at
+ * a finer resolution, not an approximation. */
+function lerpFrame(
+  a: SimulationFrame,
+  b: SimulationFrame,
+  t: number,
+): {
+  lat: number;
+  lng: number;
+  height: number;
+  heading: number;
+  gimbalPitch: number;
+} {
+  return {
+    lat: a.latitude + (b.latitude - a.latitude) * t,
+    lng: a.longitude + (b.longitude - a.longitude) * t,
+    height: a.height + (b.height - a.height) * t,
+    heading: interpolateHeading(a.headingAngle, b.headingAngle, t),
+    gimbalPitch:
+      a.gimbalPitchAngle + (b.gimbalPitchAngle - a.gimbalPitchAngle) * t,
+  };
+}
+
 /**
- * Drives the map's own camera (center/bearing/pitch/zoom) to chase the
- * drone frame by frame during a flight simulation when "3D flythrough" is
- * selected, instead of the default fixed overhead view with just a moving
- * dot. Forces the map into 3D for the duration — pitch is clamped to 0 in
- * 2D mode, per SceneSetup above — and restores the original camera view
- * and 2D/3D state once the flythrough ends.
+ * Drives the map's camera to a true first-person view from the drone itself
+ * during a flight simulation when "3D flythrough" is selected — camera
+ * position is the drone's actual lat/lng/altitude (via Mapbox's
+ * FreeCameraOptions, the same API Mapbox's own drone-camera examples use),
+ * oriented by the drone's heading and gimbal pitch, instead of the default
+ * fixed overhead view with just a moving dot.
+ *
+ * Runs its own real-time clock rather than snapping to whatever frame the
+ * store's `frameIndex` happens to be on: `FlightSimulationPanel`'s own rAF
+ * loop only advances that integer a handful of times a second, and both
+ * teleporting the camera to each new value *and* easing/smoothing toward it
+ * are wrong — the former is visibly choppy, the latter makes the camera
+ * lag behind where the drone actually is. Instead, every real animation
+ * frame (~60fps) this recomputes the *exact* fractional position along the
+ * route for however many simulated seconds have elapsed since playback
+ * last started/resumed/was scrubbed, by interpolating between the two
+ * bracketing frames — always exactly on the route, never behind it, and
+ * updated far more often than the store ticks for smooth motion.
+ *
+ * Forces the map into 3D for the duration — pitch is clamped to 0 in 2D
+ * mode, per SceneSetup above — and restores the original camera view and
+ * 2D/3D state once the flythrough ends.
  */
 function FlightSimulationCamera({
   is3D,
@@ -192,6 +245,8 @@ function FlightSimulationCamera({
   const { current: map } = useMap();
   const simulationActive = useFlightSimulationStore((s) => s.isActive);
   const cameraMode = useFlightSimulationStore((s) => s.cameraMode);
+  const isPlaying = useFlightSimulationStore((s) => s.isPlaying);
+  const speed = useFlightSimulationStore((s) => s.speed);
   const frameIndex = useFlightSimulationStore((s) => s.frameIndex);
   const waypoints = useMissionStore((s) => s.waypoints);
   const pois = useMissionStore((s) => s.pois);
@@ -231,6 +286,8 @@ function FlightSimulationCamera({
       const original = originalViewRef.current;
       originalViewRef.current = null;
       if (!wasIs3DRef.current) setIs3D(false);
+      // Calling easeTo (or any standard camera method) after
+      // setFreeCameraOptions hands control back to the normal camera model.
       m.easeTo({ ...original, duration: 500 });
     }
     // is3D/setIs3D deliberately excluded: this effect only cares about the
@@ -239,26 +296,101 @@ function FlightSimulationCamera({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flying, map]);
 
-  // Per-frame: chase the drone. A plain jumpTo (not easeTo) so our own
-  // frame interpolation drives the motion smoothly — queuing a new eased
-  // transition on every frame would fight itself.
+  // Ground elevation under every frame, queried once per frame set rather
+  // than on every animation tick. FreeCameraOptions wants true altitude
+  // above sea level, unlike the waypoint markers' own `altitude` prop
+  // (which Mapbox already treats as height-above-terrain for us) — without
+  // adding ground elevation back in, the camera would sit underground
+  // anywhere terrain sits above sea level.
+  const groundElevationsRef = useRef<number[]>([]);
+  useEffect(() => {
+    if (!flying || !map || frames.length === 0) {
+      groundElevationsRef.current = [];
+      return;
+    }
+    const raw = queryElevationProfile(
+      map.getMap(),
+      frames.map((f) => ({ lat: f.latitude, lng: f.longitude })),
+    );
+    groundElevationsRef.current = fillMissingElevations(raw);
+  }, [flying, map, frames]);
+
+  // Anchors the continuous clock: a (real time, fractional frame index) pair
+  // captured whenever playback starts/resumes, or the pilot scrubs while
+  // paused — everything after that is derived purely from elapsed real time,
+  // never from the store's own coarser tick.
+  const anchorRef = useRef({ wallStartMs: 0, frameStart: 0 });
+  const wasPlayingRef = useRef(isPlaying);
+  const lastFrameIndexRef = useRef(frameIndex);
+  useEffect(() => {
+    const justStartedPlaying = isPlaying && !wasPlayingRef.current;
+    const scrubbedWhilePaused =
+      !isPlaying && frameIndex !== lastFrameIndexRef.current;
+    if (justStartedPlaying || scrubbedWhilePaused) {
+      anchorRef.current = {
+        wallStartMs: performance.now(),
+        frameStart: frameIndex,
+      };
+    }
+    wasPlayingRef.current = isPlaying;
+    lastFrameIndexRef.current = frameIndex;
+  }, [isPlaying, frameIndex]);
+
+  // isPlaying/speed/frameIndex are read fresh inside the rAF loop via refs
+  // rather than being effect dependencies — the loop below starts once when
+  // flythrough begins and keeps running uninterrupted for its whole
+  // duration; restarting it on every store tick (10-40x/sec) would
+  // reintroduce the exact choppiness this whole design avoids.
+  const isPlayingRef = useRef(isPlaying);
+  const speedRef = useRef(speed);
+  const frameIndexRef = useRef(frameIndex);
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+    speedRef.current = speed;
+    frameIndexRef.current = frameIndex;
+  }, [isPlaying, speed, frameIndex]);
+
+  const rafIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (!flying || !map || frames.length === 0) return;
-    const frame = frames[Math.min(frameIndex, frames.length - 1)];
     const m = map.getMap();
-    // Closer to the ground reads better zoomed in; higher survey altitudes
-    // need to zoom out to keep the ground in frame at all.
-    const zoom = Math.max(
-      14,
-      Math.min(20, 18 - Math.log2(Math.max(frame.height, 10) / 50)),
-    );
-    m.jumpTo({
-      center: [frame.longitude, frame.latitude],
-      bearing: frame.headingAngle,
-      pitch: 70,
-      zoom,
-    });
-  }, [flying, map, frameIndex, frames]);
+
+    const tick = () => {
+      const continuous = isPlayingRef.current
+        ? anchorRef.current.frameStart +
+          ((performance.now() - anchorRef.current.wallStartMs) / 1000) *
+            speedRef.current
+        : frameIndexRef.current;
+      const clamped = Math.max(0, Math.min(continuous, frames.length - 1));
+      const lower = Math.floor(clamped);
+      const upper = Math.min(lower + 1, frames.length - 1);
+      const t = clamped - lower;
+      const pos = lerpFrame(frames[lower], frames[upper], t);
+
+      const groundLower = groundElevationsRef.current[lower] ?? 0;
+      const groundUpper = groundElevationsRef.current[upper] ?? groundLower;
+      const ground = groundLower + (groundUpper - groundLower) * t;
+
+      const camera = new mapboxgl.FreeCameraOptions();
+      camera.position = mapboxgl.MercatorCoordinate.fromLngLat(
+        { lng: pos.lng, lat: pos.lat },
+        ground + pos.height,
+      );
+      camera.setPitchBearing(
+        gimbalPitchToMapboxPitch(pos.gimbalPitch),
+        pos.heading,
+      );
+      m.setFreeCameraOptions(camera);
+
+      rafIdRef.current = requestAnimationFrame(tick);
+    };
+    rafIdRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    };
+  }, [flying, map, frames]);
 
   return null;
 }

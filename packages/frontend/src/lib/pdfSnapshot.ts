@@ -179,8 +179,6 @@ export function addMapSnapshotToPdf(
       doc.text(label, midX, midY + 0.9, { align: "center" });
     }
 
-    doc.setFillColor(0, 148, 196);
-    doc.setTextColor(255, 255, 255);
     doc.setFontSize(5);
     for (const marker of markers) {
       const px = x + marker.x * scaleX;
@@ -189,6 +187,14 @@ export function addMapSnapshotToPdf(
       // rounded differently than expected at the aspect ratio jsPDF ended
       // up placing the image at — skip rather than draw off the image.
       if (!inFrame(px, py)) continue;
+      // Re-applied on every iteration, not just once before the loop: jsPDF
+      // silently drops the active fill/text color after a text() call using
+      // a custom embedded TrueType font (our Czech-safe Inter subset), so
+      // without this every marker after the first draws in whatever color
+      // was left behind — which reads as a blank white circle with an
+      // invisible white-on-white number.
+      doc.setFillColor(0, 148, 196);
+      doc.setTextColor(255, 255, 255);
       doc.circle(px, py, 1.6, "F");
       doc.text(String(marker.index + 1), px, py + 0.6, { align: "center" });
     }

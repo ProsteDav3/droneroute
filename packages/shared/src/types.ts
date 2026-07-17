@@ -459,6 +459,12 @@ export interface AuditLogEntry {
 export interface VisualizationPreferences {
   viewMode: "2d" | "3d";
   mapStyle: "satellite" | "street";
+  /** Colors the flight path by each segment's height or speed instead of a
+   * flat color — "flat" (default) matches every mission's own behavior
+   * before this field existed. Obstacle-warning segments still render red
+   * regardless of this setting, since that's a safety signal, not a style
+   * choice. */
+  routeColorMode?: "flat" | "height" | "speed";
 }
 
 export type UnitSystem = "metric" | "imperial";
@@ -524,6 +530,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   visualization: {
     viewMode: "2d",
     mapStyle: "satellite",
+    routeColorMode: "flat",
   },
   missionDefaults: { ...DEFAULT_MISSION_CONFIG },
 };

@@ -90,6 +90,7 @@ You can overlay airspace restriction zones on the map to check for drone no-fly 
 - In the **Visualization** tab of the settings dialog, under **Vlastní vrstvy (WMS/XYZ)**, add any raster tile layer by name and URL template (e.g. a national cadastre or zoning-plan layer, using `{z}`/`{x}`/`{y}` placeholders) — useful for region-specific data the app doesn't ship built in.
 - Each added layer has its own visibility checkbox and can be removed individually.
 - Layers render on the map in the order they were added, below waypoints/POIs/obstacles but above the base map style.
+- A one-click preset button adds the Czech national orthophoto (ČÚZK) pre-filled — no need to look up or type its tile URL yourself.
 
 ## NOTAM (Notice to Airmen)
 

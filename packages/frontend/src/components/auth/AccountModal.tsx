@@ -46,6 +46,22 @@ interface AccountModalProps {
   onClose: () => void;
 }
 
+/**
+ * One-click starting points for the custom-layers form below — spares a
+ * user from typing out a WMTS tile URL template by hand. Currently just
+ * the Czech national orthophoto (verified against ČÚZK's own published
+ * WMTS GetCapabilities response — see changelog for the source; note the
+ * REST tile path is {TileMatrix}/{TileRow}/{TileCol}, i.e. z/y/x, not the
+ * z/x/y order a plain XYZ tile URL would use).
+ */
+const BUILTIN_LAYER_PRESETS: { name: string; urlTemplate: string }[] = [
+  {
+    name: "ČÚZK ortofoto ČR",
+    urlTemplate:
+      "https://ags.cuzk.gov.cz/arcgis1/rest/services/ORTOFOTO_WM/MapServer/WMTS/tile/1.0.0/ORTOFOTO_WM/default/GoogleMapsCompatible/{z}/{y}/{x}",
+  },
+];
+
 export function AccountModal({ onClose }: AccountModalProps) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -131,6 +147,39 @@ export function AccountModal({ onClose }: AccountModalProps) {
     }));
     setNewLayerName("");
     setNewLayerUrl("");
+  };
+
+  const handleAddPresetLayer = (preset: {
+    name: string;
+    urlTemplate: string;
+  }) => {
+    setVizPrefs((prev: VisualizationPreferences) => {
+      // Adding the same preset twice would just stack two identical
+      // layers — re-show the existing one instead of duplicating it.
+      const existing = (prev.customLayers ?? []).find(
+        (l) => l.urlTemplate === preset.urlTemplate,
+      );
+      if (existing) {
+        return {
+          ...prev,
+          customLayers: (prev.customLayers ?? []).map((l) =>
+            l.id === existing.id ? { ...l, visible: true } : l,
+          ),
+        };
+      }
+      return {
+        ...prev,
+        customLayers: [
+          ...(prev.customLayers ?? []),
+          {
+            id: crypto.randomUUID(),
+            name: preset.name,
+            urlTemplate: preset.urlTemplate,
+            visible: true,
+          },
+        ],
+      };
+    });
   };
 
   const handleRemoveCustomLayer = (id: string) => {
@@ -668,6 +717,20 @@ export function AccountModal({ onClose }: AccountModalProps) {
                   Přidejte dlaždicovou vrstvu (katastr, územní plán...) podle
                   URL šablony s {"{z}"}/{"{x}"}/{"{y}"}.
                 </p>
+
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {BUILTIN_LAYER_PRESETS.map((preset) => (
+                    <Button
+                      key={preset.name}
+                      variant="secondary"
+                      size="sm"
+                      className="h-6 text-[11px] px-2"
+                      onClick={() => handleAddPresetLayer(preset)}
+                    >
+                      + {preset.name}
+                    </Button>
+                  ))}
+                </div>
 
                 {(vizPrefs.customLayers ?? []).length > 0 && (
                   <div className="space-y-1.5 mb-2">

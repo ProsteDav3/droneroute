@@ -786,6 +786,10 @@ export default function App() {
             as.setEnabled(!as.enabled);
           }
           break;
+        case "?":
+          e.preventDefault();
+          setShowAbout(true);
+          break;
         case "escape":
           e.preventDefault();
           clearWaypointSelection();

@@ -5,6 +5,31 @@ interface AboutDialogProps {
   onClose: () => void;
 }
 
+/** Kept in sync with specs/keyboard-shortcuts.md and the switch statement
+ * in App.tsx's global keyboard handler — this is the in-app equivalent of
+ * that doc, shown directly instead of only linking out to GUIDE.md. */
+const SHORTCUTS: { key: string; description: string }[] = [
+  { key: "W", description: "Režim přidávání bodů trasy" },
+  { key: "P", description: "Režim přidávání POI" },
+  { key: "O", description: "Šablona orbit" },
+  { key: "G", description: "Šablona mřížkový průzkum" },
+  { key: "F", description: "Šablona sken fasády" },
+  { key: "Z", description: "Šablona volná křivka" },
+  { key: "S", description: "Šablona solární panelový průzkum" },
+  { key: "L", description: "Šablona liniová stavba" },
+  { key: "T", description: "Šablona inspekce listů turbíny" },
+  { key: "B", description: "Kreslení překážky" },
+  { key: "H", description: "Kreslení budovy" },
+  { key: "M", description: "Měřicí nástroj" },
+  { key: "A", description: "Vrstva vzdušného prostoru" },
+  { key: "Tab", description: "Skrýt/zobrazit boční panel" },
+  { key: "Esc", description: "Zrušit akci / zrušit výběr" },
+  { key: "Delete", description: "Smazat vybraný bod trasy, POI nebo překážku" },
+  { key: "Ctrl+A", description: "Vybrat všechny body trasy" },
+  { key: "Ctrl+Z", description: "Zpět" },
+  { key: "Ctrl+Shift+Z", description: "Znovu" },
+];
+
 export function AboutDialog({ onClose }: AboutDialogProps) {
   // Close on Escape key — use capture phase so this fires before global shortcuts
   useEffect(() => {
@@ -29,7 +54,7 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
       onClick={onClose}
     >
       <div
-        className="bg-card border border-border rounded-lg shadow-[0_0_60px_rgba(0,194,255,0.25)] w-full max-w-sm mx-4"
+        className="bg-card border border-border rounded-lg shadow-[0_0_60px_rgba(0,194,255,0.25)] w-full max-w-md mx-4 max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -63,6 +88,37 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
             <span className="font-mono bg-muted px-1.5 py-0.5 rounded border border-border">
               {sha}
             </span>
+          </div>
+
+          {/* Keyboard shortcuts */}
+          <div className="pt-1">
+            <h3 className="text-xs font-semibold text-foreground mb-1.5">
+              Klávesové zkratky
+            </h3>
+            <div className="max-h-48 overflow-y-auto rounded border border-border">
+              <table className="w-full text-xs">
+                <tbody>
+                  {SHORTCUTS.map(({ key, description }) => (
+                    <tr
+                      key={key}
+                      className="border-b border-border last:border-0"
+                    >
+                      <td className="py-1 pl-2 pr-2 w-28 shrink-0">
+                        <kbd className="font-mono text-[10px] font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
+                          {key}
+                        </kbd>
+                      </td>
+                      <td className="py-1 pr-2 text-muted-foreground">
+                        {description}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">
+              Zkratky fungují jen mimo textová pole.
+            </p>
           </div>
 
           {/* Links */}

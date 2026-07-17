@@ -74,13 +74,24 @@ export function verifyToken(
   token: string,
 ): { userId: string; isAdmin: boolean; tokenVersion: number } | null {
   try {
-    const payload = jwt.verify(token, JWT_SECRET, {
-      audience: SESSION_TOKEN_AUDIENCE,
-    }) as {
+    // Deliberately NOT passing `audience` to `jwt.verify` here — that would
+    // hard-reject any token minted before the audience claim existed (no
+    // `aud` at all), which is exactly the "outstanding session" case the
+    // tokenVersion fallback below claims to handle gracefully but didn't:
+    // jwt.verify's `audience` option throws before that fallback ever runs,
+    // so upgrading the server WAS retroactively invalidating every session
+    // issued under the previous version. The security property this option
+    // existed for — a 2FA challenge token must never work as a session
+    // token — is instead enforced explicitly right below, with the same
+    // outcome for that case and none of the collateral damage for
+    // legitimate legacy tokens.
+    const payload = jwt.verify(token, JWT_SECRET) as {
       userId: string;
       isAdmin: boolean;
       tokenVersion?: number;
+      aud?: string;
     };
+    if (payload.aud === TWO_FACTOR_CHALLENGE_AUDIENCE) return null;
     // Tokens issued before this field existed have no claim at all — treat
     // that as version 0, matching the column's default, so upgrading the
     // server doesn't retroactively invalidate every outstanding session.

@@ -1,5 +1,6 @@
 import express from "express";
 import request from "supertest";
+import jwt from "jsonwebtoken";
 import { describe, it, expect, beforeAll, vi } from "vitest";
 import { v4 as uuidv4 } from "uuid";
 import { authenticator } from "otplib";
@@ -441,6 +442,47 @@ describe("Session invalidation on password change", () => {
       .get("/api/auth/me")
       .set("Authorization", `Bearer ${oldToken}`);
     expect(after.status).toBe(401);
+  });
+});
+
+describe("Legacy JWTs (issued before the audience claim existed)", () => {
+  // Regression test for a real production incident: adding `audience` to
+  // jwt.sign/verify (for the 2FA-bypass fix above) retroactively rejected
+  // every token issued by the previous server version, since those tokens
+  // have no `aud` claim at all and `jwt.verify`'s `audience` option throws
+  // on a missing claim, not just a mismatched one. Signs a token by hand
+  // (bypassing generateToken, which always sets the claim now) to simulate
+  // exactly what a pre-upgrade browser session still holds.
+  function signLegacyToken(userId: string): string {
+    return jwt.sign({ userId, isAdmin: false }, process.env.JWT_SECRET!, {
+      expiresIn: "7d",
+      // No `audience` — this is the whole point of the test.
+    });
+  }
+
+  it("still authenticates a token with no audience claim and no tokenVersion claim", async () => {
+    const userId = seedUser("legacy-token@test.dev", "secret123");
+    const legacyToken = signLegacyToken(userId);
+
+    const res = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${legacyToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.email).toBe("legacy-token@test.dev");
+  });
+
+  it("still rejects a legacy-shaped token once token_version has moved past 0", async () => {
+    const userId = seedUser("legacy-stale@test.dev", "oldPass123");
+    const legacyToken = signLegacyToken(userId);
+    // Bump token_version directly (equivalent to a password change).
+    getDb()
+      .prepare("UPDATE users SET token_version = 1 WHERE id = ?")
+      .run(userId);
+
+    const res = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${legacyToken}`);
+    expect(res.status).toBe(401);
   });
 });
 

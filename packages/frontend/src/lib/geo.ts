@@ -241,6 +241,8 @@ export interface AirspaceWarning {
   zoneName: string;
   severity: "prohibited" | "restricted";
   type: "crosses" | "inside";
+  /** Upper altitude limit in metres AGL, when the zone specifies one. */
+  altitudeUpper?: number;
 }
 
 /**
@@ -275,6 +277,7 @@ export function getAirspaceWarnings(
     name: string;
     severity: "prohibited" | "restricted";
     geometry: GeoJSON.Geometry;
+    altitudeUpper?: number;
   }[],
 ): AirspaceWarning[] {
   if (zones.length === 0 || waypoints.length === 0) return [];
@@ -296,6 +299,7 @@ export function getAirspaceWarnings(
             zoneName: zone.name,
             severity: zone.severity,
             type: "inside",
+            altitudeUpper: zone.altitudeUpper,
           });
           break;
         }
@@ -319,6 +323,7 @@ export function getAirspaceWarnings(
             zoneName: zone.name,
             severity: zone.severity,
             type: "crosses",
+            altitudeUpper: zone.altitudeUpper,
           });
           break;
         }
@@ -329,4 +334,14 @@ export function getAirspaceWarnings(
   }
 
   return Array.from(warnings.values());
+}
+
+/** Format a single zone-conflict warning into a pilot-facing sentence, including the altitude limit when the zone specifies one. */
+export function formatAirspaceWarningMessage(w: AirspaceWarning): string {
+  const verb = w.type === "inside" ? "prochází uvnitř zóny" : "protíná zónu";
+  const limit =
+    w.altitudeUpper !== undefined
+      ? `limit ${w.altitudeUpper} m AGL`
+      : "bez uvedeného výškového omezení";
+  return `Trasa letu ${verb} ${w.zoneName} (${limit})`;
 }

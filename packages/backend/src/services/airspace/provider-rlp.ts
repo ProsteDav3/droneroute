@@ -10,14 +10,32 @@
  * from the index page, download and cache it, and filter to the requested
  * viewport ourselves.
  *
- * We use GRID_CTR ("restricted areas in controlled airspace"): a grid of
- * cells, each carrying a vertical altitude limit (e.g. "GND - 120 m AGL")
- * above which flying inside that cell requires coordination — the same
+ * This is the same official dataset AisView and DronView (the two
+ * community/pilot-facing viewers for Czech UAS geo-zones) are built on top
+ * of — confirmed by inspecting aim.rlp.cz's "?p=uas-gz" index page, which
+ * only offers these files (there is no separate/richer feed those tools
+ * pull from instead).
+ *
+ * We fetch two of the "GRID_*" datasets, both a grid of cells each
+ * carrying a vertical altitude limit (e.g. "GND - 120 m AGL") above which
+ * flying inside that cell requires coordination — the same
  * "restricted, not outright prohibited" category NATS uses for zones
- * around aerodromes. Individual named zones (LKR*.json) are skipped: some
- * of those files are tens of megabytes for a single zone identifier
- * (e.g. railway-corridor restrictions with thousands of polygons), too
- * large to reasonably fetch and cache for this purpose.
+ * around aerodromes:
+ *   - GRID_CTR — restricted areas in controlled airspace.
+ *   - GRID_ATZ — restricted areas in uncontrolled airspace (aerodrome
+ *     traffic zones around uncontrolled airfields). Same file format and
+ *     parser as GRID_CTR, added alongside it because it's the other half
+ *     of the grid-based coverage a pilot would expect (controlled +
+ *     uncontrolled), at essentially the same fetch/parse cost.
+ *
+ * Individual named zones (LKR*.json) are still skipped: several of those
+ * files are tens to hundreds of megabytes for a single zone identifier
+ * (e.g. built-up-area or railway-corridor restrictions with thousands of
+ * polygons), too large to reasonably fetch and cache for this purpose —
+ * unlike GRID_CTR/GRID_ATZ, there's no cheaper "index-only" version of
+ * those files to request instead; the only way to get name/bbox/altitude
+ * out of them is to download the same oversized polygon-heavy file, so a
+ * lighter-weight secondary layer isn't actually free for that category.
  */
 
 import type { AirspaceProvider, AirspaceZone, BBox } from "./types.js";
@@ -25,6 +43,24 @@ import { logger } from "../../lib/logger.js";
 
 const INDEX_URL = "https://aim.rlp.cz/?lang=en&p=uas-gz";
 const AIM_ORIGIN = "https://aim.rlp.cz";
+
+/** The two grid datasets we fetch, and how each maps to our common zone shape. */
+const GRID_DATASETS = [
+  {
+    /** Matches the href for GRID_CTR.json on the index page. */
+    filePattern: /href="(\/data\/uas\/[^"]*GRID_CTR\.json)"/,
+    category: "controlled-airspace",
+    label: "Řízený vzdušný prostor",
+    logTag: "GRID_CTR",
+  },
+  {
+    /** Matches the href for GRID_ATZ.json on the index page. */
+    filePattern: /href="(\/data\/uas\/[^"]*GRID_ATZ\.json)"/,
+    category: "uncontrolled-airspace-atz",
+    label: "Provozní zóna neřízeného letiště (ATZ)",
+    logTag: "GRID_ATZ",
+  },
+] as const;
 
 /** Rough bounding box around the Czech Republic. */
 const CZ_BOUNDS: BBox = {
@@ -88,21 +124,22 @@ export function parseVerticalLimitUpper(
 }
 
 /**
- * Discover the current GRID_CTR.json download URL from the ŘLP index page —
- * the dated "actual" folder changes as new data cycles are published.
+ * Discover the current download URL for a given grid dataset from the ŘLP
+ * index page — the dated "actual" folder changes as new data cycles are
+ * published. Returns `null` (rather than throwing) when the pattern isn't
+ * found, so one missing dataset doesn't prevent the other from loading.
  */
-async function discoverDataUrl(): Promise<string> {
+function discoverDataUrl(html: string, filePattern: RegExp): string | null {
+  const match = html.match(filePattern);
+  return match ? `${AIM_ORIGIN}${match[1]}` : null;
+}
+
+async function fetchIndexHtml(): Promise<string> {
   const res = await fetch(INDEX_URL);
   if (!res.ok) {
     throw new Error(`RLP: failed to fetch index page – ${res.status}`);
   }
-  const html = await res.text();
-
-  const match = html.match(/href="(\/data\/uas\/[^"]*GRID_CTR\.json)"/);
-  if (!match) {
-    throw new Error("RLP: no GRID_CTR.json link found on index page");
-  }
-  return `${AIM_ORIGIN}${match[1]}`;
+  return res.text();
 }
 
 interface RlpFeature {
@@ -155,13 +192,18 @@ function hasValidGeometry(geometry: unknown): geometry is {
   return false;
 }
 
-async function downloadAndParse(): Promise<AirspaceZone[]> {
-  const dataUrl = await discoverDataUrl();
+/** Download and parse a single grid dataset (GRID_CTR or GRID_ATZ) into AirspaceZone[]. */
+async function downloadGrid(
+  dataUrl: string,
+  dataset: (typeof GRID_DATASETS)[number],
+): Promise<AirspaceZone[]> {
   logger.info(`RLP: downloading ${dataUrl}`);
 
   const res = await fetch(dataUrl);
   if (!res.ok) {
-    throw new Error(`RLP: download failed – ${res.status}`);
+    throw new Error(
+      `RLP: download failed for ${dataset.logTag} – ${res.status}`,
+    );
   }
 
   const doc = (await res.json()) as { features?: RlpFeature[] };
@@ -176,23 +218,62 @@ async function downloadAndParse(): Promise<AirspaceZone[]> {
     }
     const upper = parseVerticalLimitUpper(f.properties.vertical_limit);
     zones.push({
-      id: `rlp-${f.properties.ident ?? i}`,
+      id: `rlp-${dataset.logTag.toLowerCase()}-${f.properties.ident ?? i}`,
       name: f.properties.vertical_limit
-        ? `Řízený vzdušný prostor (${f.properties.vertical_limit})`
-        : "Řízený vzdušný prostor",
+        ? `${dataset.label} (${f.properties.vertical_limit})`
+        : dataset.label,
       severity: "restricted",
       geometry: f.geometry,
       altitudeLower: 0,
       altitudeUpper: upper,
       description: f.properties.data_source,
-      category: "controlled-airspace",
+      category: dataset.category,
       source: "rlp",
     });
   });
 
   logger.info(
-    `RLP: parsed ${zones.length} grid cells${skipped > 0 ? ` (skipped ${skipped} with invalid geometry)` : ""}`,
+    `RLP: parsed ${zones.length} ${dataset.logTag} cells${skipped > 0 ? ` (skipped ${skipped} with invalid geometry)` : ""}`,
   );
+
+  return zones;
+}
+
+/**
+ * Discover and download every grid dataset in `GRID_DATASETS`. Each dataset
+ * is fetched independently via `Promise.allSettled` so a failure/missing
+ * link for one (e.g. GRID_ATZ renamed upstream) doesn't take down the other.
+ */
+async function downloadAndParse(): Promise<AirspaceZone[]> {
+  const html = await fetchIndexHtml();
+
+  const results = await Promise.allSettled(
+    GRID_DATASETS.map(async (dataset) => {
+      const dataUrl = discoverDataUrl(html, dataset.filePattern);
+      if (!dataUrl) {
+        throw new Error(
+          `RLP: no ${dataset.logTag}.json link found on index page`,
+        );
+      }
+      return downloadGrid(dataUrl, dataset);
+    }),
+  );
+
+  const zones: AirspaceZone[] = [];
+  for (const r of results) {
+    if (r.status === "fulfilled") {
+      zones.push(...r.value);
+    } else {
+      logger.error(
+        { err: r.reason },
+        "RLP: failed to fetch/parse a grid dataset",
+      );
+    }
+  }
+
+  if (zones.length === 0) {
+    throw new Error("RLP: no grid datasets could be loaded");
+  }
 
   return zones;
 }

@@ -7,6 +7,8 @@ import {
   offsetLatLng,
   rotateLatLng,
   haversineDistance,
+  mergeBuildingFootprints,
+  polygonArea,
 } from "./geo";
 
 // A simple square zone around [50, 14] .. [50.1, 14.1] (lat, lng).
@@ -286,6 +288,84 @@ describe("rotateLatLng", () => {
     expect(rotLng).toBeGreaterThan(centerLng);
     expect(Math.abs(rotLat - centerLat)).toBeLessThan(
       Math.abs(northLat - centerLat),
+    );
+  });
+});
+
+describe("mergeBuildingFootprints", () => {
+  // ~11m squares (0.0001° ≈ 11.1m at the equator) — building-sized, not the
+  // huge whole-degree footprints that would make the equirectangular area
+  // approximation noisy.
+  const D = 0.0001;
+  const west: [number, number][] = [
+    [0, 0],
+    [0, D],
+    [D, D],
+    [D, 0],
+  ];
+  const east: [number, number][] = [
+    [0, D],
+    [0, 2 * D],
+    [D, 2 * D],
+    [D, D],
+  ];
+
+  it("merges two footprints sharing an edge into one clean rectangle", () => {
+    const merged = mergeBuildingFootprints([
+      { height: 20, vertices: west },
+      { height: 20, vertices: east },
+    ]);
+
+    // The shared edge collapses away — a real union, not a concatenation
+    // of both rings.
+    expect(merged.vertices).toHaveLength(4);
+
+    const mergedArea = polygonArea(merged.vertices);
+    const expectedArea = polygonArea(west) + polygonArea(east);
+    expect(Math.abs(mergedArea - expectedArea) / expectedArea).toBeLessThan(
+      0.01,
+    );
+  });
+
+  it("uses the tallest fragment's height", () => {
+    const merged = mergeBuildingFootprints([
+      { height: 12, vertices: west },
+      { height: 34, vertices: east },
+    ]);
+    expect(merged.height).toBe(34);
+  });
+
+  it("defaults to 20m when no fragment has a known height", () => {
+    const merged = mergeBuildingFootprints([
+      { height: null, vertices: west },
+      { height: null, vertices: east },
+    ]);
+    expect(merged.height).toBe(20);
+  });
+
+  it("keeps the largest piece when the selected fragments don't actually touch", () => {
+    const tiny: [number, number][] = [
+      [0, 0],
+      [0, D / 10],
+      [D / 10, D / 10],
+      [D / 10, 0],
+    ];
+    const farAway: [number, number][] = [
+      [1, 1],
+      [1, 1 + D],
+      [1 + D, 1 + D],
+      [1 + D, 1],
+    ];
+
+    const merged = mergeBuildingFootprints([
+      { height: 10, vertices: tiny },
+      { height: 10, vertices: farAway },
+    ]);
+
+    const mergedArea = polygonArea(merged.vertices);
+    const farAwayArea = polygonArea(farAway);
+    expect(Math.abs(mergedArea - farAwayArea) / farAwayArea).toBeLessThan(
+      0.001,
     );
   });
 });

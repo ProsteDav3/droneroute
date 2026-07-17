@@ -5,6 +5,7 @@ import type {
   UnitSystem,
 } from "@droneroute/shared";
 import { formatArea as formatAreaUnit } from "@/lib/units";
+import polygonClipping, { type Polygon as ClipPolygon } from "polygon-clipping";
 
 export function haversineDistance(
   lat1: number,
@@ -222,6 +223,36 @@ export function polygonArea(vertices: [number, number][]): number {
   }
 
   return Math.abs(area / 2);
+}
+
+function toClipPolygon(vertices: [number, number][]): ClipPolygon {
+  return [[...vertices, vertices[0]]];
+}
+
+/**
+ * Merges several building footprints — e.g. adjacent fragments that OSM
+ * splits one real building into — into a single accurate outline via a
+ * true polygon union, rather than a bounding shape that would overshoot
+ * an L- or U-shaped complex. If the inputs don't actually touch, the union
+ * yields more than one disjoint piece; in that case the largest one is
+ * kept (the others are treated as satellite fragments the user didn't
+ * mean to include). Height is the tallest of the merged fragments.
+ */
+export function mergeBuildingFootprints(
+  fragments: { height: number | null; vertices: [number, number][] }[],
+): { height: number; vertices: [number, number][] } {
+  const [first, ...rest] = fragments.map((f) => toClipPolygon(f.vertices));
+  const merged = polygonClipping.union(first, ...rest);
+
+  const pieces = merged.map((polygon) => {
+    const vertices = polygon[0].slice(0, -1) as [number, number][];
+    return { vertices, area: polygonArea(vertices) };
+  });
+  const largest = pieces.reduce((a, b) => (b.area > a.area ? b : a));
+
+  const height = Math.max(0, ...fragments.map((f) => f.height ?? 0)) || 20;
+
+  return { vertices: largest.vertices, height };
 }
 
 export interface MeasureStats {

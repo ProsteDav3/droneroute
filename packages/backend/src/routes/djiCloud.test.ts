@@ -309,3 +309,194 @@ describe("POST /api/dji-cloud/upload-segments", () => {
     expect(JSON.stringify(res.body)).not.toContain("Storage unavailable.");
   });
 });
+
+describe("GET /api/dji-cloud/devices", () => {
+  it("requires authentication", async () => {
+    const res = await request(app).get("/api/dji-cloud/devices");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 503 when the bridge isn't configured", async () => {
+    delete process.env.DJI_CLOUD_URL;
+    const res = await request(app)
+      .get("/api/dji-cloud/devices")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(503);
+  });
+
+  it("logs in and returns the bound device list", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 0,
+          message: "success",
+          data: {
+            list: [{ device_sn: "SN1", nickname: "M4T", bound_status: true }],
+          },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .get("/api/dji-cloud/devices")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.devices).toHaveLength(1);
+    expect(res.body.devices[0].device_sn).toBe("SN1");
+  });
+
+  it("returns a generic 502 without leaking the upstream message", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: -1,
+          message: "Internal DB error XYZ",
+          data: null,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .get("/api/dji-cloud/devices")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(502);
+    expect(JSON.stringify(res.body)).not.toContain("Internal DB error XYZ");
+  });
+});
+
+describe("GET /api/dji-cloud/hms", () => {
+  it("requires authentication", async () => {
+    const res = await request(app).get("/api/dji-cloud/hms");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns HMS messages", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 0,
+          message: "success",
+          data: { list: [{ device_sn: "SN1", key: "hms.gimbal", level: 2 }] },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .get("/api/dji-cloud/hms")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.messages).toHaveLength(1);
+  });
+});
+
+describe("GET /api/dji-cloud/jobs", () => {
+  it("requires authentication", async () => {
+    const res = await request(app).get("/api/dji-cloud/jobs");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns wayline job history", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 0,
+          message: "success",
+          data: { list: [{ job_id: "job-1", status: "success" }] },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .get("/api/dji-cloud/jobs")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.jobs).toHaveLength(1);
+  });
+});
+
+describe("DELETE /api/dji-cloud/waylines/:id", () => {
+  it("requires authentication", async () => {
+    const res = await request(app).delete("/api/dji-cloud/waylines/abc");
+    expect(res.status).toBe(401);
+  });
+
+  it("deletes the wayline and returns success", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: null }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .delete("/api/dji-cloud/waylines/wayline-123")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    // Confirm the DELETE hit the right URL with the right id.
+    const [deleteUrl, deleteInit] = fetchMock.mock.calls[1];
+    expect(deleteUrl).toContain("/waylines/wayline-123");
+    expect(deleteInit.method).toBe("DELETE");
+  });
+
+  it("returns a generic 502 on upstream failure", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({ code: -1, message: "not found internally", data: null }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .delete("/api/dji-cloud/waylines/wayline-123")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(502);
+    expect(JSON.stringify(res.body)).not.toContain("not found internally");
+  });
+});
+
+describe("GET /api/dji-cloud/telemetry", () => {
+  it("requires authentication", async () => {
+    const res = await request(app).get("/api/dji-cloud/telemetry");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 503 when the bridge isn't configured", async () => {
+    delete process.env.DJI_CLOUD_URL;
+    const res = await request(app)
+      .get("/api/dji-cloud/telemetry")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(503);
+  });
+
+  it("returns an empty device list when nothing has reported in yet", async () => {
+    // No mqtt broker reachable in tests; ensureTelemetryBridgeConnected's
+    // login attempt will fail and the bridge stays idle -- the route must
+    // still respond with a well-formed (empty) snapshot, not error out.
+    const fetchMock = vi.fn().mockRejectedValue(new Error("no network"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .get("/api/dji-cloud/telemetry")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.devices)).toBe(true);
+  });
+});

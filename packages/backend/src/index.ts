@@ -4,7 +4,7 @@ import { initSentry, Sentry, isSentryEnabled } from "./lib/sentry.js";
 // auto-instrumentation can hook into them — see lib/sentry.ts.
 initSentry();
 
-import express, { type ErrorRequestHandler } from "express";
+import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
@@ -32,6 +32,11 @@ import { isDjiCloudConfigured } from "./services/djiCloud.js";
 import { globalLimiter } from "./middleware/rateLimit.js";
 import { resolveDefaultMapView } from "./lib/config.js";
 import { logger, httpLogRedactPaths, shouldSkipHttpLog } from "./lib/logger.js";
+import {
+  requestIdHeaderMiddleware,
+  errorHandler,
+  genReqId,
+} from "./lib/errorHandler.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -115,9 +120,15 @@ app.use(globalLimiter);
 
 // Per-request access logging. See lib/logger.ts for why the Authorization
 // header is redacted and why /api/health + /api/shared/* are skipped.
+// pino-http assigns each request a `req.id` (reusing an inbound
+// `X-Request-Id` header if the caller/proxy already set one, otherwise a
+// fresh UUID) and binds it into every log line written via `req.log` for
+// that request — the correlation id used below to tie a specific error
+// response back to its server-side log entry.
 app.use(
   pinoHttp({
     logger,
+    genReqId,
     redact: {
       paths: httpLogRedactPaths,
       censor: "[redacted]",
@@ -127,6 +138,11 @@ app.use(
     },
   }),
 );
+// Echoes the request id back to the client so it's visible in the browser's
+// network tab even on a successful response, not just in an error body —
+// useful for support to correlate a report against server logs regardless
+// of whether the request actually failed. See lib/errorHandler.ts.
+app.use(requestIdHeaderMiddleware);
 
 // Serve frontend static files in production
 const frontendDist = path.join(__dirname, "../../frontend/dist");
@@ -201,24 +217,8 @@ if (isSentryEnabled()) {
 }
 
 // Global error handler — log the full error server-side, never leak details
-// (stack traces, SQL, internal paths) to the client.
-const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
-  logger.error({ err }, "Unhandled error");
-  if (res.headersSent) {
-    next(err);
-    return;
-  }
-  // Preserve client-error status codes (e.g. malformed JSON, payload too large)
-  // but never echo the underlying message, stack trace or internal details.
-  const status =
-    (err as { status?: number; statusCode?: number })?.status ??
-    (err as { statusCode?: number })?.statusCode ??
-    500;
-  const isClientError = status >= 400 && status < 500;
-  res
-    .status(isClientError ? status : 500)
-    .json({ error: isClientError ? "Bad request" : "Internal server error" });
-};
+// (stack traces, SQL, internal paths) to the client. See lib/errorHandler.ts
+// for why the response also carries `requestId`.
 app.use(errorHandler);
 
 // Initialize database and start server

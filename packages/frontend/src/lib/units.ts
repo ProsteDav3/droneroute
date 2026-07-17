@@ -60,6 +60,14 @@ export function formatArea(
   return `${Math.round(areaM2)} m²`;
 }
 
+/** Format a data size (MB) as a human-readable string — unit-system
+ * independent, unlike the other formatters here (no imperial equivalent
+ * for byte units). */
+export function formatDataSize(mb: number): string {
+  if (mb >= 1000) return `${(mb / 1000).toFixed(1)} GB`;
+  return `${Math.round(mb)} MB`;
+}
+
 // ── Labels for form inputs ──────────────────────────────
 
 export function speedLabel(unitSystem: UnitSystem = "metric"): string {

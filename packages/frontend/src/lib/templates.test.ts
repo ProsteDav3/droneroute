@@ -40,6 +40,8 @@ import {
   computeAltitudeForGsd,
   isMultispectralPayload,
   THERMAL_CAMERA_FOV,
+  estimatePhotoFileSizeMB,
+  estimateMissionPhotoData,
 } from "@/lib/solarCamera";
 import { haversineDistance } from "@/lib/geo";
 
@@ -555,6 +557,45 @@ describe("computeGsdCm / computeAltitudeForGsd", () => {
     const low = computeGsdCm(40, M3E)!;
     const high = computeGsdCm(120, M3E)!;
     expect(high).toBeGreaterThan(low);
+  });
+});
+
+describe("estimatePhotoFileSizeMB / estimateMissionPhotoData", () => {
+  const M3E = 66; // 20MP, known resolution
+  const H30 = 82; // known FOV, unknown resolution
+
+  it("returns null for a payload with unknown resolution", () => {
+    expect(estimatePhotoFileSizeMB(H30)).toBeNull();
+    expect(estimatePhotoFileSizeMB(999999)).toBeNull();
+  });
+
+  it("returns a positive, plausible file size for a known payload", () => {
+    const sizeMB = estimatePhotoFileSizeMB(M3E)!;
+    expect(sizeMB).toBeGreaterThan(0);
+    // 20MP at the documented ~0.4MB/MP estimate should land well within a
+    // sane real-world JPEG range, not an absurd number.
+    expect(sizeMB).toBeGreaterThan(1);
+    expect(sizeMB).toBeLessThan(50);
+  });
+
+  it("a higher-resolution payload estimates a larger file size", () => {
+    const miniPro4 = 100; // 48MP
+    expect(estimatePhotoFileSizeMB(miniPro4)!).toBeGreaterThan(
+      estimatePhotoFileSizeMB(M3E)!,
+    );
+  });
+
+  it("estimateMissionPhotoData scales linearly with photo count", () => {
+    const ten = estimateMissionPhotoData(10, M3E);
+    const twenty = estimateMissionPhotoData(20, M3E);
+    expect(ten.photoCount).toBe(10);
+    expect(twenty.estimatedSizeMB).toBeCloseTo(ten.estimatedSizeMB! * 2, 5);
+  });
+
+  it("estimateMissionPhotoData returns null size (but a real count) for an unknown-resolution payload", () => {
+    const result = estimateMissionPhotoData(50, H30);
+    expect(result.photoCount).toBe(50);
+    expect(result.estimatedSizeMB).toBeNull();
   });
 });
 

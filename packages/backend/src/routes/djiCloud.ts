@@ -13,6 +13,11 @@ import {
   listWaylineJobs,
   listWaylines,
   deleteWayline,
+  listMediaFiles,
+  getMediaFileDownloadUrl,
+  listLiveCapacity,
+  startLiveStream,
+  stopLiveStream,
 } from "../services/djiCloud.js";
 import {
   ensureTelemetryBridgeConnected,
@@ -368,5 +373,110 @@ djiCloudRoutes.get(
       clearInterval(heartbeat);
       unsubscribe();
     });
+  },
+);
+
+// Media files (photos/videos) already uploaded from a flight into the
+// workspace's own storage — read-only, same as /devices and /waylines.
+djiCloudRoutes.get("/media", authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    if (!requireConfigured(res)) return;
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const pageSize = Math.min(
+      50,
+      Math.max(1, Number(req.query.pageSize) || 20),
+    );
+    const result = await listMediaFiles(page, pageSize);
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "DJI Cloud media list error");
+    res.status(502).json({ error: "Načtení médií z DJI Cloud selhalo" });
+  }
+});
+
+// Resolves one media file's download URL. Returns JSON (not a redirect)
+// since the frontend just wants the URL to put in an <a href>, not to
+// follow it server-side.
+djiCloudRoutes.get(
+  "/media/:fileId/url",
+  authMiddleware,
+  async (req: AuthRequest, res) => {
+    try {
+      if (!requireConfigured(res)) return;
+      const fileId = req.params.fileId;
+      if (typeof fileId !== "string" || !fileId) {
+        res.status(400).json({ error: "Chybí ID souboru" });
+        return;
+      }
+      const url = await getMediaFileDownloadUrl(fileId);
+      res.json({ url });
+    } catch (err) {
+      logger.error({ err }, "DJI Cloud media URL error");
+      res.status(502).json({ error: "Načtení odkazu ke stažení selhalo" });
+    }
+  },
+);
+
+// Which devices/cameras can currently push a live feed — empty whenever
+// nothing is online, same shape as /devices.
+djiCloudRoutes.get(
+  "/live/capacity",
+  authMiddleware,
+  async (_req: AuthRequest, res) => {
+    try {
+      if (!requireConfigured(res)) return;
+      const devices = await listLiveCapacity();
+      res.json({ devices });
+    } catch (err) {
+      logger.error({ err }, "DJI Cloud live capacity error");
+      res
+        .status(502)
+        .json({ error: "Načtení dostupných kamer z DJI Cloud selhalo" });
+    }
+  },
+);
+
+// Starts a live feed for the given video_id (see listLiveCapacity). The
+// aircraft/RC pushes RTMP to this server's own relay — no external
+// service/API key needed, unlike the platform's optional Agora option.
+djiCloudRoutes.post(
+  "/live/start",
+  strictLimiter,
+  authMiddleware,
+  async (req: AuthRequest, res) => {
+    try {
+      if (!requireConfigured(res)) return;
+      const { videoId } = req.body;
+      if (typeof videoId !== "string" || !videoId) {
+        res.status(400).json({ error: "Chybí video_id" });
+        return;
+      }
+      const { hlsUrl } = await startLiveStream(videoId);
+      res.json({ success: true, hlsUrl });
+    } catch (err) {
+      logger.error({ err }, "DJI Cloud live start error");
+      res.status(502).json({ error: "Spuštění živého přenosu selhalo" });
+    }
+  },
+);
+
+djiCloudRoutes.post(
+  "/live/stop",
+  strictLimiter,
+  authMiddleware,
+  async (req: AuthRequest, res) => {
+    try {
+      if (!requireConfigured(res)) return;
+      const { videoId } = req.body;
+      if (typeof videoId !== "string" || !videoId) {
+        res.status(400).json({ error: "Chybí video_id" });
+        return;
+      }
+      await stopLiveStream(videoId);
+      res.json({ success: true });
+    } catch (err) {
+      logger.error({ err }, "DJI Cloud live stop error");
+      res.status(502).json({ error: "Zastavení živého přenosu selhalo" });
+    }
   },
 );

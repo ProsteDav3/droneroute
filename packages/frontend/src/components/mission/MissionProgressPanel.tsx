@@ -27,23 +27,32 @@ export function MissionProgressPanel() {
   const waypoints = useMissionStore((s) => s.waypoints);
   const djiCloudEnabled = useConfigStore((s) => s.djiCloudEnabled);
   const telemetry = useDjiCloudOpsStore((s) => s.telemetry);
+  const focusedDeviceSn = useDjiCloudOpsStore((s) => s.focusedDeviceSn);
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
 
   const progress = useMemo(() => {
     if (!djiCloudEnabled) return null;
-    const flying = Object.values(telemetry).find(
-      (d) =>
-        d.online &&
-        typeof d.latitude === "number" &&
-        typeof d.longitude === "number",
-    );
+    const isFlyable = (d: (typeof telemetry)[string]) =>
+      d.online &&
+      typeof d.latitude === "number" &&
+      typeof d.longitude === "number";
+    // A user-focused device (see the device picker in DjiCloudOpsPanel)
+    // takes priority when it's actually online; otherwise fall back to
+    // "whichever bound device is online", matching the app's original
+    // single-device assumption.
+    const flying =
+      (focusedDeviceSn &&
+      telemetry[focusedDeviceSn] &&
+      isFlyable(telemetry[focusedDeviceSn])
+        ? telemetry[focusedDeviceSn]
+        : undefined) ?? Object.values(telemetry).find(isFlyable);
     if (!flying) return null;
     return computeMissionProgress(
       waypoints,
       { lat: flying.latitude!, lng: flying.longitude! },
       flying.horizontalSpeed,
     );
-  }, [djiCloudEnabled, telemetry, waypoints]);
+  }, [djiCloudEnabled, telemetry, waypoints, focusedDeviceSn]);
 
   if (!progress) return null;
 

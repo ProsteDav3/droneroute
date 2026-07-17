@@ -117,8 +117,9 @@ When your server has a DJI Cloud platform configured (see [Upload to controller]
 - Any aircraft currently online and reporting a position shows up on the map as a live marker — an icon that rotates to match the aircraft's actual heading.
 - Below the icon, a small label shows the aircraft's current altitude, horizontal speed, and battery percentage, updating in real time as new telemetry arrives. The battery icon changes color (green/amber/red) as it drops.
 - The sidebar's **DJI Cloud — zařízení** panel lists every device bound to the workspace (aircraft and remote controllers), each with an online/offline indicator, live battery percentage when online, device model, and how long ago it last logged into the platform.
-- Recent Health Management System (HMS) warnings reported by the aircraft — a fault code, a battery cell imbalance, and similar — appear at the bottom of the same panel.
+- Recent Health Management System (HMS) warnings reported by the aircraft — a fault code, a battery cell imbalance, and similar — appear at the bottom of the same panel. If the platform can't compute HMS data yet (e.g. a brand-new workspace with no device history), the device list itself still loads normally — only the warnings section is affected.
 - All of this updates automatically over a live connection; no manual refresh needed.
+- **When more than one device is bound**, click a device in the list to focus on it — the Mission Progress panel then tracks that device specifically instead of "whichever bound device happens to be online first". Click it again to go back to that default. With only one device bound, there's nothing to pick, so the list isn't clickable.
 
 ### Live mission progress
 
@@ -126,4 +127,12 @@ While a device is online and flying, a "Průběh mise" badge appears at the top 
 
 - In the waypoint list, every waypoint the aircraft has already flown past gets a green checkmark badge and is dimmed, so you can see progress at a glance without watching the map.
 - The ETA needs the aircraft to be moving at a meaningful speed — it shows "ETA neznámá" while stationary or just after takeoff, rather than an unreliable estimate.
-- This assumes the mission open in the editor is the one actually flying — with one aircraft active at a time (the common case), that holds; it isn't a per-mission dispatch tracker for multiple simultaneous flights.
+- This assumes the mission open in the editor is the one actually flying — with one aircraft active at a time (the common case), that holds; it isn't a per-mission dispatch tracker for multiple simultaneous flights. With multiple devices bound, pick the flying one via the device focus described above.
+
+### Media
+
+The sidebar's **Média** panel lists photos and videos the aircraft or remote controller has already uploaded into the workspace's own cloud storage after a flight — file name, upload time, and a "Stáhnout" link that resolves the platform's own (presigned, expiring) download URL on click. SkyRoute doesn't copy or store these files itself, it just surfaces what's already there so you don't have to separately open the DJI Cloud platform's own console. Use the refresh icon to check for newly uploaded files without reopening the panel.
+
+### Live video
+
+The sidebar's **Živý přenos** panel lists every camera lens currently capable of streaming (i.e. currently online) — pick one to start watching. The aircraft pushes its feed to the server's own video relay and it plays back right there in the panel; stop it with the button below the player when you're done. If nothing is listed, no device is currently online with a camera. Self-hosted instances need `DJI_CLOUD_LIVE_HLS_BASE_URL` configured (see `.env.example`) for playback to work here — without it, starting a feed still works (the aircraft is still commanded to stream), there's just no video shown in this panel.

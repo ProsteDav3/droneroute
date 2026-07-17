@@ -570,3 +570,275 @@ describe("GET /api/dji-cloud/telemetry", () => {
     expect(Array.isArray(res.body.devices)).toBe(true);
   });
 });
+
+describe("GET /api/dji-cloud/media", () => {
+  it("requires authentication", async () => {
+    const res = await request(app).get("/api/dji-cloud/media");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 503 when the bridge isn't configured", async () => {
+    delete process.env.DJI_CLOUD_URL;
+    const res = await request(app)
+      .get("/api/dji-cloud/media")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(503);
+  });
+
+  it("returns the media file listing", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 0,
+          message: "success",
+          data: {
+            list: [
+              {
+                file_id: "media-1",
+                file_name: "DJI_0001.JPG",
+                create_time: 1700000000000,
+              },
+            ],
+            pagination: { page: 1, total: 1, page_size: 20 },
+          },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .get("/api/dji-cloud/media")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.list).toEqual([
+      {
+        file_id: "media-1",
+        file_name: "DJI_0001.JPG",
+        create_time: 1700000000000,
+      },
+    ]);
+  });
+
+  it("clamps page_size to the platform's own sane maximum", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 0,
+          message: "success",
+          data: { list: [], pagination: { page: 1, total: 0, page_size: 50 } },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await request(app)
+      .get("/api/dji-cloud/media?pageSize=9999")
+      .set("Authorization", `Bearer ${token}`);
+
+    const [listUrl] = fetchMock.mock.calls[1];
+    expect(listUrl).toContain("page_size=50");
+  });
+});
+
+describe("GET /api/dji-cloud/media/:fileId/url", () => {
+  it("requires authentication", async () => {
+    const res = await request(app).get("/api/dji-cloud/media/abc/url");
+    expect(res.status).toBe(401);
+  });
+
+  it("resolves the redirect Location header into a JSON url field", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: {
+            Location: "https://minio.example/media/DJI_0001.JPG?sig=abc",
+          },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .get("/api/dji-cloud/media/media-1/url")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.url).toBe(
+      "https://minio.example/media/DJI_0001.JPG?sig=abc",
+    );
+  });
+});
+
+describe("GET /api/dji-cloud/live/capacity", () => {
+  it("requires authentication", async () => {
+    const res = await request(app).get("/api/dji-cloud/live/capacity");
+    expect(res.status).toBe(401);
+  });
+
+  it("returns the live-capable device/camera list", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 0,
+          message: "success",
+          data: [
+            {
+              sn: "1ZNDH...",
+              name: "Matrice 4T",
+              cameras_list: [
+                {
+                  id: "cam-1",
+                  device_sn: "1ZNDH...",
+                  name: "Wide",
+                  index: "39-0-0",
+                  type: "normal",
+                  videos_list: [
+                    {
+                      id: "1ZNDH.../39-0-0/normal-0",
+                      index: "0",
+                      type: "normal",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .get("/api/dji-cloud/live/capacity")
+      .set("Authorization", `Bearer ${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.devices).toHaveLength(1);
+    expect(res.body.devices[0].cameras_list[0].videos_list[0].id).toBe(
+      "1ZNDH.../39-0-0/normal-0",
+    );
+  });
+});
+
+describe("POST /api/dji-cloud/live/start", () => {
+  it("requires authentication", async () => {
+    const res = await request(app)
+      .post("/api/dji-cloud/live/start")
+      .send({ videoId: "x" });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects a missing video_id", async () => {
+    const res = await request(app)
+      .post("/api/dji-cloud/live/start")
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("starts the stream and returns success", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: null }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/live/start")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ videoId: "1ZNDH.../39-0-0/normal-0" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    const [, startInit] = fetchMock.mock.calls[1];
+    const startBody = JSON.parse(startInit.body);
+    expect(startBody).toEqual({
+      video_id: "1ZNDH.../39-0-0/normal-0",
+      url_type: 1,
+      video_quality: 0,
+    });
+  });
+
+  it("returns hlsUrl null when the relay isn't configured", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: null }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/live/start")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ videoId: "1ZNDH.../39-0-0/normal-0" });
+
+    expect(res.body.hlsUrl).toBeNull();
+  });
+
+  it("builds an hlsUrl matching the platform's own RTMP stream-key convention when the relay is configured", async () => {
+    process.env.DJI_CLOUD_LIVE_HLS_BASE_URL =
+      "https://dji-cloud.skydata.cz/live-hls";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: null }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/live/start")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ videoId: "1ZNDH.../39-0-0/normal-0" });
+
+    expect(res.body.hlsUrl).toBe(
+      "https://dji-cloud.skydata.cz/live-hls/1ZNDH...-39-0-0/index.m3u8",
+    );
+    delete process.env.DJI_CLOUD_LIVE_HLS_BASE_URL;
+  });
+});
+
+describe("POST /api/dji-cloud/live/stop", () => {
+  it("requires authentication", async () => {
+    const res = await request(app)
+      .post("/api/dji-cloud/live/stop")
+      .send({ videoId: "x" });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects a missing video_id", async () => {
+    const res = await request(app)
+      .post("/api/dji-cloud/live/stop")
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("stops the stream and returns success", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: null }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/live/stop")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ videoId: "1ZNDH.../39-0-0/normal-0" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+});

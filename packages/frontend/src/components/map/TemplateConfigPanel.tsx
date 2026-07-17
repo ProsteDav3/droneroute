@@ -52,6 +52,7 @@ import {
   recommendFacadeGrid,
   deriveFacadeGridCounts,
   computeGsdCm,
+  computeAltitudeForGsd,
   isMultispectralPayload,
   NDVI_RECOMMENDED_FRONT_OVERLAP_PCT,
   NDVI_RECOMMENDED_SIDE_OVERLAP_PCT,
@@ -213,6 +214,11 @@ export function TemplateConfigPanel({
   // 75%/65% are common photogrammetry defaults (front/side overlap).
   const [gridFrontOverlapPct, setGridFrontOverlapPct] = useState(75);
   const [gridSideOverlapPct, setGridSideOverlapPct] = useState(65);
+
+  // Target-GSD calculator input — ephemeral, drives a one-shot "Použít
+  // výšku" action that sets gridParams.altitude via computeAltitudeForGsd
+  // rather than being a persisted field of GridParams itself.
+  const [targetGsdCm, setTargetGsdCm] = useState(2);
 
   // Volumetric-survey quick check — ephemeral, purely a planning aid (this
   // app doesn't compute volume itself). Off by default since most Grid
@@ -848,6 +854,44 @@ export function TemplateConfigPanel({
               className="h-7 text-xs"
             />
           </div>
+          {(() => {
+            const targetAltitude = computeAltitudeForGsd(
+              targetGsdCm,
+              payloadEnumValue,
+            );
+            if (targetAltitude === null) return null;
+            return (
+              <div className="col-span-2 flex items-end gap-2">
+                <div className="flex-1">
+                  <Label
+                    className="text-[10px]"
+                    title="Zadejte požadované rozlišení (cm na pixel) a spočítá se výška letu, ve které ho tato kamera dosáhne."
+                  >
+                    Cílové GSD (cm/px)
+                  </Label>
+                  <NumericInput
+                    value={targetGsdCm}
+                    onChange={setTargetGsdCm}
+                    min={0.1}
+                    step={0.1}
+                    fallback={2}
+                    className="h-7 text-xs"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[10px] px-2 shrink-0"
+                  onClick={() =>
+                    onGridChange({ ...gridParams, altitude: targetAltitude })
+                  }
+                  title={`Nastaví výšku letu na ${Math.round(toDisplayHeight(targetAltitude, unitSystem))}${heightLabel(unitSystem)}`}
+                >
+                  Použít výšku
+                </Button>
+              </div>
+            );
+          })()}
           {(() => {
             const rec = recommendGridSpacing(
               gridParams.altitude,

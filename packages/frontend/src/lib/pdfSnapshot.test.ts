@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import type mapboxgl from "mapbox-gl";
 import type { jsPDF } from "jspdf";
-import { captureMapSnapshot, addMapSnapshotToPdf } from "./pdfSnapshot";
+import {
+  captureMapSnapshot,
+  captureMissionMapSnapshot,
+  addMapSnapshotToPdf,
+} from "./pdfSnapshot";
 
 function fakeMap(width: number, height: number, dataUrl: string): mapboxgl.Map {
   return {
@@ -37,10 +41,192 @@ describe("captureMapSnapshot", () => {
   });
 });
 
+describe("captureMissionMapSnapshot", () => {
+  function fakeFittableMap() {
+    const calls: Record<string, unknown[]> = {
+      fitBounds: [],
+      jumpTo: [],
+      once: [],
+    };
+    let idleCallback: (() => void) | null = null;
+    const map = {
+      getCenter: () => ({ lng: 10, lat: 20 }),
+      getZoom: () => 5,
+      getBearing: () => 0,
+      getPitch: () => 0,
+      getCanvas: () => ({
+        toDataURL: vi.fn(() => "data:image/png;base64,AAAA"),
+        width: 800,
+        height: 450,
+      }),
+      fitBounds: vi.fn((...args: unknown[]) => calls.fitBounds.push(args)),
+      jumpTo: vi.fn((...args: unknown[]) => calls.jumpTo.push(args)),
+      once: vi.fn((event: string, cb: () => void) => {
+        calls.once.push([event]);
+        if (event === "idle") idleCallback = cb;
+      }),
+      project: vi.fn(({ 0: lng, 1: lat }: [number, number]) => ({
+        x: lng * 10,
+        y: lat * 10,
+      })),
+      // Test-only escape hatch so it fires without a real Mapbox instance.
+      __fireIdle: () => idleCallback?.(),
+    };
+    return { map, calls };
+  }
+
+  it("fits the map to the given bounds and restores the original view afterward", async () => {
+    const { map, calls } = fakeFittableMap();
+    const points: [number, number][] = [
+      [14, 50],
+      [14.01, 50.01],
+    ];
+
+    const promise = captureMissionMapSnapshot(
+      map as unknown as mapboxgl.Map,
+      points,
+      [{ latitude: 50, longitude: 14 }],
+    );
+    map.__fireIdle();
+    const snapshot = await promise;
+
+    expect(map.fitBounds).toHaveBeenCalledWith(
+      [
+        [14, 50],
+        [14.01, 50.01],
+      ],
+      { padding: 60, maxZoom: 18, animate: false },
+    );
+    expect(map.jumpTo).toHaveBeenCalledWith({
+      center: { lng: 10, lat: 20 },
+      zoom: 5,
+      bearing: 0,
+      pitch: 0,
+    });
+    expect(snapshot.dataUrl).toBe("data:image/png;base64,AAAA");
+    expect(calls.jumpTo).toHaveLength(1);
+  });
+
+  it("projects each waypoint's pixel position at capture time", async () => {
+    const { map } = fakeFittableMap();
+    const promise = captureMissionMapSnapshot(
+      map as unknown as mapboxgl.Map,
+      [[14, 50]],
+      [
+        { latitude: 50, longitude: 14 },
+        { latitude: 51, longitude: 15 },
+      ],
+    );
+    map.__fireIdle();
+    const snapshot = await promise;
+
+    expect(snapshot.waypointPixels).toEqual([
+      { x: 140, y: 500, index: 0 },
+      { x: 150, y: 510, index: 1 },
+    ]);
+  });
+
+  it("still restores the original view even if projecting throws", async () => {
+    const { map } = fakeFittableMap();
+    map.project = vi.fn(() => {
+      throw new Error("projection failed");
+    });
+
+    const promise = captureMissionMapSnapshot(
+      map as unknown as mapboxgl.Map,
+      [[14, 50]],
+      [{ latitude: 50, longitude: 14 }],
+    );
+    map.__fireIdle();
+
+    await expect(promise).rejects.toThrow("projection failed");
+    expect(map.jumpTo).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to a plain capture without moving the view when there are no bounds points", async () => {
+    const { map } = fakeFittableMap();
+
+    const snapshot = await captureMissionMapSnapshot(
+      map as unknown as mapboxgl.Map,
+      [],
+      [],
+    );
+
+    expect(map.fitBounds).not.toHaveBeenCalled();
+    expect(map.jumpTo).not.toHaveBeenCalled();
+    expect(snapshot.dataUrl).toBe("data:image/png;base64,AAAA");
+    expect(snapshot.waypointPixels).toBeUndefined();
+  });
+});
+
 describe("addMapSnapshotToPdf", () => {
   function fakeDoc() {
-    return { addImage: vi.fn() } as unknown as jsPDF;
+    return {
+      addImage: vi.fn(),
+      setFillColor: vi.fn(),
+      setTextColor: vi.fn(),
+      setFontSize: vi.fn(),
+      getFontSize: vi.fn(() => 10),
+      getTextColor: vi.fn(() => "#000000"),
+      circle: vi.fn(),
+      text: vi.fn(),
+    } as unknown as jsPDF;
   }
+
+  it("draws a numbered marker for each waypoint, scaled to the placed image size", () => {
+    const doc = fakeDoc();
+    const snapshot = {
+      dataUrl: "data:image/png;base64,AAAA",
+      width: 800,
+      height: 400,
+      waypointPixels: [
+        { x: 400, y: 200, index: 0 }, // dead center of the source canvas
+        { x: 0, y: 0, index: 1 }, // top-left corner
+      ],
+    };
+
+    // 800x400 at maxWidth 180 -> placed at 180x90
+    addMapSnapshotToPdf(doc, snapshot, 14, 100, 180);
+
+    // Center marker: 14 + 400/800*180 = 104, 100 + 200/400*90 = 145
+    expect(doc.circle).toHaveBeenCalledWith(104, 145, 1.6, "F");
+    expect(doc.text).toHaveBeenCalledWith("1", 104, 145.6, {
+      align: "center",
+    });
+    // Top-left marker: right at the image's own origin
+    expect(doc.circle).toHaveBeenCalledWith(14, 100, 1.6, "F");
+    expect(doc.text).toHaveBeenCalledWith("2", 14, 100.6, {
+      align: "center",
+    });
+  });
+
+  it("skips a marker that falls outside the placed image", () => {
+    const doc = fakeDoc();
+    const snapshot = {
+      dataUrl: "data:image/png;base64,AAAA",
+      width: 800,
+      height: 400,
+      waypointPixels: [{ x: -50, y: 200, index: 0 }],
+    };
+
+    addMapSnapshotToPdf(doc, snapshot, 14, 100, 180);
+
+    expect(doc.circle).not.toHaveBeenCalled();
+  });
+
+  it("does not touch marker-drawing state when there are no waypoint pixels", () => {
+    const doc = fakeDoc();
+    const snapshot = {
+      dataUrl: "data:image/png;base64,AAAA",
+      width: 800,
+      height: 400,
+    };
+
+    addMapSnapshotToPdf(doc, snapshot, 14, 100, 180);
+
+    expect(doc.circle).not.toHaveBeenCalled();
+    expect(doc.setFillColor).not.toHaveBeenCalled();
+  });
 
   it("scales a wide snapshot to the requested width, preserving aspect ratio", () => {
     const doc = fakeDoc();

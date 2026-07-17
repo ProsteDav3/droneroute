@@ -12,11 +12,13 @@ export interface DjiDeviceSummary {
 }
 
 export interface DjiHmsMessage {
-  device_sn: string;
+  sn: string;
   key: string;
   level: number;
   module: number;
-  create_time: number;
+  create_time: string;
+  message_zh: string;
+  message_en: string;
 }
 
 export interface DeviceTelemetry {

@@ -4,6 +4,9 @@ import {
   formatAirspaceWarningMessage,
   getHomeDistanceWarning,
   computeMeasureStats,
+  offsetLatLng,
+  rotateLatLng,
+  haversineDistance,
 } from "./geo";
 
 // A simple square zone around [50, 14] .. [50.1, 14.1] (lat, lng).
@@ -211,5 +214,78 @@ describe("computeMeasureStats", () => {
       [50.001, 14.001],
     ]);
     expect(twoLeg.totalDistanceM).toBeGreaterThan(directPoints.totalDistanceM);
+  });
+});
+
+describe("offsetLatLng", () => {
+  it("returns the same point for a zero offset", () => {
+    expect(offsetLatLng(50, 14, 0, 0)).toEqual([50, 14]);
+  });
+
+  it("moving north increases latitude, moving east increases longitude", () => {
+    const [lat, lng] = offsetLatLng(50, 14, 100, 100);
+    expect(lat).toBeGreaterThan(50);
+    expect(lng).toBeGreaterThan(14);
+  });
+
+  it("the resulting point is actually ~100m away for a 100m offset", () => {
+    const [lat, lng] = offsetLatLng(50, 14, 100, 0);
+    expect(haversineDistance(50, 14, lat, lng)).toBeCloseTo(100, 0);
+  });
+});
+
+describe("rotateLatLng", () => {
+  it("returns the same point for a zero rotation", () => {
+    expect(rotateLatLng(50.001, 14.001, 50, 14, 0)).toEqual([50.001, 14.001]);
+  });
+
+  it("rotating the center point around itself is a no-op", () => {
+    const [lat, lng] = rotateLatLng(50, 14, 50, 14, 90);
+    expect(lat).toBeCloseTo(50, 9);
+    expect(lng).toBeCloseTo(14, 9);
+  });
+
+  it("preserves distance from the center (rotation, not scaling)", () => {
+    const centerLat = 50;
+    const centerLng = 14;
+    const [origLat, origLng] = offsetLatLng(centerLat, centerLng, 200, 0);
+    const distBefore = haversineDistance(
+      centerLat,
+      centerLng,
+      origLat,
+      origLng,
+    );
+
+    const [rotLat, rotLng] = rotateLatLng(
+      origLat,
+      origLng,
+      centerLat,
+      centerLng,
+      90,
+    );
+    const distAfter = haversineDistance(centerLat, centerLng, rotLat, rotLng);
+
+    expect(distAfter).toBeCloseTo(distBefore, 0);
+  });
+
+  it("a 90° rotation moves a point due north of center to due east", () => {
+    const centerLat = 50;
+    const centerLng = 14;
+    const [northLat, northLng] = offsetLatLng(centerLat, centerLng, 200, 0);
+
+    const [rotLat, rotLng] = rotateLatLng(
+      northLat,
+      northLng,
+      centerLat,
+      centerLng,
+      90,
+    );
+
+    // Rotated point should now sit east of center, at roughly the same
+    // latitude as the center (not north of it anymore).
+    expect(rotLng).toBeGreaterThan(centerLng);
+    expect(Math.abs(rotLat - centerLat)).toBeLessThan(
+      Math.abs(northLat - centerLat),
+    );
   });
 });

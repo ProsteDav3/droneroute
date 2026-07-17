@@ -255,6 +255,52 @@ export function computeMeasureStats(points: [number, number][]): MeasureStats {
 }
 
 /**
+ * Offset a [lat, lng] point by a given distance north and east (meters).
+ * Uses a local equirectangular approximation — accurate enough for the
+ * scale of a single mission (same assumption `generateGrid`'s own rotation
+ * math and `polygonArea` make), not a true geodesic offset.
+ */
+export function offsetLatLng(
+  lat: number,
+  lng: number,
+  northM: number,
+  eastM: number,
+): [number, number] {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const toDeg = (r: number) => (r * 180) / Math.PI;
+  const dLat = toDeg(northM / R);
+  const dLng = toDeg(eastM / (R * Math.cos(toRad(lat))));
+  return [lat + dLat, lng + dLng];
+}
+
+/**
+ * Rotate a [lat, lng] point around a center point by `angleDeg` (clockwise,
+ * 0 = north). Same local equirectangular approximation as `offsetLatLng`.
+ */
+export function rotateLatLng(
+  lat: number,
+  lng: number,
+  centerLat: number,
+  centerLng: number,
+  angleDeg: number,
+): [number, number] {
+  if (angleDeg === 0) return [lat, lng];
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const cosCenter = Math.cos(toRad(centerLat));
+  const angleRad = toRad(angleDeg);
+  const cosA = Math.cos(angleRad);
+  const sinA = Math.sin(angleRad);
+
+  const dLat = lat - centerLat;
+  const dLng = (lng - centerLng) * cosCenter;
+  const rotatedLat = dLat * cosA - dLng * sinA;
+  const rotatedLng = dLat * sinA + dLng * cosA;
+
+  return [centerLat + rotatedLat, centerLng + rotatedLng / cosCenter];
+}
+
+/**
  * Format an area value as a human-readable string.
  */
 export function formatArea(

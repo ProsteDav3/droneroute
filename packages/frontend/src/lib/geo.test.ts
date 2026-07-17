@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { getAirspaceWarnings, formatAirspaceWarningMessage } from "./geo";
+import {
+  getAirspaceWarnings,
+  formatAirspaceWarningMessage,
+  getHomeDistanceWarning,
+} from "./geo";
 
 // A simple square zone around [50, 14] .. [50.1, 14.1] (lat, lng).
 const SQUARE_ZONE_GEOMETRY: GeoJSON.Geometry = {
@@ -127,5 +131,43 @@ describe("formatAirspaceWarningMessage", () => {
     expect(message).toBe(
       "Trasa letu prochází uvnitř zóny No-fly area (bez uvedeného výškového omezení)",
     );
+  });
+});
+
+describe("getHomeDistanceWarning", () => {
+  it("returns null for fewer than 2 waypoints", () => {
+    expect(
+      getHomeDistanceWarning([{ latitude: 50, longitude: 14, index: 0 }]),
+    ).toBeNull();
+  });
+
+  it("returns null when every waypoint is within the threshold", () => {
+    const waypoints = [
+      { latitude: 50, longitude: 14, index: 0 },
+      { latitude: 50.001, longitude: 14, index: 1 },
+    ];
+    expect(getHomeDistanceWarning(waypoints, 2000)).toBeNull();
+  });
+
+  it("flags the farthest waypoint beyond the threshold", () => {
+    const waypoints = [
+      { latitude: 50, longitude: 14, index: 0 }, // home
+      { latitude: 50.01, longitude: 14, index: 1 }, // ~1.1km
+      { latitude: 50.03, longitude: 14, index: 2 }, // ~3.3km — farthest
+      { latitude: 50.02, longitude: 14, index: 3 }, // ~2.2km
+    ];
+    const warning = getHomeDistanceWarning(waypoints, 2000);
+    expect(warning).not.toBeNull();
+    expect(warning!.waypointIndex).toBe(2);
+    expect(warning!.distanceM).toBeGreaterThan(3000);
+  });
+
+  it("respects a custom threshold", () => {
+    const waypoints = [
+      { latitude: 50, longitude: 14, index: 0 },
+      { latitude: 50.001, longitude: 14, index: 1 }, // ~111m
+    ];
+    expect(getHomeDistanceWarning(waypoints, 50)).not.toBeNull();
+    expect(getHomeDistanceWarning(waypoints, 200)).toBeNull();
   });
 });

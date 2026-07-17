@@ -195,6 +195,65 @@ export function findTerrainCollisions(
   return warnings;
 }
 
+export interface MaxAltitudeViolation {
+  waypointIndex: number;
+  /** How far above the limit this waypoint is, in meters. */
+  excessM: number;
+}
+
+/**
+ * Flags any waypoint flying higher than `maxAglM` above real ground —
+ * e.g. the EU Open category's 120 m AGL limit. Checked per-waypoint (not
+ * sub-sampled like the collision check) since this is a single-number
+ * height-above-a-point comparison, not a "does the path clip a rising
+ * hill" geometry problem.
+ *
+ * For `aboveGroundLevel` mode, the waypoint's own configured height already
+ * IS its AGL height — no terrain data needed at all. The other two modes
+ * need ground elevation to convert configured height into true AGL, same
+ * as `findTerrainCollisions`.
+ */
+export function findMaxAltitudeViolations(
+  waypoints: { index: number; height: number }[],
+  groundElevations: (number | null)[],
+  heightMode: HeightMode,
+  maxAglM: number,
+): MaxAltitudeViolation[] {
+  if (heightMode === "aboveGroundLevel") {
+    return waypoints
+      .filter((wp) => wp.height > maxAglM)
+      .map((wp) => ({
+        waypointIndex: wp.index,
+        excessM: wp.height - maxAglM,
+      }));
+  }
+
+  const launchGroundElevation = groundElevations[0];
+  if (heightMode === "relativeToStartPoint" && launchGroundElevation === null) {
+    return [];
+  }
+
+  const violations: MaxAltitudeViolation[] = [];
+  for (let i = 0; i < waypoints.length; i++) {
+    const ground = groundElevations[i];
+    if (ground === null) continue;
+
+    const absoluteAltitude =
+      heightMode === "EGM96"
+        ? waypoints[i].height
+        : (launchGroundElevation as number) + waypoints[i].height;
+
+    const agl = absoluteAltitude - ground;
+    if (agl > maxAglM) {
+      violations.push({
+        waypointIndex: waypoints[i].index,
+        excessM: agl - maxAglM,
+      });
+    }
+  }
+  return violations;
+}
+
 /**
  * Computes a new height for each waypoint that would give it a constant
  * `targetAglM` clearance above the real ground beneath it — "terrain

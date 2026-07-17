@@ -79,6 +79,8 @@ You can overlay airspace restriction zones on the map to check for drone no-fly 
 - If the planned flight altitude comes within 15 m of the real ground anywhere along the path, a red warning banner appears at the bottom of the map naming the affected waypoint leg and how much clearance is missing — the same kind of banner used for prohibited airspace.
 - This check compares your mission's own height reference against the terrain: for "relativně od vzletového bodu" and "nad mořem (EGM96)" height modes it's a genuine pre-flight risk check. For "nad terénem" (above ground level) mode, the aircraft already follows the terrain live using its own sensors, so no static warning is shown for that mode.
 - Terrain data loads progressively as tiles become available — a brand-new mission or a far-off area may take a moment before the terrain line and warning appear.
+- A separate warning appears if any waypoint flies higher than 120 m above real ground — the EU Open category altitude limit — computed against the same real terrain data (also skipped for above-ground-level mode, for the same reason as the collision check).
+- Another warning appears if any waypoint is more than 2 km from the first waypoint (treated as the launch point). This is a general heads-up threshold, not a certified transmission-range figure for your specific aircraft — actual radio link range varies a lot by drone model, region, and terrain, so treat it as a prompt to double-check your own equipment's range rather than an authoritative limit.
 
 ## DJI Cloud live telemetry
 

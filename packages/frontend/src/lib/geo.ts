@@ -345,3 +345,42 @@ export function formatAirspaceWarningMessage(w: AirspaceWarning): string {
       : "bez uvedeného výškového omezení";
   return `Trasa letu ${verb} ${w.zoneName} (${limit})`;
 }
+
+/**
+ * General-purpose default for the max-distance-from-home warning — NOT a
+ * per-aircraft C2/transmission-range spec (real link range varies hugely by
+ * aircraft, radio standard, region, and terrain — e.g. DJI's OcuSync/O4
+ * family ranges from a few km up to 20+ km depending on model and CE/FCC
+ * region). This is a conservative "you've flown further than most casual
+ * missions" heads-up, not a certified range figure for any specific drone.
+ */
+export const DEFAULT_MAX_HOME_DISTANCE_M = 2000;
+
+/**
+ * Finds the single farthest waypoint from the first waypoint (treated as
+ * the launch/home point) and reports it if beyond `maxDistanceM`. Returns
+ * null when the mission has fewer than 2 waypoints or nothing exceeds the
+ * threshold — there's at most one such warning per mission (the worst
+ * offender), not one per waypoint.
+ */
+export function getHomeDistanceWarning(
+  waypoints: { latitude: number; longitude: number; index: number }[],
+  maxDistanceM: number = DEFAULT_MAX_HOME_DISTANCE_M,
+): { waypointIndex: number; distanceM: number } | null {
+  if (waypoints.length < 2) return null;
+  const home = waypoints[0];
+
+  let worst: { waypointIndex: number; distanceM: number } | null = null;
+  for (const wp of waypoints.slice(1)) {
+    const distanceM = haversineDistance(
+      home.latitude,
+      home.longitude,
+      wp.latitude,
+      wp.longitude,
+    );
+    if (distanceM > maxDistanceM && (!worst || distanceM > worst.distanceM)) {
+      worst = { waypointIndex: wp.index, distanceM };
+    }
+  }
+  return worst;
+}

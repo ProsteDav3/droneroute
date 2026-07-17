@@ -6,6 +6,7 @@ import {
   buildFlightPathSamples,
   findTerrainCollisions,
   computeTerrainFollowingHeights,
+  findMaxAltitudeViolations,
   MIN_TERRAIN_CLEARANCE_M,
 } from "./terrain";
 
@@ -273,5 +274,68 @@ describe("computeTerrainFollowingHeights", () => {
       "relativeToStartPoint",
     );
     expect(heights).toEqual({});
+  });
+});
+
+describe("findMaxAltitudeViolations", () => {
+  it("checks aboveGroundLevel height directly, no terrain data needed", () => {
+    const violations = findMaxAltitudeViolations(
+      [
+        { index: 0, height: 100 },
+        { index: 1, height: 130 },
+      ],
+      [],
+      "aboveGroundLevel",
+      120,
+    );
+    expect(violations).toEqual([{ waypointIndex: 1, excessM: 10 }]);
+  });
+
+  it("converts relativeToStartPoint height to true AGL via ground elevation", () => {
+    // Launch ground 100m; WP1 height 90 -> absolute 190; ground there 50m
+    // -> AGL 140m, 20m over the 120m limit.
+    const violations = findMaxAltitudeViolations(
+      [
+        { index: 0, height: 30 },
+        { index: 1, height: 90 },
+      ],
+      [100, 50],
+      "relativeToStartPoint",
+      120,
+    );
+    expect(violations).toEqual([{ waypointIndex: 1, excessM: 20 }]);
+  });
+
+  it("compares EGM96 (absolute) height directly against ground elevation", () => {
+    const violations = findMaxAltitudeViolations(
+      [{ index: 0, height: 450 }],
+      [300],
+      "EGM96",
+      120,
+    );
+    expect(violations).toEqual([{ waypointIndex: 0, excessM: 30 }]);
+  });
+
+  it("returns no violations when every waypoint stays under the limit", () => {
+    const violations = findMaxAltitudeViolations(
+      [{ index: 0, height: 100 }],
+      [],
+      "aboveGroundLevel",
+      120,
+    );
+    expect(violations).toEqual([]);
+  });
+
+  it("skips waypoints with unknown ground elevation instead of false-flagging them", () => {
+    const violations = findMaxAltitudeViolations(
+      [
+        { index: 0, height: 30 },
+        { index: 1, height: 200 },
+      ],
+      [100, null],
+      "relativeToStartPoint",
+      120,
+    );
+    expect(violations).toEqual([]);
   });
 });

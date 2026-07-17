@@ -215,12 +215,15 @@ export async function listBoundDevices(
 }
 
 export interface DjiHmsMessage {
-  device_sn: string;
+  /** The platform's actual field name is `sn`, not `device_sn`. */
+  sn: string;
   key: string;
   level: number;
   module: number;
-  create_time: number;
-  args?: Record<string, string>;
+  /** Formatted string ("2026-07-16 16:56:51"), not an epoch. */
+  create_time: string;
+  message_zh: string;
+  message_en: string;
 }
 
 /**

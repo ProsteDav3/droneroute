@@ -450,7 +450,7 @@ describe("GET /api/dji-cloud/hms", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns HMS messages", async () => {
+  it("returns HMS messages with human-readable text", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(loginOk())
@@ -458,7 +458,19 @@ describe("GET /api/dji-cloud/hms", () => {
         jsonResponse({
           code: 0,
           message: "success",
-          data: { list: [{ device_sn: "SN1", key: "hms.gimbal", level: 2 }] },
+          data: {
+            list: [
+              {
+                sn: "SN1",
+                key: "fpv_tip_0x1610000F",
+                level: 2,
+                module: 3,
+                create_time: "2026-07-16 16:46:24",
+                message_zh: "无法起飞",
+                message_en: "Critical low battery voltage. Unable to take off.",
+              },
+            ],
+          },
         }),
       );
     vi.stubGlobal("fetch", fetchMock);
@@ -469,6 +481,10 @@ describe("GET /api/dji-cloud/hms", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.messages).toHaveLength(1);
+    expect(res.body.messages[0].message_en).toBe(
+      "Critical low battery voltage. Unable to take off.",
+    );
+    expect(res.body.messages[0].sn).toBe("SN1");
   });
 });
 

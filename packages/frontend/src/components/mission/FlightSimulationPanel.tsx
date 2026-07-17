@@ -59,19 +59,17 @@ export function FlightSimulationPanel() {
 
   if (waypoints.length < 2) return null;
 
-  // Both this panel and TemplateConfigPanel render bottom-center over the
-  // map — TemplateConfigPanel lives inside Mapbox's own `.mapboxgl-map` div,
-  // which the library gives its own `z-index: 0` stacking context, so no
-  // z-index on our side can make it outrank a sibling like this one even
-  // though this panel's z-10 reads lower than the template panel's z-20.
-  // Hiding this panel whenever a template is being placed or edited avoids
-  // the two silently overlapping and swallowing clicks meant for the
-  // template panel's Apply/Cancel buttons.
+  // TemplateConfigPanel renders bottom-center, inside Mapbox's own
+  // `.mapboxgl-map` div, which the library gives its own `z-index: 0`
+  // stacking context — no z-index on our side can make a sibling like this
+  // panel outrank it. Hiding this panel whenever a template is being placed
+  // or edited avoids the two silently overlapping and swallowing clicks
+  // meant for the template panel's Apply/Cancel buttons.
   if (templateMode || editingTemplateGroupId) return null;
 
   if (!isActive) {
     return (
-      <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10">
+      <div className="absolute bottom-16 right-4 z-10">
         <Button
           variant="secondary"
           size="sm"
@@ -92,7 +90,7 @@ export function FlightSimulationPanel() {
     : "";
 
   return (
-    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-3 rounded-lg bg-background/95 border border-border shadow-lg px-3 py-2">
+    <div className="absolute bottom-16 right-4 z-10 flex items-center gap-3 rounded-lg bg-background/95 border border-border shadow-lg px-3 py-2">
       <Button
         variant="ghost"
         size="icon"

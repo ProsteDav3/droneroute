@@ -43,7 +43,14 @@ export function DjiCloudOpsPanel() {
   );
 
   useEffect(() => {
-    if (djiCloudEnabled) void fetchDevicesAndHms();
+    if (!djiCloudEnabled) return;
+    void fetchDevicesAndHms();
+    // A device that connects after this panel already mounted (the common
+    // case — a pilot binds/powers on the RC well after opening SkyRoute)
+    // would otherwise never show up without a full page reload, since the
+    // fetch above only runs once.
+    const interval = setInterval(() => void fetchDevicesAndHms(), 20_000);
+    return () => clearInterval(interval);
   }, [djiCloudEnabled, fetchDevicesAndHms]);
 
   if (!djiCloudEnabled) return null;
@@ -144,11 +151,13 @@ export function DjiCloudOpsPanel() {
             <div className="pt-1 space-y-1 border-t border-border/50">
               {hmsMessages.slice(0, 5).map((msg, i) => (
                 <div
-                  key={`${msg.device_sn}-${msg.key}-${i}`}
+                  key={`${msg.sn}-${msg.key}-${i}`}
                   className="flex items-start gap-1.5 text-[10px] text-amber-400"
                 >
                   <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
-                  <span className="break-words">{msg.key}</span>
+                  <span className="break-words">
+                    {msg.message_en || msg.message_zh || msg.key}
+                  </span>
                 </div>
               ))}
             </div>

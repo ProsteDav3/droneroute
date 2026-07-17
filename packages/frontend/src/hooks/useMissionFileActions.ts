@@ -220,9 +220,22 @@ export function useMissionFileActions({
       // dependencies the app otherwise never needs, so it's excluded from
       // the main bundle and only fetched when a report is actually requested.
       const { generateMissionReportPdf } = await import("@/lib/pdfReport");
-      const { captureMapSnapshot } = await import("@/lib/pdfSnapshot");
+      const { captureMissionMapSnapshot } = await import("@/lib/pdfSnapshot");
+      const boundsPoints: [number, number][] = [
+        ...waypoints.map(
+          (wp) => [wp.longitude, wp.latitude] as [number, number],
+        ),
+        ...pois.map((p) => [p.longitude, p.latitude] as [number, number]),
+        ...obstacles.flatMap((o) =>
+          o.vertices.map((v) => [v[1], v[0]] as [number, number]),
+        ),
+      ];
       const mapSnapshot = mapRef.current
-        ? captureMapSnapshot(mapRef.current)
+        ? await captureMissionMapSnapshot(
+            mapRef.current,
+            boundsPoints,
+            waypoints,
+          )
         : undefined;
       const doc = generateMissionReportPdf({
         missionName,

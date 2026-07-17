@@ -9,6 +9,25 @@ import {
 import { describeDroneAndPayload } from "@/lib/droneModels";
 import { formatDistance, formatHeight } from "@/lib/units";
 import { addMapSnapshotToPdf, type MapSnapshot } from "@/lib/pdfSnapshot";
+import {
+  INTER_REGULAR_TTF_BASE64,
+  INTER_BOLD_TTF_BASE64,
+} from "@/lib/pdfFonts";
+
+/**
+ * Registers the Czech-safe Inter subset and switches the document to it.
+ * jsPDF's built-in core fonts (Helvetica etc.) only cover WinAnsi/Latin-1 —
+ * without this, every caron/ring character (čďěňřšťůž) silently drops or
+ * mis-renders, which is what produced reports reading "Po et bodo trasy"
+ * instead of "Počet bodů trasy".
+ */
+function useInterFont(doc: jsPDF): void {
+  doc.addFileToVFS("Inter-Regular.ttf", INTER_REGULAR_TTF_BASE64);
+  doc.addFont("Inter-Regular.ttf", "Inter", "normal");
+  doc.addFileToVFS("Inter-Bold.ttf", INTER_BOLD_TTF_BASE64);
+  doc.addFont("Inter-Bold.ttf", "Inter", "bold");
+  doc.setFont("Inter", "normal");
+}
 
 export interface MissionReportInput {
   missionName: string;
@@ -89,6 +108,7 @@ export function generateMissionReportPdf({
   mapSnapshot,
 }: MissionReportInput): jsPDF {
   const doc = new jsPDF();
+  useInterFont(doc);
   const { droneLabel, payloadLabel } = describeDroneAndPayload(config);
   const { distanceM, timeS } = estimateFlightStats(
     waypoints,
@@ -100,11 +120,13 @@ export function generateMissionReportPdf({
   const maxAltitude = altitudes.length ? Math.max(...altitudes) : 0;
 
   const pageWidth = doc.internal.pageSize.getWidth();
-  const logoX = pageWidth - 20;
-  drawSkyRouteLogo(doc, logoX, 13, 8);
-  doc.setFontSize(9);
+  const logoX = pageWidth - 24;
+  drawSkyRouteLogo(doc, logoX, 15, 12);
+  doc.setFont("Inter", "bold");
+  doc.setFontSize(11);
   doc.setTextColor(0, 148, 196);
-  doc.text("SkyRoute", logoX, 21, { align: "center" });
+  doc.text("SkyRoute", logoX, 25, { align: "center" });
+  doc.setFont("Inter", "normal");
   doc.setTextColor(0);
 
   doc.setFontSize(18);
@@ -119,7 +141,7 @@ export function generateMissionReportPdf({
   autoTable(doc, {
     startY: 38,
     theme: "plain",
-    styles: { fontSize: 10 },
+    styles: { fontSize: 10, font: "Inter" },
     body: [
       ["Dron", payloadLabel ? `${droneLabel} (${payloadLabel})` : droneLabel],
       ["Počet bodů trasy", String(waypoints.length)],
@@ -163,12 +185,13 @@ export function generateMissionReportPdf({
     startY: afterOverviewY,
     head: [["#", "Lat", "Lng", "Výška", "Akce"]],
     body: rows,
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [0, 120, 160] },
+    styles: { fontSize: 8, font: "Inter" },
+    headStyles: { fillColor: [0, 120, 160], font: "Inter", fontStyle: "bold" },
   });
 
   if (waypoints.length > MAX_WAYPOINT_ROWS) {
     const finalY = getLastAutoTableY(doc);
+    doc.setFont("Inter", "normal");
     doc.setFontSize(8);
     doc.setTextColor(120);
     doc.text(

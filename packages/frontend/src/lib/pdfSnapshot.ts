@@ -1,6 +1,15 @@
 import type { jsPDF } from "jspdf";
 import type mapboxgl from "mapbox-gl";
 
+/** A waypoint's projected position within the captured canvas's own pixel
+ * space (not the PDF's mm coordinate space — the caller scales that
+ * separately once the image's placed size in the PDF is known). */
+export interface SnapshotMarker {
+  x: number;
+  y: number;
+  index: number;
+}
+
 /**
  * A captured map frame plus its pixel dimensions, so it can be embedded into
  * a PDF at the right aspect ratio without an async image load.
@@ -10,6 +19,12 @@ export interface MapSnapshot {
   dataUrl: string;
   width: number;
   height: number;
+  /** Waypoint positions projected at the same moment as the capture, so
+   * numbered markers can be drawn on top of the embedded image afterward —
+   * `canvas.toDataURL()` only rasterizes the WebGL canvas itself, never the
+   * DOM-based `<Marker>` overlays the live map uses for waypoint numbers,
+   * so without this the map image in a report shows terrain but no route. */
+  waypointPixels?: SnapshotMarker[];
 }
 
 /**
@@ -29,6 +44,67 @@ export function captureMapSnapshot(map: mapboxgl.Map): MapSnapshot {
     width: canvas.width,
     height: canvas.height,
   };
+}
+
+/**
+ * Temporarily fits the live map to `boundsPoints`, waits for the new
+ * viewport to finish loading, captures a snapshot plus each waypoint's
+ * projected pixel position, then restores the map's original view —
+ * generating a report should never leave a pilot's live map panned/zoomed
+ * somewhere else. Falls back to capturing whatever the map currently shows
+ * (no view change) when there's nothing to fit to.
+ */
+export async function captureMissionMapSnapshot(
+  map: mapboxgl.Map,
+  boundsPoints: [number, number][], // [lng, lat][]
+  waypoints: { latitude: number; longitude: number }[],
+): Promise<MapSnapshot> {
+  if (boundsPoints.length === 0) {
+    return captureMapSnapshot(map);
+  }
+
+  const originalCenter = map.getCenter();
+  const originalZoom = map.getZoom();
+  const originalBearing = map.getBearing();
+  const originalPitch = map.getPitch();
+
+  let minLng = Infinity,
+    maxLng = -Infinity,
+    minLat = Infinity,
+    maxLat = -Infinity;
+  for (const [lng, lat] of boundsPoints) {
+    if (lng < minLng) minLng = lng;
+    if (lng > maxLng) maxLng = lng;
+    if (lat < minLat) minLat = lat;
+    if (lat > maxLat) maxLat = lat;
+  }
+
+  try {
+    map.fitBounds(
+      [
+        [minLng, minLat],
+        [maxLng, maxLat],
+      ],
+      { padding: 60, maxZoom: 18, animate: false },
+    );
+    await new Promise<void>((resolve) => {
+      map.once("idle", () => resolve());
+    });
+
+    const snapshot = captureMapSnapshot(map);
+    const waypointPixels = waypoints.map((wp, index) => {
+      const point = map.project([wp.longitude, wp.latitude]);
+      return { x: point.x, y: point.y, index };
+    });
+    return { ...snapshot, waypointPixels };
+  } finally {
+    map.jumpTo({
+      center: originalCenter,
+      zoom: originalZoom,
+      bearing: originalBearing,
+      pitch: originalPitch,
+    });
+  }
 }
 
 /**
@@ -55,5 +131,28 @@ export function addMapSnapshotToPdf(
   }
 
   doc.addImage(snapshot.dataUrl, "PNG", x, y, width, height);
+
+  if (snapshot.waypointPixels && snapshot.waypointPixels.length > 0) {
+    const scaleX = width / snapshot.width;
+    const scaleY = height / snapshot.height;
+    const savedFontSize = doc.getFontSize();
+    const savedTextColor = doc.getTextColor();
+    doc.setFillColor(0, 148, 196);
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(5);
+    for (const marker of snapshot.waypointPixels) {
+      const px = x + marker.x * scaleX;
+      const py = y + marker.y * scaleY;
+      // A marker can fall outside the captured frame if fitBounds' padding
+      // rounded differently than expected at the aspect ratio jsPDF ended
+      // up placing the image at — skip rather than draw off the image.
+      if (px < x || px > x + width || py < y || py > y + height) continue;
+      doc.circle(px, py, 1.6, "F");
+      doc.text(String(marker.index + 1), px, py + 0.6, { align: "center" });
+    }
+    doc.setFontSize(savedFontSize);
+    doc.setTextColor(savedTextColor);
+  }
+
   return y + height;
 }

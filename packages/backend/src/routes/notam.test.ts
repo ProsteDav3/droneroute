@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import express from "express";
 import request from "supertest";
+import { initDb } from "../models/db.js";
 import { notamRoutes } from "./notam.js";
 
 describe("GET /api/notam", () => {
@@ -8,6 +9,7 @@ describe("GET /api/notam", () => {
 
   beforeAll(() => {
     process.env.NODE_ENV = "test";
+    initDb();
     app = express();
     app.use("/api/notam", notamRoutes);
   });

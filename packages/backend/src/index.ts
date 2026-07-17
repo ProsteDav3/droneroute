@@ -91,12 +91,15 @@ app.use(
 );
 
 // Helmet dropped Permissions-Policy support (no browser standardized it the
-// way Feature-Policy was), so it's set directly here. Disables three
-// sensitive browser APIs the app has no legitimate use for.
+// way Feature-Policy was), so it's set directly here. Camera/microphone are
+// disabled outright — the app has no legitimate use for them. Geolocation
+// is allowed for our own origin only: the map's "go to my location"
+// control needs it, and `geolocation=()` (empty allowlist) blocks it
+// everywhere, including same-origin, not just third-party embeds.
 app.use((_req, res, next) => {
   res.setHeader(
     "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=()",
+    "camera=(), microphone=(), geolocation=(self)",
   );
   next();
 });

@@ -26,6 +26,7 @@ When you switch to 3D:
 
 - **Terrain** — real-world elevation data from Mapbox DEM renders mountains and valleys.
 - **Extruded buildings** — 3D buildings appear at zoom level 14+, with height and footprint from OpenStreetMap data.
+- **Extruded `Budova` objects** — a building you've drawn by hand or converted from the map renders as a real 3D box at its actual height too, not a flat rectangle on the ground.
 - **Elevated flight path** — the flight path line floats at each waypoint's configured altitude, interpolating between segments.
 - **Elevated markers** — waypoint and POI markers are positioned at their configured height above ground.
 - **Drop lines** — subtle vertical lines connect each waypoint marker down to the ground.

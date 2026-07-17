@@ -166,6 +166,23 @@ function SceneSetup({ is3D, mapStyle }: { is3D: boolean; mapStyle: string }) {
   return null;
 }
 
+/**
+ * Mapbox's default Shift+drag "box zoom" interaction claims the Shift
+ * modifier at mousedown, which also swallows the plain Shift+click we use
+ * to accumulate building fragments for merging — disable it so Shift is
+ * free for that instead.
+ */
+function DisableBoxZoom() {
+  const { current: map } = useMap();
+
+  useEffect(() => {
+    if (!map) return;
+    map.getMap().boxZoom.disable();
+  }, [map]);
+
+  return null;
+}
+
 /** Adds a geocoding search box to the map (top-left). */
 function GeocoderControl() {
   const { current: map } = useMap();
@@ -798,6 +815,7 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
           maxzoom={14}
         />
         <FitBoundsOnLoad />
+        <DisableBoxZoom />
         <GeocoderControl />
         <GeolocateControl />
         <FlyToTargetHandler />
@@ -819,7 +837,7 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
           <ObstaclePolygon key={obstacle.id} obstacle={obstacle} />
         ))}
         {buildings.map((building) => (
-          <BuildingPolygon key={building.id} building={building} />
+          <BuildingPolygon key={building.id} building={building} is3D={is3D} />
         ))}
         {waypoints.map((wp) => (
           <WaypointMarker key={wp.index} waypoint={wp} is3D={is3D} />

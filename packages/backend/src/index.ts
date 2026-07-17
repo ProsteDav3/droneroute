@@ -1,6 +1,7 @@
 import express, { type ErrorRequestHandler } from "express";
 import cors from "cors";
 import helmet from "helmet";
+import pinoHttp from "pino-http";
 import path from "path";
 import { fileURLToPath } from "url";
 import swaggerUi from "swagger-ui-express";
@@ -20,9 +21,11 @@ import { djiCloudRoutes } from "./routes/djiCloud.js";
 import { flightLogRoutes } from "./routes/flightLogs.js";
 import { riskAssessmentRoutes } from "./routes/riskAssessments.js";
 import { permitRoutes } from "./routes/permits.js";
+import { healthRoutes } from "./routes/health.js";
 import { isDjiCloudConfigured } from "./services/djiCloud.js";
 import { globalLimiter } from "./middleware/rateLimit.js";
 import { resolveDefaultMapView } from "./lib/config.js";
+import { logger, httpLogRedactPaths, shouldSkipHttpLog } from "./lib/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -32,18 +35,59 @@ const PORT = process.env.PORT || 3001;
 // Trust reverse proxy (e.g. nginx, Docker) so rate limiting uses real client IP
 app.set("trust proxy", 1);
 
-// Security headers. CSP and COEP are disabled because the SPA embeds Mapbox GL
-// (web workers loaded from blob: URLs) and, in cloud mode, Google OAuth — a strict
-// CSP/COEP breaks both. All other baseline headers (nosniff, frameguard, HSTS,
-// referrer-policy, …) are applied. Tightening CSP is tracked as a follow-up.
+// Security headers. CSP is scoped to the hosts the SPA actually talks to,
+// tightened wherever the directive allows it:
+// - Mapbox GL (tiles/styles/geocoding over `connect-src`, its web workers
+//   loaded from blob: URLs over `worker-src`). `img-src` allows `https:`
+//   broadly rather than an exact host list — Mapbox serves raster/vector
+//   tiles and marker imagery from several of its own subdomains that
+//   aren't practical to enumerate exhaustively.
+// - Google Identity Services (cloud mode's "Sign in with Google" button),
+//   which injects its own <script> from accounts.google.com and renders its
+//   button/One Tap prompt in a same-origin-adjacent iframe.
+// - Google Fonts (index.html's Inter stylesheet + font files). `style-src`
+//   still needs 'unsafe-inline' for Tailwind/UI-library inline styles.
+// COEP stays disabled — it's unrelated to CSP and enabling it has previously
+// broken the Mapbox GL / Google OAuth combination in this app.
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "https://accounts.google.com"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https:"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+        connectSrc: [
+          "'self'",
+          "https://api.mapbox.com",
+          "https://events.mapbox.com",
+          "https://*.tiles.mapbox.com",
+          "https://accounts.google.com",
+        ],
+        workerSrc: ["'self'", "blob:"],
+        frameSrc: ["'self'", "https://accounts.google.com"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+      },
+    },
     crossOriginEmbedderPolicy: false,
     // Allow Google OAuth popups (cloud mode) to message back to the opener.
     crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   }),
 );
+
+// Helmet dropped Permissions-Policy support (no browser standardized it the
+// way Feature-Policy was), so it's set directly here. Disables three
+// sensitive browser APIs the app has no legitimate use for.
+app.use((_req, res, next) => {
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()",
+  );
+  next();
+});
 
 // CORS configuration. The SPA is served same-origin (and dev uses the Vite /api
 // proxy), so cross-origin access is only needed for split deployments. When
@@ -63,6 +107,21 @@ app.use(
 app.use(express.json({ limit: "50mb" }));
 app.use(globalLimiter);
 
+// Per-request access logging. See lib/logger.ts for why the Authorization
+// header is redacted and why /api/health + /api/shared/* are skipped.
+app.use(
+  pinoHttp({
+    logger,
+    redact: {
+      paths: httpLogRedactPaths,
+      censor: "[redacted]",
+    },
+    autoLogging: {
+      ignore: (req) => shouldSkipHttpLog(req.url),
+    },
+  }),
+);
+
 // Serve frontend static files in production
 const frontendDist = path.join(__dirname, "../../frontend/dist");
 app.use(express.static(frontendDist));
@@ -81,12 +140,8 @@ app.use("/api/dji-cloud", djiCloudRoutes);
 app.use("/api/flight-logs", flightLogRoutes);
 app.use("/api/risk-assessments", riskAssessmentRoutes);
 app.use("/api/permits", permitRoutes);
+app.use("/api", healthRoutes);
 app.use("/api", sharedRoutes);
-
-// Health check
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
 
 // API docs (Swagger UI + raw spec) — non-production only. The generated
 // spec reflects the full internal API shape, so it stays off in production
@@ -134,7 +189,7 @@ app.get("/{*splat}", (_req, res) => {
 // Global error handler — log the full error server-side, never leak details
 // (stack traces, SQL, internal paths) to the client.
 const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
-  console.error("Unhandled error:", err);
+  logger.error({ err }, "Unhandled error");
   if (res.headersSent) {
     next(err);
     return;
@@ -155,10 +210,10 @@ app.use(errorHandler);
 // Initialize database and start server
 initDb();
 app.listen(PORT, () => {
-  console.log(`DroneRoute server running on http://localhost:${PORT}`);
+  logger.info(`DroneRoute server running on http://localhost:${PORT}`);
   const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
   const adminEmail = process.env.ADMIN_EMAIL || "";
-  console.log(
+  logger.info(
     `Mode: ${selfHosted ? "self-hosted" : "cloud"}${!selfHosted && adminEmail ? ` (admin: ${adminEmail})` : ""}`,
   );
 });

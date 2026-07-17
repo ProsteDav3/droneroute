@@ -36,7 +36,7 @@ beforeAll(async () => {
       "INSERT INTO users (id, email, password_hash, email_verified) VALUES (?, ?, ?, 1)",
     )
     .run(otherId, "presets-other@test.dev", hashPassword("secret123"));
-  otherToken = generateToken(otherId, false);
+  otherToken = generateToken(otherId, false, 0);
 });
 
 describe("template presets — auth", () => {

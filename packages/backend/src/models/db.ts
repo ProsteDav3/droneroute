@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { logger } from "../lib/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH =
@@ -225,6 +226,67 @@ export function initDb(): void {
     `CREATE INDEX IF NOT EXISTS idx_mission_permits_mission_id ON mission_permits(mission_id)`,
   );
 
+  // Migration: create audit_log table — records admin actions that mutate
+  // state (ban, unban, promote, demote, create user), for accountability.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      admin_user_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_user_id TEXT,
+      detail TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // Migration: create password_reset_tokens table. Only the hash of the
+  // reset token is ever stored — the raw token exists solely in the emailed
+  // (or console-logged) link, never at rest, so a DB read can't be turned
+  // into an account takeover.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token_hash ON password_reset_tokens(token_hash)`,
+  );
+
+  // Migration: add totp_secret column if missing (for existing DBs) — holds
+  // the pending or confirmed TOTP secret for 2FA.
+  try {
+    database.exec(`ALTER TABLE users ADD COLUMN totp_secret TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Migration: add totp_enabled column if missing (for existing DBs)
+  try {
+    database.exec(
+      `ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0`,
+    );
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Migration: add token_version column if missing (for existing DBs) —
+  // embedded in every issued JWT; bumping it (on password change/reset)
+  // invalidates every previously issued token for that account immediately,
+  // without needing a server-side session/token blocklist.
+  try {
+    database.exec(
+      `ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0`,
+    );
+  } catch {
+    // Column already exists — ignore
+  }
+
   // Migration: add folder column if missing (for existing DBs) — free-text,
   // single-folder-per-mission tag for organizing the mission list (separate
   // from the client/project field).
@@ -310,11 +372,11 @@ export function initDb(): void {
           "INSERT INTO users (id, email, password_hash, email_verified, is_admin) VALUES (?, ?, ?, 1, 1)",
         )
         .run(id, adminEmail, passwordHash);
-      console.log(
+      logger.info(
         `Dev account created for ${adminEmail} (password equals the email — change it after first login)`,
       );
     }
   }
 
-  console.log("Database initialized at", DB_PATH);
+  logger.info(`Database initialized at ${DB_PATH}`);
 }

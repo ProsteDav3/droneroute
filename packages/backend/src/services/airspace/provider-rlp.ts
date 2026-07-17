@@ -39,6 +39,7 @@
  */
 
 import type { AirspaceProvider, AirspaceZone, BBox } from "./types.js";
+import { logger } from "../../lib/logger.js";
 
 const INDEX_URL = "https://aim.rlp.cz/?lang=en&p=uas-gz";
 const AIM_ORIGIN = "https://aim.rlp.cz";
@@ -196,7 +197,7 @@ async function downloadGrid(
   dataUrl: string,
   dataset: (typeof GRID_DATASETS)[number],
 ): Promise<AirspaceZone[]> {
-  console.log(`RLP: downloading ${dataUrl}`);
+  logger.info(`RLP: downloading ${dataUrl}`);
 
   const res = await fetch(dataUrl);
   if (!res.ok) {
@@ -231,7 +232,7 @@ async function downloadGrid(
     });
   });
 
-  console.log(
+  logger.info(
     `RLP: parsed ${zones.length} ${dataset.logTag} cells${skipped > 0 ? ` (skipped ${skipped} with invalid geometry)` : ""}`,
   );
 
@@ -263,7 +264,10 @@ async function downloadAndParse(): Promise<AirspaceZone[]> {
     if (r.status === "fulfilled") {
       zones.push(...r.value);
     } else {
-      console.error("RLP: failed to fetch/parse a grid dataset:", r.reason);
+      logger.error(
+        { err: r.reason },
+        "RLP: failed to fetch/parse a grid dataset",
+      );
     }
   }
 
@@ -290,7 +294,7 @@ async function getCachedZones(): Promise<AirspaceZone[]> {
     })
     .catch((err) => {
       fetchInProgress = null;
-      console.error("RLP: failed to fetch/parse dataset:", err);
+      logger.error({ err }, "RLP: failed to fetch/parse dataset");
       return [];
     });
 

@@ -443,6 +443,17 @@ export interface PaginatedResponse<T> {
   total: number;
 }
 
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  detail: string | null;
+  createdAt: string;
+  adminUserId: string;
+  adminEmail: string | null;
+  targetUserId: string | null;
+  targetEmail: string | null;
+}
+
 // ── User Preferences ────────────────────────────────────
 
 export interface VisualizationPreferences {

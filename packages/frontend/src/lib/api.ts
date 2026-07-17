@@ -1,4 +1,8 @@
-import type { AdminUser, PaginatedResponse } from "@droneroute/shared";
+import type {
+  AdminUser,
+  AuditLogEntry,
+  PaginatedResponse,
+} from "@droneroute/shared";
 import { useMissionStore } from "@/store/missionStore";
 import { useAuthStore } from "@/store/authStore";
 
@@ -114,4 +118,12 @@ export const adminApi = {
     api.post<{ message: string }>(`/admin/users/${id}/promote`),
   demoteUser: (id: string) =>
     api.post<{ message: string }>(`/admin/users/${id}/demote`),
+  getAuditLog: (params: { page?: number; perPage?: number } = {}) => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.perPage) query.set("perPage", String(params.perPage));
+    return api.get<PaginatedResponse<AuditLogEntry>>(
+      `/admin/audit-log?${query.toString()}`,
+    );
+  },
 };

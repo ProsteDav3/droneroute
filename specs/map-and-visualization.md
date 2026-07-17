@@ -15,6 +15,7 @@ An interactive map where you plan flights and see everything at a glance.
 - Use the floating toolbar to switch between waypoint mode, POI mode, and template tools.
 - View an elevation graph below the waypoint list that shows altitude changes across the flight, with the real ground elevation along the path overlaid as a shaded terrain profile.
 - See live previews when configuring templates before placing them.
+- Hide the sidebar for a fullscreen map view — click the collapse icon next to the SkyRoute logo, or press **Tab** (only while no input/button is focused, so it doesn't interfere with normal keyboard navigation). A small button in the map's top-left corner brings the sidebar back.
 
 ## 3D mode
 

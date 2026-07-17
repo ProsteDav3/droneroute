@@ -19,6 +19,7 @@ Quick reference for all available keyboard shortcuts.
 | **H**                                           | Enter building drawing mode                      |
 | **M**                                           | Toggle the measure tool                          |
 | **A**                                           | Toggle airspace restriction zones overlay        |
+| **Tab**                                         | Hide/show the sidebar for a fullscreen map view  |
 | **Escape**                                      | Cancel the current action or deselect everything |
 | **Delete** / **Backspace**                      | Remove the selected waypoint, POI, or obstacle   |
 | **Ctrl+A** / **Cmd+A**                          | Select all waypoints                             |

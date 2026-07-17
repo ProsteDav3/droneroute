@@ -183,6 +183,38 @@ function DisableBoxZoom() {
   return null;
 }
 
+/**
+ * Occasionally the map's raster/terrain tiles fail to load and never
+ * recover on their own — vector layers (roads, labels) still render since
+ * they come from a different source, leaving a mostly-blank map that looks
+ * stuck. There's no reliable way to detect this in advance, so this just
+ * reports it up (see MapView's recovery button) once Mapbox itself fires a
+ * tile/source error — mirrors MapLoadNotifier's up-callback pattern since
+ * useMap() only works for actual children of <Map>.
+ */
+function MapErrorWatcher({ onTileError }: { onTileError: () => void }) {
+  const { current: map } = useMap();
+
+  useEffect(() => {
+    if (!map) return;
+    const m = map.getMap();
+
+    const handleError = (e: { error?: Error }) => {
+      const message = e.error?.message ?? "";
+      if (/tile|source|network|fetch/i.test(message)) {
+        onTileError();
+      }
+    };
+
+    m.on("error", handleError);
+    return () => {
+      m.off("error", handleError);
+    };
+  }, [map, onTileError]);
+
+  return null;
+}
+
 /** Adds a geocoding search box to the map (top-left). */
 function GeocoderControl() {
   const { current: map } = useMap();
@@ -661,6 +693,9 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
   const [buildingPopup, setBuildingPopup] = useState<BuildingPopupData | null>(
     null,
   );
+  const mapInstanceRef = useRef<mapboxgl.Map | null>(null);
+  const [mapStuck, setMapStuck] = useState(false);
+  const handleTileError = useCallback(() => setMapStuck(true), []);
 
   const cursorClass =
     templateMode === "pencil" || templateMode === "corridor"
@@ -805,7 +840,13 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
         // the snapshot comes back blank.
         preserveDrawingBuffer={true}
       >
-        <MapLoadNotifier onMapLoad={onMapLoad} />
+        <MapLoadNotifier
+          onMapLoad={(m) => {
+            mapInstanceRef.current = m;
+            onMapLoad?.(m);
+          }}
+        />
+        <MapErrorWatcher onTileError={handleTileError} />
         {/* DEM source — always present so terrain prop can reference it */}
         <Source
           id="mapbox-dem"
@@ -1000,6 +1041,26 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
             );
           })()}
       </Map>
+
+      {mapStuck && (
+        <button
+          className="absolute top-14 left-1/2 -translate-x-1/2 z-20 rounded bg-amber-900/90 border border-amber-500/50 px-3 py-1.5 text-xs text-amber-100 backdrop-blur-sm shadow-lg"
+          onClick={() => {
+            const m = mapInstanceRef.current;
+            const style = m?.getStyle();
+            if (m && style) {
+              m.setStyle(style, {
+                diff: false,
+                localFontFamily: undefined,
+                localIdeographFontFamily: undefined,
+              });
+            }
+            setMapStuck(false);
+          }}
+        >
+          Mapa se možná nenačetla správně — Obnovit
+        </button>
+      )}
 
       {/* Style switcher + 2D/3D toggle */}
       <div className="absolute bottom-4 left-4 z-10 flex gap-1">

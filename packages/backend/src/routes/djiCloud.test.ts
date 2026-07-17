@@ -134,7 +134,7 @@ describe("POST /api/dji-cloud/upload", () => {
       .send(validBody);
 
     expect(res.status).toBe(200);
-    expect(res.body.waylineName).toBe("Cloud_test");
+    expect(res.body.waylineName).toBe("Cloud test");
 
     // Login call shape
     const [loginUrl, loginInit] = fetchMock.mock.calls[0];
@@ -149,8 +149,34 @@ describe("POST /api/dji-cloud/upload", () => {
     );
     expect(uploadInit.headers["x-auth-token"]).toBe("dji-token");
     const file = uploadInit.body.get("file");
-    expect(file.name).toBe("Cloud_test.kmz");
+    expect(file.name).toBe("Cloud test.kmz");
     expect(file.size).toBeGreaterThan(0);
+  });
+
+  it("strips characters DJI Cloud rejects in a wayline name (underscore, dot, etc.)", async () => {
+    // DJI Cloud's own validation regex is `^[^<>:"/|?*._\\]+$` — a name
+    // that slips past our sanitizer with one of these characters uploads
+    // "successfully" but then breaks Pilot 2's own library listing for the
+    // whole workspace (error 210002) the next time anything reads it back.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: "" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/upload")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...validBody, name: "Test_new.v2" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.waylineName).not.toMatch(/[<>:"/|?*._\\]/);
+
+    const [, uploadInit] = fetchMock.mock.calls[1];
+    const file = uploadInit.body.get("file");
+    expect(file.name).toBe("Test-new-v2.kmz");
   });
 
   it("overwrites in place (same name) when a duplicate is found in the library", async () => {
@@ -164,7 +190,7 @@ describe("POST /api/dji-cloud/upload", () => {
           data: "",
         }),
       )
-      .mockResolvedValueOnce(waylinesListWith("old-wayline-1", "Cloud_test"))
+      .mockResolvedValueOnce(waylinesListWith("old-wayline-1", "Cloud test"))
       .mockResolvedValueOnce(
         jsonResponse({ code: 0, message: "success", data: "" }),
       ) // delete
@@ -179,7 +205,7 @@ describe("POST /api/dji-cloud/upload", () => {
       .send(validBody);
 
     expect(res.status).toBe(200);
-    expect(res.body.waylineName).toBe("Cloud_test");
+    expect(res.body.waylineName).toBe("Cloud test");
     expect(fetchMock).toHaveBeenCalledTimes(5);
     const [deleteUrl, deleteInit] = fetchMock.mock.calls[3];
     expect(deleteUrl).toContain("/waylines/old-wayline-1");
@@ -209,7 +235,7 @@ describe("POST /api/dji-cloud/upload", () => {
       .send(validBody);
 
     expect(res.status).toBe(200);
-    expect(res.body.waylineName).toMatch(/^Cloud_test-\d{8}-\d{6}$/);
+    expect(res.body.waylineName).toMatch(/^Cloud test-\d{8}-\d{6}$/);
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 

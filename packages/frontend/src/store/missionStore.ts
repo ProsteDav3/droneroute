@@ -124,6 +124,11 @@ interface MissionState {
    * useful for time-lapse missions that should fly the same physical path
    * back and forth. One undo-history entry. */
   reverseWaypoints: () => void;
+  /** Inserts `count` new waypoints evenly spaced between two adjacent
+   * waypoints (indices differing by exactly 1), linearly interpolating
+   * position, height, speed, and gimbal pitch between them. New waypoints
+   * carry no actions. `indexA`/`indexB` may be given in either order. */
+  interpolateBetween: (indexA: number, indexB: number, count: number) => void;
   setIsAddingWaypoint: (adding: boolean) => void;
   addAction: (waypointIndex: number, action: WaypointAction) => void;
   updateAction: (
@@ -501,6 +506,51 @@ export const useMissionStore = create<MissionState>()(
             waypoints: reversed,
             selectedWaypointIndices: new Set<number>(),
             lastSelectedWaypointIndex: null,
+            dirty: true,
+          };
+        }),
+
+      interpolateBetween: (indexA, indexB, count) =>
+        set((state) => {
+          if (count < 1) return state;
+          const lo = Math.min(indexA, indexB);
+          const hi = Math.max(indexA, indexB);
+          if (hi - lo !== 1) return state; // must be adjacent
+
+          const from = state.waypoints[lo];
+          const to = state.waypoints[hi];
+          if (!from || !to) return state;
+
+          const inserted: Waypoint[] = [];
+          for (let i = 1; i <= count; i++) {
+            const t = i / (count + 1);
+            inserted.push({
+              ...from,
+              latitude: from.latitude + t * (to.latitude - from.latitude),
+              longitude: from.longitude + t * (to.longitude - from.longitude),
+              height: from.height + t * (to.height - from.height),
+              speed: from.speed + t * (to.speed - from.speed),
+              gimbalPitchAngle:
+                from.gimbalPitchAngle +
+                t * (to.gimbalPitchAngle - from.gimbalPitchAngle),
+              name: "",
+              actions: [],
+              templateGroupId: undefined,
+            });
+          }
+
+          const waypoints = [
+            ...state.waypoints.slice(0, lo + 1),
+            ...inserted,
+            ...state.waypoints.slice(hi),
+          ].map((wp, i) => ({ ...wp, index: i }));
+
+          return {
+            waypoints,
+            selectedWaypointIndices: new Set(
+              Array.from({ length: count }, (_, i) => lo + 1 + i),
+            ),
+            lastSelectedWaypointIndex: lo + count,
             dirty: true,
           };
         }),

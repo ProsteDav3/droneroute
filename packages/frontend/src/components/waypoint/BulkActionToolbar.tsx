@@ -7,6 +7,7 @@ import {
   SlidersHorizontal,
   Pencil,
   ClipboardPaste,
+  Spline,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -65,6 +66,7 @@ export function BulkActionToolbar() {
     setWaypointHeights,
     templateGroups,
     setEditingTemplateGroupId,
+    interpolateBetween,
   } = useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
   const clipboardActions = useActionClipboardStore((s) => s.actions);
@@ -72,9 +74,27 @@ export function BulkActionToolbar() {
   const [showEditor, setShowEditor] = useState(false);
   const [targetDurationInput, setTargetDurationInput] = useState("");
   const [relativeHeightInput, setRelativeHeightInput] = useState("");
+  const [interpolateCountInput, setInterpolateCountInput] = useState("2");
 
   const count = selectedWaypointIndices.size;
   if (count < 2) return null;
+
+  // Interpolation only has a well-defined meaning for exactly two adjacent
+  // waypoints — inserting points "between" a non-adjacent or 3+ selection
+  // would be ambiguous about which segment to fill.
+  const sortedSelected = [...selectedWaypointIndices].sort((a, b) => a - b);
+  const canInterpolate =
+    count === 2 && sortedSelected[1] - sortedSelected[0] === 1;
+
+  const handleInterpolate = () => {
+    const n = parseInt(interpolateCountInput, 10);
+    if (!(n >= 1) || !(n <= 50)) {
+      toast.warning("Zadejte počet bodů mezi 1 a 50");
+      return;
+    }
+    interpolateBetween(sortedSelected[0], sortedSelected[1], n);
+    toast.success(`Vloženo ${n} bodů`);
+  };
 
   const handleApplyTargetDuration = () => {
     const targetTimeS = parseFloat(targetDurationInput);
@@ -239,6 +259,31 @@ export function BulkActionToolbar() {
                 ))}
               </SelectContent>
             </Select>
+          )}
+
+          {/* Interpolate N points between two adjacent selected waypoints */}
+          {canInterpolate && (
+            <div className="flex items-center gap-1 px-1">
+              <Spline className="h-3 w-3 text-muted-foreground" />
+              <Input
+                type="number"
+                value={interpolateCountInput}
+                onChange={(e) => setInterpolateCountInput(e.target.value)}
+                min={1}
+                max={50}
+                className="h-7 w-14 text-xs px-1.5"
+                title="Počet bodů k vložení mezi tyto dva sousední body"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleInterpolate}
+                className="h-7 text-xs px-2"
+                title="Rovnoměrně vložit body mezi tyto dva sousední body trasy"
+              >
+                Interpolovat
+              </Button>
+            </div>
           )}
 
           {/* Paste actions copied from a single waypoint's editor onto the whole selection */}

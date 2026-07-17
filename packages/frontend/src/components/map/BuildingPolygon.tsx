@@ -13,9 +13,10 @@ const BUILDING_EDGE_LABEL_OFFSET: [number, number] = [0, -14];
 
 interface BuildingPolygonProps {
   building: Building;
+  is3D: boolean;
 }
 
-export function BuildingPolygon({ building }: BuildingPolygonProps) {
+export function BuildingPolygon({ building, is3D }: BuildingPolygonProps) {
   const selectedBuildingId = useMissionStore((s) => s.selectedBuildingId);
   const moveBuildingVertex = useMissionStore((s) => s.moveBuildingVertex);
   const addBuildingVertex = useMissionStore((s) => s.addBuildingVertex);
@@ -62,14 +63,30 @@ export function BuildingPolygon({ building }: BuildingPolygonProps) {
   return (
     <>
       <Source id={sourceId} type="geojson" data={geojson}>
-        <Layer
-          id={`${sourceId}-fill`}
-          type="fill"
-          paint={{
-            "fill-color": "#3b82f6",
-            "fill-opacity": isSelected ? 0.22 : 0.12,
-          }}
-        />
+        {is3D ? (
+          // Real 3D extrusion at the building's actual height, matching
+          // the look of the source OSM buildings this is often converted
+          // from — a flat ground rectangle doesn't convey size at all.
+          <Layer
+            id={`${sourceId}-fill`}
+            type="fill-extrusion"
+            paint={{
+              "fill-extrusion-color": "#3b82f6",
+              "fill-extrusion-height": building.height,
+              "fill-extrusion-base": 0,
+              "fill-extrusion-opacity": isSelected ? 0.75 : 0.55,
+            }}
+          />
+        ) : (
+          <Layer
+            id={`${sourceId}-fill`}
+            type="fill"
+            paint={{
+              "fill-color": "#3b82f6",
+              "fill-opacity": isSelected ? 0.22 : 0.12,
+            }}
+          />
+        )}
         <Layer
           id={`${sourceId}-outline`}
           type="line"

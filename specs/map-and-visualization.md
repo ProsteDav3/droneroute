@@ -8,11 +8,12 @@ An interactive map where you plan flights and see everything at a glance.
 - Switch between **satellite** and **street** (dark) map styles using the bottom-left buttons.
 - Toggle between **2D** and **3D** view modes.
 - Search for any location using the **geocoding search box** (top-left magnifying glass icon). Type a place name, address, or landmark and the map flies there.
+- Jump straight to your current position with the **locate-me control** (bottom-right of the map, next to the attribution). It centers the map on your GPS location and keeps a small live dot there as you move — no need to search an address when you're already on site.
 - See the flight path as a dashed line connecting all waypoints.
 - **Color the flight path by height or speed** instead of a flat color — set "Barvení trasy" in the Visualization tab of the settings dialog to "Podle výšky" or "Podle rychlosti" and each segment is colored along a blue (low) → green → yellow → red (high) gradient, normalized against the whole mission's own min/max. A segment that crosses an obstacle still always renders red regardless of this setting — that's a safety warning, not a style choice.
 - See colored lines from waypoints to POIs showing camera aim (green = correct pitch, red = needs adjustment).
 - See obstacle polygons drawn on the map.
-- Click extruded 3D buildings to **convert them to obstacles** via a popup.
+- Click extruded 3D buildings to **convert them to an obstacle or to a `Budova`** (building) object via a popup — the same kind of building you'd get from drawing one by hand, ready for Facade scans or orbit-from-building.
 - Use the floating toolbar to switch between waypoint mode, POI mode, and template tools.
 - View an elevation graph below the waypoint list that shows altitude changes across the flight, with the real ground elevation along the path overlaid as a shaded terrain profile.
 - See live previews when configuring templates before placing them.

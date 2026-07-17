@@ -9,6 +9,7 @@ Draw building footprints on the map so the app can recommend orbit settings auto
 - See a list of all buildings in the sidebar, with area and height, and edit or delete them.
 - Place a point of interest (POI) on a building to have its height copied automatically, and to pre-fill the Orbit template panel with a recommended flight altitude, radius, and gimbal pitch for orbiting that building — instead of typing those numbers in by hand.
 - Click the orbit icon next to a building in the sidebar list for the same pre-filled Orbit panel directly, without placing a POI first.
+- Click an extruded 3D building on the map (from OpenStreetMap data, at zoom 14+) and choose **Převést na budovu** in the popup to add it as a building without drawing it by hand — its footprint and height come straight from the map data.
 
 ## How it works
 

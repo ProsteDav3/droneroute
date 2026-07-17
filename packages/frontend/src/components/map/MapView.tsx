@@ -41,7 +41,7 @@ import {
 } from "@/lib/flightSimulation";
 import { MeasureToolHandler } from "./MeasureToolHandler";
 import { useMeasureStore } from "@/store/measureStore";
-import { Triangle } from "lucide-react";
+import { Triangle, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface BuildingPopupData {
@@ -190,6 +190,42 @@ function GeocoderControl() {
       geocoderRef.current = null;
     };
   }, [map, mapboxToken]);
+
+  return null;
+}
+
+/**
+ * Adds Mapbox's native "go to my location" control (bottom-right, out of
+ * the way of the toolbar and the geocoder). `trackUserLocation` keeps a
+ * small live dot on the map as the pilot moves, so they don't have to
+ * search an address just to find themselves on site.
+ */
+function GeolocateControl() {
+  const { current: map } = useMap();
+  const controlRef = useRef<mapboxgl.GeolocateControl | null>(null);
+
+  useEffect(() => {
+    if (!map || controlRef.current) return;
+    const m = map.getMap();
+
+    const control = new mapboxgl.GeolocateControl({
+      positionOptions: { enableHighAccuracy: true },
+      trackUserLocation: true,
+      showUserHeading: true,
+    });
+
+    m.addControl(control, "bottom-right");
+    controlRef.current = control;
+
+    return () => {
+      try {
+        m.removeControl(control);
+      } catch {
+        // DOM already detached — ignore
+      }
+      controlRef.current = null;
+    };
+  }, [map]);
 
   return null;
 }
@@ -577,6 +613,7 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
   const addWaypoint = useMissionStore((s) => s.addWaypoint);
   const addPoi = useMissionStore((s) => s.addPoi);
   const addObstacle = useMissionStore((s) => s.addObstacle);
+  const addBuilding = useMissionStore((s) => s.addBuilding);
   const simulationActive = useFlightSimulationStore((s) => s.isActive);
   const simulationFrameIndex = useFlightSimulationStore((s) => s.frameIndex);
   const simulationFrames = useMemo(
@@ -729,6 +766,7 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
         />
         <FitBoundsOnLoad />
         <GeocoderControl />
+        <GeolocateControl />
         <FlyToTargetHandler />
         <SceneSetup is3D={is3D} mapStyle={mapStyle} />
         <FlightPath is3D={is3D} />
@@ -831,6 +869,23 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
                     ? "vrcholy"
                     : "vrcholů"}
               </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full gap-1.5 h-7 text-xs"
+                onClick={() => {
+                  // 20m matches BuildingDrawHandler's own default for a
+                  // manually-drawn building with no set height yet.
+                  addBuilding(
+                    buildingPopup.vertices,
+                    buildingPopup.height ?? 20,
+                  );
+                  setBuildingPopup(null);
+                }}
+              >
+                <Building2 className="h-3 w-3" />
+                Převést na budovu
+              </Button>
               <Button
                 size="sm"
                 variant="outline"

@@ -207,15 +207,40 @@ export async function getMqttSessionCredentials(): Promise<{
   };
 }
 
+export interface DjiWaylineSummary {
+  id: string;
+  name: string;
+  user_name?: string;
+  create_time?: number;
+  update_time?: number;
+}
+
 /**
- * Deletes a wayline file from the workspace's library (e.g. to clean up a
- * timestamped duplicate created by a retried upload, or a mission that's
- * no longer needed) — `/wayline/api/v1/workspaces/{workspace_id}/waylines/{id}`.
+ * Lists KMZ files currently in the workspace's wayline library —
+ * `GET /wayline/api/v1/workspaces/{workspace_id}/waylines`, the list
+ * counterpart of the delete endpoint just below. Used both to power a
+ * library-management view and, in `uploadOne`, to detect a same-name
+ * collision so an upload can overwrite instead of piling up timestamped
+ * duplicates.
  */
-export async function deleteWayline(waylineId: string): Promise<void> {
+export async function listWaylines(): Promise<DjiWaylineSummary[]> {
   const cfg = readConfig();
   if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
   const { token, workspaceId } = await login(cfg);
+  const data = await authedGet<{ list: DjiWaylineSummary[] }>(
+    cfg,
+    token,
+    `/wayline/api/v1/workspaces/${workspaceId}/waylines?page=1&page_size=50&order_by=update_time%20desc`,
+  );
+  return data.list;
+}
+
+async function deleteWaylineAuthed(
+  cfg: DjiCloudConfig,
+  token: string,
+  workspaceId: string,
+  waylineId: string,
+): Promise<void> {
   const res = await fetch(
     `${cfg.url}/wayline/api/v1/workspaces/${workspaceId}/waylines/${encodeURIComponent(waylineId)}`,
     { method: "DELETE", headers: { "x-auth-token": token } },
@@ -227,6 +252,18 @@ export async function deleteWayline(waylineId: string): Promise<void> {
   if (body.code !== 0) {
     throw new Error(`DJI Cloud smazání selhalo: ${body.message}`);
   }
+}
+
+/**
+ * Deletes a wayline file from the workspace's library (e.g. to clean up a
+ * timestamped duplicate created by a retried upload, or a mission that's
+ * no longer needed) — `/wayline/api/v1/workspaces/{workspace_id}/waylines/{id}`.
+ */
+export async function deleteWayline(waylineId: string): Promise<void> {
+  const cfg = readConfig();
+  if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
+  const { token, workspaceId } = await login(cfg);
+  await deleteWaylineAuthed(cfg, token, workspaceId, waylineId);
 }
 
 async function uploadFile(
@@ -265,10 +302,47 @@ function timestampSuffix(): string {
 }
 
 /**
- * Uploads one KMZ into an already-authenticated workspace, retrying once
- * under a timestamped name if the platform rejects the first attempt as a
- * duplicate (its object storage refuses to overwrite an existing file of
- * the same name). Returns the wayline name it was actually stored under.
+ * Best-effort lookup of an existing wayline by (case-insensitive, extension-
+ * stripped) name match. Swallows any error — a library listing failure just
+ * means the overwrite path in `uploadOne` can't find anything to delete, not
+ * that the upload itself should fail.
+ */
+async function findExistingWaylineByName(
+  cfg: DjiCloudConfig,
+  token: string,
+  workspaceId: string,
+  baseName: string,
+): Promise<string | null> {
+  try {
+    const data = await authedGet<{ list: DjiWaylineSummary[] }>(
+      cfg,
+      token,
+      `/wayline/api/v1/workspaces/${workspaceId}/waylines?page=1&page_size=50`,
+    );
+    const match = data.list.find(
+      (w) =>
+        w.name.replace(/\.kmz$/i, "").toLowerCase() === baseName.toLowerCase(),
+    );
+    return match?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Uploads one KMZ into an already-authenticated workspace. The happy path
+ * (no name collision) is a single upload call, same as before — the
+ * overwrite machinery below only kicks in when the platform actually
+ * rejects the name as a duplicate, so a normal upload's fetch-call sequence
+ * is unchanged.
+ *
+ * On a duplicate-name rejection: looks up the existing wayline by name and
+ * deletes it, then retries under the SAME name (an in-place overwrite,
+ * rather than the old behavior of always minting a new timestamped file).
+ * If that still fails — the lookup came up empty, the delete raced with
+ * something else, whatever — falls back to the timestamped name as a last
+ * resort so the upload doesn't fail outright. Returns the wayline name it
+ * was actually stored under.
  */
 async function uploadOne(
   cfg: DjiCloudConfig,
@@ -289,17 +363,40 @@ async function uploadOne(
   );
   if (first.code === 0) return baseName;
 
+  const existingId = await findExistingWaylineByName(
+    cfg,
+    token,
+    workspaceId,
+    baseName,
+  );
+  if (existingId) {
+    try {
+      await deleteWaylineAuthed(cfg, token, workspaceId, existingId);
+      const overwrite = await uploadFile(
+        cfg,
+        token,
+        workspaceId,
+        `${baseName}.kmz`,
+        kmz,
+      );
+      if (overwrite.code === 0) return baseName;
+    } catch {
+      // Deletion or the overwrite retry failed — fall through to the
+      // timestamped fallback below rather than giving up.
+    }
+  }
+
   const retryName = `${baseName}-${timestampSuffix()}`;
-  const second = await uploadFile(
+  const fallback = await uploadFile(
     cfg,
     token,
     workspaceId,
     `${retryName}.kmz`,
     kmz,
   );
-  if (second.code === 0) return retryName;
+  if (fallback.code === 0) return retryName;
 
-  throw new Error(`DJI Cloud upload selhal: ${second.message}`);
+  throw new Error(`DJI Cloud upload selhal: ${fallback.message}`);
 }
 
 /**

@@ -31,13 +31,27 @@ export interface DeviceTelemetry {
   updatedAt: number;
 }
 
+export interface DjiWaylineSummary {
+  id: string;
+  name: string;
+  user_name?: string;
+  create_time?: number;
+  update_time?: number;
+}
+
 interface DjiCloudOpsState {
   devices: DjiDeviceSummary[];
   hmsMessages: DjiHmsMessage[];
   telemetry: Record<string, DeviceTelemetry>;
+  waylines: DjiWaylineSummary[];
+  waylinesLoading: boolean;
+  waylinesError: string | null;
+  deletingWaylineId: string | null;
   loading: boolean;
   error: string | null;
   fetchDevicesAndHms: () => Promise<void>;
+  fetchWaylines: () => Promise<void>;
+  deleteWaylineFromLibrary: (id: string) => Promise<void>;
   startTelemetryStream: () => () => void;
 }
 
@@ -49,6 +63,10 @@ export const useDjiCloudOpsStore = create<DjiCloudOpsState>((set, get) => ({
   devices: [],
   hmsMessages: [],
   telemetry: {},
+  waylines: [],
+  waylinesLoading: false,
+  waylinesError: null,
+  deletingWaylineId: null,
   loading: false,
   error: null,
 
@@ -66,6 +84,34 @@ export const useDjiCloudOpsStore = create<DjiCloudOpsState>((set, get) => ({
       });
     } catch (err: any) {
       set({ error: err.message, loading: false });
+    }
+  },
+
+  fetchWaylines: async () => {
+    set({ waylinesLoading: true, waylinesError: null });
+    try {
+      const res = await api.get<{ waylines: DjiWaylineSummary[] }>(
+        "/dji-cloud/waylines",
+      );
+      set({ waylines: res.waylines, waylinesLoading: false });
+    } catch (err: any) {
+      set({ waylinesError: err.message, waylinesLoading: false });
+    }
+  },
+
+  /** Optimistically removes the wayline from local state on success, rather
+   * than re-fetching the whole library — one file's worth of state doesn't
+   * need a round trip to stay in sync. */
+  deleteWaylineFromLibrary: async (id: string) => {
+    set({ deletingWaylineId: id });
+    try {
+      await api.delete(`/dji-cloud/waylines/${encodeURIComponent(id)}`);
+      set((state) => ({
+        waylines: state.waylines.filter((w) => w.id !== id),
+        deletingWaylineId: null,
+      }));
+    } catch (err: any) {
+      set({ waylinesError: err.message, deletingWaylineId: null });
     }
   },
 

@@ -858,6 +858,122 @@ describe("missionStore — reverseWaypoints", () => {
   });
 });
 
+describe("missionStore — offsetMission", () => {
+  beforeEach(() => {
+    useMissionStore.getState().clearMission();
+  });
+
+  it("shifts every waypoint, POI, obstacle, and building by the same offset", () => {
+    useMissionStore.getState().appendWaypoints([baseWaypoint(50, 14)]);
+    useMissionStore.getState().addPoi(50, 14);
+    useMissionStore.getState().addObstacle([
+      [50, 14],
+      [50.001, 14],
+      [50.001, 14.001],
+    ]);
+    useMissionStore.getState().addBuilding(
+      [
+        [50, 14],
+        [50.001, 14],
+        [50.001, 14.001],
+      ],
+      10,
+    );
+
+    useMissionStore.getState().offsetMission(100, 0);
+
+    const state = useMissionStore.getState();
+    expect(state.waypoints[0].latitude).toBeGreaterThan(50);
+    expect(state.pois[0].latitude).toBeGreaterThan(50);
+    expect(state.obstacles[0].vertices[0][0]).toBeGreaterThan(50);
+    expect(state.buildings[0].vertices[0][0]).toBeGreaterThan(50);
+  });
+
+  it("does not change height", () => {
+    useMissionStore
+      .getState()
+      .appendWaypoints([{ ...baseWaypoint(50, 14), height: 42 }]);
+
+    useMissionStore.getState().offsetMission(100, 50);
+
+    expect(useMissionStore.getState().waypoints[0].height).toBe(42);
+  });
+
+  it("marks the mission dirty", () => {
+    useMissionStore.getState().appendWaypoints([baseWaypoint(50, 14)]);
+    useMissionStore.setState({ dirty: false });
+
+    useMissionStore.getState().offsetMission(10, 10);
+
+    expect(useMissionStore.getState().dirty).toBe(true);
+  });
+
+  it("is a no-op on a completely empty mission", () => {
+    useMissionStore.getState().offsetMission(100, 100);
+
+    expect(useMissionStore.getState().waypoints).toHaveLength(0);
+  });
+});
+
+describe("missionStore — rotateMission", () => {
+  beforeEach(() => {
+    useMissionStore.getState().clearMission();
+  });
+
+  it("rotates waypoints, POIs, obstacles, and buildings around the waypoint centroid", () => {
+    useMissionStore
+      .getState()
+      .appendWaypoints([baseWaypoint(50, 14), baseWaypoint(50.002, 14)]);
+    useMissionStore.getState().addPoi(50, 14);
+    useMissionStore.getState().addObstacle([
+      [50, 14],
+      [50.001, 14],
+      [50.001, 14.001],
+    ]);
+
+    const before = useMissionStore.getState().waypoints[0].longitude;
+    useMissionStore.getState().rotateMission(90);
+    const after = useMissionStore.getState().waypoints[0].longitude;
+
+    // A 90° rotation around the centroid must move at least one waypoint's
+    // longitude — a no-op rotation would leave everything untouched.
+    expect(after).not.toBeCloseTo(before, 6);
+  });
+
+  it("a 0° rotation leaves everything unchanged", () => {
+    useMissionStore
+      .getState()
+      .appendWaypoints([baseWaypoint(50, 14), baseWaypoint(50.002, 14.001)]);
+    const before = useMissionStore
+      .getState()
+      .waypoints.map((wp) => [wp.latitude, wp.longitude]);
+
+    useMissionStore.getState().rotateMission(0);
+
+    const after = useMissionStore
+      .getState()
+      .waypoints.map((wp) => [wp.latitude, wp.longitude]);
+    expect(after).toEqual(before);
+  });
+
+  it("marks the mission dirty", () => {
+    useMissionStore
+      .getState()
+      .appendWaypoints([baseWaypoint(50, 14), baseWaypoint(50.001, 14)]);
+    useMissionStore.setState({ dirty: false });
+
+    useMissionStore.getState().rotateMission(45);
+
+    expect(useMissionStore.getState().dirty).toBe(true);
+  });
+
+  it("is a no-op when there are no waypoints", () => {
+    useMissionStore.getState().rotateMission(45);
+
+    expect(useMissionStore.getState().waypoints).toHaveLength(0);
+  });
+});
+
 describe("missionStore — undo/redo history", () => {
   beforeEach(() => {
     useMissionStore.getState().clearMission();

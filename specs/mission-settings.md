@@ -16,6 +16,7 @@ Configure your drone model, camera, altitude reference, and safety options for t
 - **Set what happens if the remote controller connection is lost**: return home, land, or hover.
 - **Set the transit speed** (speed used to fly to the first waypoint).
 - **Set maximum battery minutes** so the app can warn you if the estimated flight time exceeds your battery capacity.
+- **Move or rotate the whole mission at once**: enter a north/east offset (in meters) and click "Posunout", or an angle (degrees) and click "Otočit", to shift or rotate every waypoint, POI, obstacle, and building together — handy when the real-world object the mission was planned around has moved, without redrawing anything. Rotation pivots around the mission's own waypoint centroid. Heights are untouched by either.
 
 ## How it works
 

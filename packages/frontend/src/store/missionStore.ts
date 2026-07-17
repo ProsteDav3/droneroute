@@ -19,7 +19,7 @@ import type {
 } from "@/lib/templates";
 import { orbitParamsForBuilding } from "@/lib/templates";
 import { WIDE_CAMERA_FOV } from "@/lib/solarCamera";
-import { pointInPolygon } from "@/lib/geo";
+import { pointInPolygon, offsetLatLng, rotateLatLng } from "@/lib/geo";
 import { cloneActionsForPaste } from "@/store/actionClipboardStore";
 
 export type SelectionMode = "replace" | "toggle" | "range";
@@ -129,6 +129,15 @@ interface MissionState {
    * position, height, speed, and gimbal pitch between them. New waypoints
    * carry no actions. `indexA`/`indexB` may be given in either order. */
   interpolateBetween: (indexA: number, indexB: number, count: number) => void;
+  /** Shifts every waypoint, POI, obstacle vertex, and building vertex by
+   * the same north/east offset (meters) — the whole mission's geometry
+   * moves together, e.g. when the real-world object it was planned around
+   * has moved. Heights are untouched. No-op when the mission is empty. */
+  offsetMission: (northM: number, eastM: number) => void;
+  /** Rotates every waypoint, POI, obstacle vertex, and building vertex by
+   * `angleDeg` (clockwise) around the mission's own waypoint centroid.
+   * Heights are untouched. No-op when there are no waypoints. */
+  rotateMission: (angleDeg: number) => void;
   setIsAddingWaypoint: (adding: boolean) => void;
   addAction: (waypointIndex: number, action: WaypointAction) => void;
   updateAction: (
@@ -551,6 +560,71 @@ export const useMissionStore = create<MissionState>()(
               Array.from({ length: count }, (_, i) => lo + 1 + i),
             ),
             lastSelectedWaypointIndex: lo + count,
+            dirty: true,
+          };
+        }),
+
+      offsetMission: (northM, eastM) =>
+        set((state) => {
+          if (
+            state.waypoints.length === 0 &&
+            state.pois.length === 0 &&
+            state.obstacles.length === 0 &&
+            state.buildings.length === 0
+          ) {
+            return state;
+          }
+          const move = (lat: number, lng: number) =>
+            offsetLatLng(lat, lng, northM, eastM);
+          return {
+            waypoints: state.waypoints.map((wp) => {
+              const [latitude, longitude] = move(wp.latitude, wp.longitude);
+              return { ...wp, latitude, longitude };
+            }),
+            pois: state.pois.map((poi) => {
+              const [latitude, longitude] = move(poi.latitude, poi.longitude);
+              return { ...poi, latitude, longitude };
+            }),
+            obstacles: state.obstacles.map((o) => ({
+              ...o,
+              vertices: o.vertices.map(([lat, lng]) => move(lat, lng)),
+            })),
+            buildings: state.buildings.map((b) => ({
+              ...b,
+              vertices: b.vertices.map(([lat, lng]) => move(lat, lng)),
+            })),
+            dirty: true,
+          };
+        }),
+
+      rotateMission: (angleDeg) =>
+        set((state) => {
+          if (state.waypoints.length === 0) return state;
+          const centerLat =
+            state.waypoints.reduce((s, wp) => s + wp.latitude, 0) /
+            state.waypoints.length;
+          const centerLng =
+            state.waypoints.reduce((s, wp) => s + wp.longitude, 0) /
+            state.waypoints.length;
+          const rotate = (lat: number, lng: number) =>
+            rotateLatLng(lat, lng, centerLat, centerLng, angleDeg);
+          return {
+            waypoints: state.waypoints.map((wp) => {
+              const [latitude, longitude] = rotate(wp.latitude, wp.longitude);
+              return { ...wp, latitude, longitude };
+            }),
+            pois: state.pois.map((poi) => {
+              const [latitude, longitude] = rotate(poi.latitude, poi.longitude);
+              return { ...poi, latitude, longitude };
+            }),
+            obstacles: state.obstacles.map((o) => ({
+              ...o,
+              vertices: o.vertices.map(([lat, lng]) => rotate(lat, lng)),
+            })),
+            buildings: state.buildings.map((b) => ({
+              ...b,
+              vertices: b.vertices.map(([lat, lng]) => rotate(lat, lng)),
+            })),
             dirty: true,
           };
         }),

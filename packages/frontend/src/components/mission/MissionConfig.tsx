@@ -5,10 +5,12 @@ import { usePreferencesStore } from "@/store/preferencesStore";
 import {
   speedLabel,
   heightLabel,
+  distanceLabel,
   toDisplaySpeed,
   fromDisplaySpeed,
   toDisplayHeight,
   fromDisplayHeight,
+  fromDisplayDistance,
   speedRange,
 } from "@/lib/units";
 import { computeSpeedForDuration } from "@/lib/flightStats";
@@ -32,11 +34,47 @@ import type {
 } from "@droneroute/shared";
 
 export function MissionConfig() {
-  const { config, setConfig, waypoints, updateAllWaypoints } =
-    useMissionStore();
+  const {
+    config,
+    setConfig,
+    waypoints,
+    updateAllWaypoints,
+    offsetMission,
+    rotateMission,
+  } = useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
   const [targetDurationInput, setTargetDurationInput] = useState("");
   const [overrideWaypointSpeeds, setOverrideWaypointSpeeds] = useState(false);
+  const [offsetNorthInput, setOffsetNorthInput] = useState("0");
+  const [offsetEastInput, setOffsetEastInput] = useState("0");
+  const [rotateAngleInput, setRotateAngleInput] = useState("0");
+
+  const handleOffsetMission = () => {
+    const northM = fromDisplayDistance(
+      parseFloat(offsetNorthInput) || 0,
+      unitSystem,
+    );
+    const eastM = fromDisplayDistance(
+      parseFloat(offsetEastInput) || 0,
+      unitSystem,
+    );
+    if (northM === 0 && eastM === 0) {
+      toast.warning("Zadejte nenulový posun");
+      return;
+    }
+    offsetMission(northM, eastM);
+    toast.success("Mise posunuta");
+  };
+
+  const handleRotateMission = () => {
+    const angleDeg = parseFloat(rotateAngleInput) || 0;
+    if (angleDeg === 0) {
+      toast.warning("Zadejte nenulový úhel");
+      return;
+    }
+    rotateMission(angleDeg);
+    toast.success("Mise otočena");
+  };
 
   const hasOverriddenWaypoints = waypoints.some((wp) => !wp.useGlobalSpeed);
 
@@ -382,6 +420,70 @@ export function MissionConfig() {
         />
         <div className="text-[10px] text-muted-foreground mt-0.5">
           Rychlost letu k prvnímu bodu trasy
+        </div>
+      </div>
+
+      <div className="col-span-2 border-t border-border pt-2 mt-1 space-y-2">
+        <Label className="text-xs font-semibold">Transformace mise</Label>
+        <div className="text-[10px] text-muted-foreground">
+          Posune nebo otočí celou misi (body trasy, POI, překážky, budovy)
+          najednou — hodí se, když se v realitě posunul objekt, kolem kterého je
+          mise naplánovaná.
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 items-end">
+          <div>
+            <Label className="text-[10px]">
+              Sever ({distanceLabel(unitSystem)})
+            </Label>
+            <Input
+              type="number"
+              value={offsetNorthInput}
+              onChange={(e) => setOffsetNorthInput(e.target.value)}
+              className="h-7 text-xs"
+            />
+          </div>
+          <div>
+            <Label className="text-[10px]">
+              Východ ({distanceLabel(unitSystem)})
+            </Label>
+            <Input
+              type="number"
+              value={offsetEastInput}
+              onChange={(e) => setOffsetEastInput(e.target.value)}
+              className="h-7 text-xs"
+            />
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={handleOffsetMission}
+          >
+            Posunout
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2 items-end">
+          <div className="col-span-2">
+            <Label className="text-[10px]">Úhel otočení (°)</Label>
+            <Input
+              type="number"
+              value={rotateAngleInput}
+              onChange={(e) => setRotateAngleInput(e.target.value)}
+              min={-180}
+              max={180}
+              className="h-7 text-xs"
+            />
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={handleRotateMission}
+          >
+            Otočit
+          </Button>
         </div>
       </div>
     </div>

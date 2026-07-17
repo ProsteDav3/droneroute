@@ -72,3 +72,13 @@ You can overlay airspace restriction zones on the map to check for drone no-fly 
 
 - When your mission has waypoints, a "Zobrazit NOTAM pro tuto oblast" link appears next to the airspace warnings.
 - Live NOTAM data for the Czech Republic requires an authenticated session with the official AIM ČR briefing system (there's no public feed to fetch automatically) — the link takes you straight to that official portal so you can check NOTAMs for your mission's area and date yourself.
+
+## DJI Cloud live telemetry
+
+When your server has a DJI Cloud platform configured (see [Upload to controller](upload-to-controller.md)):
+
+- Any aircraft currently online and reporting a position shows up on the map as a live marker — an icon that rotates to match the aircraft's actual heading.
+- Below the icon, a small label shows the aircraft's current altitude, horizontal speed, and battery percentage, updating in real time as new telemetry arrives. The battery icon changes color (green/amber/red) as it drops.
+- The sidebar's **DJI Cloud — zařízení** panel lists every device bound to the workspace (aircraft and remote controllers), each with an online/offline indicator, live battery percentage when online, device model, and how long ago it last logged into the platform.
+- Recent Health Management System (HMS) warnings reported by the aircraft — a fault code, a battery cell imbalance, and similar — appear at the bottom of the same panel.
+- All of this updates automatically over a live connection; no manual refresh needed.

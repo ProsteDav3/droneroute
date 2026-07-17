@@ -59,6 +59,7 @@ export function BulkActionToolbar() {
     clearWaypointSelection,
     removeSelectedWaypoints,
     updateSelectedWaypoints,
+    setWaypointHeights,
     templateGroups,
     setEditingTemplateGroupId,
   } = useMissionStore();
@@ -66,6 +67,7 @@ export function BulkActionToolbar() {
 
   const [showEditor, setShowEditor] = useState(false);
   const [targetDurationInput, setTargetDurationInput] = useState("");
+  const [relativeHeightInput, setRelativeHeightInput] = useState("");
 
   const count = selectedWaypointIndices.size;
   if (count < 2) return null;
@@ -92,6 +94,33 @@ export function BulkActionToolbar() {
     updateSelectedWaypoints({ speed, useGlobalSpeed: false });
     toast.success(
       `Rychlost vybraných bodů nastavena na ${toDisplaySpeed(speed, unitSystem)} ${speedLabel(unitSystem)}`,
+    );
+  };
+
+  // Relative height offset — unlike the "Height" field above (which sets
+  // every selected waypoint to the SAME absolute height), this shifts each
+  // selected waypoint's own height by the same delta, preserving whatever
+  // altitude profile they already had relative to each other. Reuses
+  // `fromDisplayHeight`'s pure unit-scale conversion (m<->ft has no
+  // additive offset) so it's safe to apply to a delta, not just an
+  // absolute value.
+  const handleApplyRelativeHeight = () => {
+    const deltaDisplay = parseFloat(relativeHeightInput);
+    if (!deltaDisplay || isNaN(deltaDisplay)) {
+      toast.warning("Zadejte nenulovou hodnotu posunu výšky");
+      return;
+    }
+    const deltaM = fromDisplayHeight(deltaDisplay, unitSystem);
+    const heights: Record<number, number> = {};
+    for (const wp of waypoints) {
+      if (selectedWaypointIndices.has(wp.index)) {
+        heights[wp.index] = Math.max(1, wp.height + deltaM);
+      }
+    }
+    setWaypointHeights(heights);
+    setRelativeHeightInput("");
+    toast.success(
+      `Výška ${count} bodů posunuta o ${deltaDisplay > 0 ? "+" : ""}${deltaDisplay} ${heightLabel(unitSystem)}`,
     );
   };
 
@@ -307,6 +336,39 @@ export function BulkActionToolbar() {
                   max={500}
                   className="h-7 text-xs mt-0.5"
                 />
+              </div>
+
+              {/* Relative height offset — shifts each selected waypoint's
+                  own height by the same delta, unlike the absolute "Výška"
+                  field above which sets them all to one identical value. */}
+              <div>
+                <Label
+                  className="text-[10px] text-muted-foreground flex items-center gap-1"
+                  title="Posune výšku každého vybraného bodu o zadanou hodnotu — na rozdíl od pole „Výška“ výše, které nastaví všem stejnou absolutní hodnotu."
+                >
+                  <ArrowUp className="h-2.5 w-2.5" />
+                  Posunout výšku o ({heightLabel(unitSystem)})
+                </Label>
+                <div className="flex gap-1">
+                  <Input
+                    type="number"
+                    placeholder="např. 5 nebo -5"
+                    value={relativeHeightInput}
+                    onChange={(e) => setRelativeHeightInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleApplyRelativeHeight();
+                    }}
+                    className="h-7 text-xs mt-0.5"
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 mt-0.5 text-[10px] px-2 shrink-0"
+                    onClick={handleApplyRelativeHeight}
+                  >
+                    Použít
+                  </Button>
+                </div>
               </div>
 
               {/* Speed */}

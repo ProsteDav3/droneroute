@@ -213,23 +213,27 @@ export function CameraFrustum({ waypoint, pois, is3D }: CameraFrustumProps) {
 
   return (
     <>
-      {/* 2D: image plane rectangle fill + outline */}
+      {/* 2D: image plane rectangle fill + outline. `visibility` (not just
+       * opacity) toggles the inactive half so it's actually skipped by the
+       * renderer rather than still drawn fully transparent. */}
       <Source id="camera-frustum-2d" type="geojson" data={flatRectGeojson}>
         <Layer
           id="camera-frustum-2d-fill"
           type="fill"
+          layout={{ visibility: is3D ? "none" : "visible" }}
           paint={{
             "fill-color": "#94a3b8",
-            "fill-opacity": is3D ? 0 : 0.12,
+            "fill-opacity": 0.12,
           }}
         />
         <Layer
           id="camera-frustum-2d-outline"
           type="line"
+          layout={{ visibility: is3D ? "none" : "visible" }}
           paint={{
             "line-color": "#94a3b8",
             "line-width": 1.5,
-            "line-opacity": is3D ? 0 : 0.5,
+            "line-opacity": 0.5,
           }}
         />
       </Source>
@@ -243,10 +247,11 @@ export function CameraFrustum({ waypoint, pois, is3D }: CameraFrustumProps) {
         <Layer
           id="camera-frustum-2d-edges-layer"
           type="line"
+          layout={{ visibility: is3D ? "none" : "visible" }}
           paint={{
             "line-color": "#94a3b8",
             "line-width": 1.5,
-            "line-opacity": is3D ? 0 : 0.5,
+            "line-opacity": 0.5,
           }}
         />
       </Source>
@@ -264,11 +269,12 @@ export function CameraFrustum({ waypoint, pois, is3D }: CameraFrustumProps) {
           paint={{
             "line-color": "#94a3b8",
             "line-width": 2,
-            "line-opacity": is3D ? 0.7 : 0,
+            "line-opacity": 0.7,
           }}
           layout={
             is3D
               ? ({
+                  visibility: "visible",
                   "line-z-offset": [
                     "interpolate",
                     ["linear"],
@@ -279,7 +285,7 @@ export function CameraFrustum({ waypoint, pois, is3D }: CameraFrustumProps) {
                     ["get", "zEnd"],
                   ],
                 } as any)
-              : {}
+              : ({ visibility: "none" } as any)
           }
         />
       </Source>
@@ -297,11 +303,12 @@ export function CameraFrustum({ waypoint, pois, is3D }: CameraFrustumProps) {
           paint={{
             "line-color": "#94a3b8",
             "line-width": 2,
-            "line-opacity": is3D ? 0.8 : 0,
+            "line-opacity": 0.8,
           }}
           layout={
             is3D
               ? ({
+                  visibility: "visible",
                   "line-z-offset": [
                     "interpolate",
                     ["linear"],
@@ -312,7 +319,7 @@ export function CameraFrustum({ waypoint, pois, is3D }: CameraFrustumProps) {
                     ["get", "zEnd"],
                   ],
                 } as any)
-              : {}
+              : ({ visibility: "none" } as any)
           }
         />
       </Source>

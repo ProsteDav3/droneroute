@@ -123,9 +123,15 @@ export function handleMessage(topic: string, payload: Buffer): void {
     horizontalSpeed: readNumber(data, "horizontal_speed"),
     verticalSpeed: readNumber(data, "vertical_speed"),
     attitudeHead: readNumber(data, "attitude_head"),
+    // The aircraft nests this under a `battery` object; an RC or dock
+    // reports its own battery as a flat top-level `capacity_percent`
+    // instead — without the fallback, an RC/dock's battery was invisible
+    // to this bridge entirely (not wrong, just never captured), which read
+    // exactly like a stale/incorrect reading once shown next to the
+    // aircraft's own number.
     batteryPercent: battery
       ? readNumber(battery, "capacity_percent")
-      : undefined,
+      : readNumber(data, "capacity_percent"),
     batteryPercents: Array.isArray(batteries)
       ? batteries
           .map((b) =>

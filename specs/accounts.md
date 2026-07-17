@@ -107,6 +107,7 @@ Settings are saved to your account and sync across devices.
 - Your profile picture comes from Gravatar based on your email address.
 - The unit system setting affects all distances, speeds, and heights throughout the app. Metric uses m, m/s, and km. Imperial uses ft, mph, and mi. Internal storage is always metric — the conversion happens at the display layer only.
 - Administrators can create new accounts, manage users, ban accounts, and promote other users to admin — in both self-hosted and cloud mode.
+- Every admin action that changes an account (create, ban, unban, promote, demote) is recorded in an audit log, viewable from the "Historie akcí" (action history) tab of the admin panel — who did what, to which account, and when.
 - Sign-in, registration, password changes, password reset requests, and
   two-factor codes are all rate limited to protect against brute-force
   attempts. After too many failed attempts you'll be asked to wait a few

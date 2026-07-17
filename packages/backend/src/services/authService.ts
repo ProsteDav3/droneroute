@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { OAuth2Client } from "google-auth-library";
 import { authenticator } from "otplib";
+import { logger } from "../lib/logger.js";
 
 function getJwtSecret(): string {
   const secret = process.env.JWT_SECRET;
@@ -10,7 +11,7 @@ function getJwtSecret(): string {
     const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
     if (selfHosted) {
       // Self-hosted dev mode: use a default secret with a warning
-      console.warn(
+      logger.warn(
         "WARNING: JWT_SECRET is not set. Using insecure default. Set JWT_SECRET in production.",
       );
       return "droneroute-dev-secret-do-not-use-in-production";

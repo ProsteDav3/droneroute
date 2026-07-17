@@ -5,6 +5,7 @@ import {
   fetchWindAloft,
   fetchKpIndex,
 } from "../services/weather.js";
+import { logger } from "../lib/logger.js";
 
 export const weatherRoutes = Router();
 
@@ -62,7 +63,7 @@ weatherRoutes.get("/forecast", weatherLimiter, async (req, res) => {
     const forecast = await fetchForecast(lat, lng);
     res.json({ forecast });
   } catch (err) {
-    console.error("Weather fetch error:", err);
+    logger.error({ err }, "Weather fetch error");
     res
       .status(502)
       .json({ error: "Načtení dat o počasí od poskytovatele selhalo" });
@@ -101,7 +102,7 @@ weatherRoutes.get("/wind-aloft", weatherLimiter, async (req, res) => {
     const windAloft = await fetchWindAloft(lat, lng, heightM);
     res.json({ windAloft });
   } catch (err) {
-    console.error("Wind-aloft fetch error:", err);
+    logger.error({ err }, "Wind-aloft fetch error");
     res
       .status(502)
       .json({ error: "Načtení dat o větru od poskytovatele selhalo" });
@@ -120,7 +121,7 @@ weatherRoutes.get("/kp-index", weatherLimiter, async (_req, res) => {
     const kp = await fetchKpIndex();
     res.json({ kp });
   } catch (err) {
-    console.error("Kp-index fetch error:", err);
+    logger.error({ err }, "Kp-index fetch error");
     res
       .status(502)
       .json({ error: "Načtení Kp indexu od poskytovatele selhalo" });

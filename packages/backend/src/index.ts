@@ -1,6 +1,7 @@
 import express, { type ErrorRequestHandler } from "express";
 import cors from "cors";
 import helmet from "helmet";
+import pinoHttp from "pino-http";
 import path from "path";
 import { fileURLToPath } from "url";
 import swaggerUi from "swagger-ui-express";
@@ -16,9 +17,11 @@ import { preferencesRoutes } from "./routes/preferences.js";
 import { templatePresetRoutes } from "./routes/templatePresets.js";
 import { weatherRoutes } from "./routes/weather.js";
 import { djiCloudRoutes } from "./routes/djiCloud.js";
+import { healthRoutes } from "./routes/health.js";
 import { isDjiCloudConfigured } from "./services/djiCloud.js";
 import { globalLimiter } from "./middleware/rateLimit.js";
 import { resolveDefaultMapView } from "./lib/config.js";
+import { logger, httpLogRedactPaths, shouldSkipHttpLog } from "./lib/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -100,6 +103,21 @@ app.use(
 app.use(express.json({ limit: "50mb" }));
 app.use(globalLimiter);
 
+// Per-request access logging. See lib/logger.ts for why the Authorization
+// header is redacted and why /api/health + /api/shared/* are skipped.
+app.use(
+  pinoHttp({
+    logger,
+    redact: {
+      paths: httpLogRedactPaths,
+      censor: "[redacted]",
+    },
+    autoLogging: {
+      ignore: (req) => shouldSkipHttpLog(req.url),
+    },
+  }),
+);
+
 // Serve frontend static files in production
 const frontendDist = path.join(__dirname, "../../frontend/dist");
 app.use(express.static(frontendDist));
@@ -114,12 +132,8 @@ app.use("/api/template-presets", templatePresetRoutes);
 app.use("/api/weather", weatherRoutes);
 app.use("/api/airspace", airspaceRoutes);
 app.use("/api/dji-cloud", djiCloudRoutes);
+app.use("/api", healthRoutes);
 app.use("/api", sharedRoutes);
-
-// Health check
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
 
 // API docs (Swagger UI + raw spec) — non-production only. The generated
 // spec reflects the full internal API shape, so it stays off in production
@@ -167,7 +181,7 @@ app.get("/{*splat}", (_req, res) => {
 // Global error handler — log the full error server-side, never leak details
 // (stack traces, SQL, internal paths) to the client.
 const errorHandler: ErrorRequestHandler = (err, _req, res, next) => {
-  console.error("Unhandled error:", err);
+  logger.error({ err }, "Unhandled error");
   if (res.headersSent) {
     next(err);
     return;
@@ -188,10 +202,10 @@ app.use(errorHandler);
 // Initialize database and start server
 initDb();
 app.listen(PORT, () => {
-  console.log(`DroneRoute server running on http://localhost:${PORT}`);
+  logger.info(`DroneRoute server running on http://localhost:${PORT}`);
   const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
   const adminEmail = process.env.ADMIN_EMAIL || "";
-  console.log(
+  logger.info(
     `Mode: ${selfHosted ? "self-hosted" : "cloud"}${!selfHosted && adminEmail ? ` (admin: ${adminEmail})` : ""}`,
   );
 });

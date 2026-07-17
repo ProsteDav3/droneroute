@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { fetchZones, listProviders } from "../services/airspace/index.js";
 import { airspaceLimiter } from "../middleware/rateLimit.js";
+import { logger } from "../lib/logger.js";
 
 export const airspaceRoutes = Router();
 
@@ -83,7 +84,7 @@ airspaceRoutes.get("/zones", airspaceLimiter, async (req, res) => {
     const zones = await fetchZones(bounds, providerIds);
     res.json({ zones });
   } catch (err) {
-    console.error("Airspace fetch error:", err);
+    logger.error({ err }, "Airspace fetch error");
     res.status(502).json({ error: "Načtení dat o vzdušném prostoru selhalo" });
   }
 });

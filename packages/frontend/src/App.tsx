@@ -51,13 +51,15 @@ import { AdminPage } from "@/pages/AdminPage";
 import { ElevationGraph } from "@/components/mission/ElevationGraph";
 import { DjiCloudOpsPanel } from "@/components/mission/DjiCloudOpsPanel";
 import { WarningsPanel } from "@/components/mission/WarningsPanel";
+import { UndoRedoControls } from "@/components/mission/UndoRedoControls";
+import { DraftRecoveryBanner } from "@/components/mission/DraftRecoveryBanner";
 import type { Warning } from "@/components/mission/WarningsPanel";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { LoginGate } from "@/components/auth/LoginGate";
 import { AccountModal } from "@/components/auth/AccountModal";
 import { AboutDialog } from "@/components/AboutDialog";
 import { WelcomeDialog } from "@/components/WelcomeDialog";
-import { useMissionStore } from "@/store/missionStore";
+import { useMissionStore, clearMissionDraft } from "@/store/missionStore";
 import { useAuthStore } from "@/store/authStore";
 import { useConfigStore } from "@/store/configStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
@@ -585,6 +587,7 @@ export default function App() {
         setMissionId(result.id);
       }
       setDirty(false);
+      clearMissionDraft();
     } catch (err: any) {
       toast.error(`Uložení selhalo: ${err.message}`);
     } finally {
@@ -669,10 +672,26 @@ export default function App() {
           e.preventDefault();
           setTemplateMode(templateMode === "facade" ? null : "facade");
           break;
-        case "z":
-          if (e.metaKey || e.ctrlKey) return; // don't intercept Cmd+Z (undo)
+        case "z": {
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            const { undo, redo } = useMissionStore.temporal.getState();
+            if (e.shiftKey) {
+              redo();
+            } else {
+              undo();
+            }
+            return;
+          }
           e.preventDefault();
           setTemplateMode(templateMode === "pencil" ? null : "pencil");
+          break;
+        }
+        case "y":
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            useMissionStore.temporal.getState().redo();
+          }
           break;
         case "s":
           if (e.metaKey || e.ctrlKey) return; // don't intercept Cmd+S (save)
@@ -1340,6 +1359,8 @@ export default function App() {
       </div>
       <div className="flex-1 relative">
         <MapView onMapLoad={(map) => (mapRef.current = map)} />
+        <UndoRedoControls />
+        <DraftRecoveryBanner />
         <BulkActionToolbar />
         <WarningsPanel warnings={warnings} />
       </div>

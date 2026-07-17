@@ -3,8 +3,32 @@ import { v4 as uuidv4 } from "uuid";
 import { getDb } from "../models/db.js";
 import { hashPassword } from "../services/authService.js";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
+import { logger } from "../lib/logger.js";
 
 export const adminRoutes = Router();
+
+/**
+ * Record an admin action in the audit log. Never throws — a logging failure
+ * must not block the admin action it's recording.
+ */
+function recordAuditLog(
+  adminUserId: string,
+  action: string,
+  targetUserId: string | null,
+  detail: string | null,
+): void {
+  try {
+    getDb()
+      .prepare(
+        "INSERT INTO audit_log (id, admin_user_id, action, target_user_id, detail) VALUES (?, ?, ?, ?, ?)",
+      )
+      .run(uuidv4(), adminUserId, action, targetUserId, detail);
+  } catch (err) {
+    // Best-effort: the admin action itself already succeeded, so we log
+    // server-side and move on rather than failing the request.
+    logger.error({ err }, "Failed to write audit log entry");
+  }
+}
 
 // Admin guard — reads env at request time to avoid module initialization issues
 function adminGuard(req: AuthRequest, res: Response, next: NextFunction): void {
@@ -29,6 +53,35 @@ function adminGuard(req: AuthRequest, res: Response, next: NextFunction): void {
 // All admin routes require auth + admin
 adminRoutes.use(authMiddleware, adminGuard);
 
+/**
+ * @openapi
+ * /admin/users:
+ *   post:
+ *     summary: Create a user account (admin only)
+ *     description: >
+ *       Public self-registration is closed after the first/founder account,
+ *       so every subsequent account must be created here by an admin.
+ *     tags: [Admin]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email: { type: string, format: email }
+ *               password: { type: string, minLength: 6 }
+ *     responses:
+ *       201:
+ *         description: Created
+ *       400:
+ *         description: Missing/invalid email or password
+ *       403:
+ *         description: Not an admin
+ *       409:
+ *         description: Email already registered
+ */
 // POST /api/admin/users — admin creates an account directly (public
 // self-registration is closed after the first/founder account).
 adminRoutes.post("/users", (req: AuthRequest, res) => {
@@ -57,9 +110,54 @@ adminRoutes.post("/users", (req: AuthRequest, res) => {
     "INSERT INTO users (id, email, password_hash, email_verified) VALUES (?, ?, ?, 1)",
   ).run(id, email, passwordHash);
 
+  recordAuditLog(req.userId!, "create_user", id, `Created account ${email}`);
+
   res.status(201).json({ id, email });
 });
 
+/**
+ * @openapi
+ * /admin/users:
+ *   get:
+ *     summary: List users, paginated/filterable/sortable (admin only)
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: perPage
+ *         schema: { type: integer, default: 10, maximum: 100 }
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *         description: Substring match on email
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [admin, banned, active] }
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [email, created_at, last_login_at, mission_count]
+ *       - in: query
+ *         name: sortOrder
+ *         schema: { type: string, enum: [asc, desc] }
+ *     responses:
+ *       200:
+ *         description: Paginated user list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data: { type: array, items: { type: object } }
+ *                 page: { type: integer }
+ *                 perPage: { type: integer }
+ *                 total: { type: integer }
+ *       403:
+ *         description: Not an admin
+ */
 // GET /api/admin/users?page=1&perPage=10&search=&status=&sortBy=created_at&sortOrder=desc
 adminRoutes.get("/users", (req: AuthRequest, res) => {
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
@@ -155,6 +253,7 @@ adminRoutes.post("/users/:id/ban", (req: AuthRequest, res) => {
     res.status(404).json({ error: "Uživatel nenalezen" });
     return;
   }
+  recordAuditLog(req.userId!, "ban_user", String(req.params.id), null);
   res.json({ message: "Uživatel zablokován" });
 });
 
@@ -173,6 +272,7 @@ adminRoutes.post("/users/:id/unban", (req: AuthRequest, res) => {
     res.status(404).json({ error: "Uživatel nenalezen" });
     return;
   }
+  recordAuditLog(req.userId!, "unban_user", String(req.params.id), null);
   res.json({ message: "Uživatel odblokován" });
 });
 
@@ -191,6 +291,7 @@ adminRoutes.post("/users/:id/promote", (req: AuthRequest, res) => {
     res.status(404).json({ error: "Uživatel nenalezen" });
     return;
   }
+  recordAuditLog(req.userId!, "promote_user", String(req.params.id), null);
   res.json({ message: "Uživatel povýšen na administrátora" });
 });
 
@@ -209,5 +310,53 @@ adminRoutes.post("/users/:id/demote", (req: AuthRequest, res) => {
     res.status(404).json({ error: "Uživatel nenalezen" });
     return;
   }
+  recordAuditLog(req.userId!, "demote_user", String(req.params.id), null);
   res.json({ message: "Administrátorská práva odebrána" });
+});
+
+// GET /api/admin/audit-log?page=1&perPage=20
+// Returns audit log entries with the acting admin's and target user's
+// emails joined in (not just raw IDs), newest first.
+adminRoutes.get("/audit-log", (req: AuthRequest, res) => {
+  const page = Math.max(1, parseInt(req.query.page as string) || 1);
+  const perPage = Math.min(
+    100,
+    Math.max(1, parseInt(req.query.perPage as string) || 20),
+  );
+  const offset = (page - 1) * perPage;
+
+  const db = getDb();
+
+  const total = (
+    db.prepare("SELECT COUNT(*) as count FROM audit_log").get() as any
+  ).count;
+
+  const rows = db
+    .prepare(
+      `SELECT a.id, a.action, a.detail, a.created_at,
+              a.admin_user_id, admin.email AS admin_email,
+              a.target_user_id, target.email AS target_email
+       FROM audit_log a
+       LEFT JOIN users admin ON admin.id = a.admin_user_id
+       LEFT JOIN users target ON target.id = a.target_user_id
+       ORDER BY a.rowid DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(perPage, offset) as any[];
+
+  res.json({
+    data: rows.map((r) => ({
+      id: r.id,
+      action: r.action,
+      detail: r.detail,
+      createdAt: r.created_at,
+      adminUserId: r.admin_user_id,
+      adminEmail: r.admin_email || null,
+      targetUserId: r.target_user_id,
+      targetEmail: r.target_email || null,
+    })),
+    page,
+    perPage,
+    total,
+  });
 });

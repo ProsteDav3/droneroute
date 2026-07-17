@@ -5,15 +5,43 @@ import {
   fetchWindAloft,
   fetchKpIndex,
 } from "../services/weather.js";
+import { logger } from "../lib/logger.js";
 
 export const weatherRoutes = Router();
 
 /**
- * GET /api/weather/forecast?lat=...&lng=...
- *
- * Returns a weather forecast (temperature, wind, precipitation) for the
- * given coordinates, proxied from MET Norway's free Locationforecast API
- * and cached server-side.
+ * @openapi
+ * /weather/forecast:
+ *   get:
+ *     summary: Get a weather forecast for a location
+ *     description: >
+ *       Proxies MET Norway's free Locationforecast API and caches
+ *       responses server-side (and again client-side). Rate-limited
+ *       (weatherLimiter).
+ *     tags: [Weather]
+ *     security: []
+ *     parameters:
+ *       - in: query
+ *         name: lat
+ *         required: true
+ *         schema: { type: number, minimum: -90, maximum: 90 }
+ *       - in: query
+ *         name: lng
+ *         required: true
+ *         schema: { type: number, minimum: -180, maximum: 180 }
+ *     responses:
+ *       200:
+ *         description: Forecast (temperature, wind, precipitation)
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 forecast: { type: object }
+ *       400:
+ *         description: Invalid lat/lng
+ *       502:
+ *         description: Upstream weather provider request failed
  */
 weatherRoutes.get("/forecast", weatherLimiter, async (req, res) => {
   const lat = Number(req.query.lat);
@@ -35,7 +63,7 @@ weatherRoutes.get("/forecast", weatherLimiter, async (req, res) => {
     const forecast = await fetchForecast(lat, lng);
     res.json({ forecast });
   } catch (err) {
-    console.error("Weather fetch error:", err);
+    logger.error({ err }, "Weather fetch error");
     res
       .status(502)
       .json({ error: "Načtení dat o počasí od poskytovatele selhalo" });
@@ -74,7 +102,7 @@ weatherRoutes.get("/wind-aloft", weatherLimiter, async (req, res) => {
     const windAloft = await fetchWindAloft(lat, lng, heightM);
     res.json({ windAloft });
   } catch (err) {
-    console.error("Wind-aloft fetch error:", err);
+    logger.error({ err }, "Wind-aloft fetch error");
     res
       .status(502)
       .json({ error: "Načtení dat o větru od poskytovatele selhalo" });
@@ -93,7 +121,7 @@ weatherRoutes.get("/kp-index", weatherLimiter, async (_req, res) => {
     const kp = await fetchKpIndex();
     res.json({ kp });
   } catch (err) {
-    console.error("Kp-index fetch error:", err);
+    logger.error({ err }, "Kp-index fetch error");
     res
       .status(502)
       .json({ error: "Načtení Kp indexu od poskytovatele selhalo" });

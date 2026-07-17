@@ -9,6 +9,28 @@ import {
 
 export const templatePresetRoutes = Router();
 
+/**
+ * @openapi
+ * /template-presets:
+ *   get:
+ *     summary: List the current user's saved template presets
+ *     tags: [Template presets]
+ *     responses:
+ *       200:
+ *         description: Presets
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id: { type: string }
+ *                   name: { type: string }
+ *                   type: { type: string }
+ *                   params: { type: object }
+ *                   createdAt: { type: string }
+ */
 // List the current user's presets
 templatePresetRoutes.get("/", authMiddleware, (req: AuthRequest, res) => {
   const db = getDb();
@@ -29,6 +51,29 @@ templatePresetRoutes.get("/", authMiddleware, (req: AuthRequest, res) => {
   );
 });
 
+/**
+ * @openapi
+ * /template-presets:
+ *   post:
+ *     summary: Create a template preset
+ *     tags: [Template presets]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, type, params]
+ *             properties:
+ *               name: { type: string }
+ *               type: { type: string }
+ *               params: { type: object }
+ *     responses:
+ *       201:
+ *         description: Created
+ *       400:
+ *         description: Validation error
+ */
 // Create a preset
 templatePresetRoutes.post("/", authMiddleware, (req: AuthRequest, res) => {
   const validationError = validateTemplatePresetCreate(req.body);

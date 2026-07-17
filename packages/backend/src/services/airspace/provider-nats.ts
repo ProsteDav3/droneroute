@@ -13,6 +13,7 @@ import JSZip from "jszip";
 import { XMLParser } from "fast-xml-parser";
 
 import type { AirspaceProvider, AirspaceZone, BBox } from "./types.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -212,9 +213,9 @@ async function discoverDownloadUrl(): Promise<string> {
  * Download and parse the NATS KMZ dataset into AirspaceZone[].
  */
 async function downloadAndParse(): Promise<AirspaceZone[]> {
-  console.log("NATS: discovering latest dataset URL...");
+  logger.info("NATS: discovering latest dataset URL...");
   const downloadUrl = await discoverDownloadUrl();
-  console.log(`NATS: downloading ${downloadUrl}`);
+  logger.info(`NATS: downloading ${downloadUrl}`);
 
   const res = await fetch(downloadUrl);
   if (!res.ok) {
@@ -222,10 +223,10 @@ async function downloadAndParse(): Promise<AirspaceZone[]> {
   }
 
   const buffer = await res.arrayBuffer();
-  console.log(`NATS: downloaded ${(buffer.byteLength / 1024).toFixed(0)} KB`);
+  logger.info(`NATS: downloaded ${(buffer.byteLength / 1024).toFixed(0)} KB`);
 
   const kmlText = await extractKml(buffer);
-  console.log(`NATS: extracted KML (${(kmlText.length / 1024).toFixed(0)} KB)`);
+  logger.info(`NATS: extracted KML (${(kmlText.length / 1024).toFixed(0)} KB)`);
 
   const parser = new XMLParser({
     ignoreAttributes: false,
@@ -240,7 +241,7 @@ async function downloadAndParse(): Promise<AirspaceZone[]> {
   const kml = doc["kml"] as Record<string, unknown> | undefined;
   const document = kml?.["Document"] as Record<string, unknown> | undefined;
   if (!document) {
-    console.error("NATS: unexpected KML structure");
+    logger.error("NATS: unexpected KML structure");
     return [];
   }
 
@@ -267,7 +268,7 @@ async function downloadAndParse(): Promise<AirspaceZone[]> {
   };
 
   collectPlacemarks(document);
-  console.log(`NATS: found ${placemarks.length} placemarks`);
+  logger.info(`NATS: found ${placemarks.length} placemarks`);
 
   const zones: AirspaceZone[] = [];
 
@@ -296,7 +297,7 @@ async function downloadAndParse(): Promise<AirspaceZone[]> {
     });
   }
 
-  console.log(`NATS: parsed ${zones.length} zones`);
+  logger.info(`NATS: parsed ${zones.length} zones`);
   return zones;
 }
 
@@ -321,7 +322,7 @@ async function getCachedZones(): Promise<AirspaceZone[]> {
     })
     .catch((err) => {
       fetchInProgress = null;
-      console.error("NATS: failed to fetch/parse dataset:", err);
+      logger.error({ err }, "NATS: failed to fetch/parse dataset");
       return [];
     });
 

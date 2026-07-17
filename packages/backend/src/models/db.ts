@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { logger } from "../lib/logger.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DB_PATH =
@@ -170,6 +171,122 @@ export function initDb(): void {
     );
   `);
 
+  // Migration: create flight_logs table — simple record-keeping of actual
+  // flights against a saved mission (date, duration, free-text notes). Not
+  // a full EU-compliant logbook with every regulatory field; a deliberately
+  // modest first cut.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS flight_logs (
+      id TEXT PRIMARY KEY,
+      mission_id TEXT,
+      user_id TEXT NOT NULL,
+      flown_at TEXT NOT NULL,
+      duration_minutes REAL NOT NULL,
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (mission_id) REFERENCES missions(id),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_flight_logs_user_id ON flight_logs(user_id)`,
+  );
+
+  // Migration: create mission_risk_assessments table — a lightweight,
+  // simplified SORA-style questionnaire result per mission (one per
+  // mission: ground/air risk class + free-form mitigations). This is a
+  // simplified planning aid, not an authoritative SORA submission.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS mission_risk_assessments (
+      mission_id TEXT PRIMARY KEY,
+      ground_risk_class TEXT NOT NULL,
+      air_risk_class TEXT NOT NULL,
+      mitigations TEXT NOT NULL DEFAULT '[]',
+      assessed_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (mission_id) REFERENCES missions(id)
+    );
+  `);
+
+  // Migration: create mission_permits table — tracking authorization /
+  // coordination documents per mission, with an expiry date so the UI can
+  // surface an expired/expiring-soon warning.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS mission_permits (
+      id TEXT PRIMARY KEY,
+      mission_id TEXT NOT NULL,
+      description TEXT NOT NULL,
+      reference_or_url TEXT,
+      expiry_date TEXT,
+      issued_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (mission_id) REFERENCES missions(id)
+    );
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_mission_permits_mission_id ON mission_permits(mission_id)`,
+  );
+
+  // Migration: create audit_log table — records admin actions that mutate
+  // state (ban, unban, promote, demote, create user), for accountability.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      admin_user_id TEXT NOT NULL,
+      action TEXT NOT NULL,
+      target_user_id TEXT,
+      detail TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+  `);
+
+  // Migration: create password_reset_tokens table. Only the hash of the
+  // reset token is ever stored — the raw token exists solely in the emailed
+  // (or console-logged) link, never at rest, so a DB read can't be turned
+  // into an account takeover.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token_hash ON password_reset_tokens(token_hash)`,
+  );
+
+  // Migration: add totp_secret column if missing (for existing DBs) — holds
+  // the pending or confirmed TOTP secret for 2FA.
+  try {
+    database.exec(`ALTER TABLE users ADD COLUMN totp_secret TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Migration: add totp_enabled column if missing (for existing DBs)
+  try {
+    database.exec(
+      `ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0`,
+    );
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Migration: add token_version column if missing (for existing DBs) —
+  // embedded in every issued JWT; bumping it (on password change/reset)
+  // invalidates every previously issued token for that account immediately,
+  // without needing a server-side session/token blocklist.
+  try {
+    database.exec(
+      `ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0`,
+    );
+  } catch {
+    // Column already exists — ignore
+  }
+
   // Migration: add folder column if missing (for existing DBs) — free-text,
   // single-folder-per-mission tag for organizing the mission list (separate
   // from the client/project field).
@@ -216,6 +333,22 @@ export function initDb(): void {
     `CREATE INDEX IF NOT EXISTS idx_mission_versions_mission_id ON mission_versions(mission_id, created_at)`,
   );
 
+  // Migration: create rate_limit_hits table — backs the SQLite-based
+  // express-rate-limit Store (see middleware/sqliteRateLimitStore.ts), which
+  // survives redeploys and Fly.io auto_stop_machines cold starts, unlike the
+  // library's default in-memory Store. `reset_at` is a Unix ms timestamp;
+  // the index keeps the periodic expired-row sweep cheap.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS rate_limit_hits (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL,
+      reset_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_rate_limit_hits_reset_at
+      ON rate_limit_hits(reset_at);
+  `);
+
   // Ensure ADMIN_EMAIL user has admin privileges (cloud mode)
   const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
   const adminEmail = process.env.ADMIN_EMAIL || "";
@@ -239,11 +372,11 @@ export function initDb(): void {
           "INSERT INTO users (id, email, password_hash, email_verified, is_admin) VALUES (?, ?, ?, 1, 1)",
         )
         .run(id, adminEmail, passwordHash);
-      console.log(
+      logger.info(
         `Dev account created for ${adminEmail} (password equals the email — change it after first login)`,
       );
     }
   }
 
-  console.log("Database initialized at", DB_PATH);
+  logger.info(`Database initialized at ${DB_PATH}`);
 }

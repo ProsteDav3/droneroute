@@ -73,6 +73,19 @@ function snapshotFromRow(row: any): MissionVersionSnapshot {
   };
 }
 
+/**
+ * @openapi
+ * /missions:
+ *   get:
+ *     summary: List the current user's saved missions
+ *     description: Optionally filtered by folder (exact match) and/or a free-text search over the mission name.
+ *     tags: [Missions]
+ *     responses:
+ *       200:
+ *         description: Array of mission summaries (config/waypoints/pois are JSON-decoded)
+ *       401:
+ *         description: Missing/invalid auth token
+ */
 // List missions for authenticated user — optionally filtered by folder
 // (exact match) and/or a free-text search over the mission name.
 missionRoutes.get("/", authMiddleware, (req: AuthRequest, res) => {
@@ -99,6 +112,25 @@ missionRoutes.get("/", authMiddleware, (req: AuthRequest, res) => {
   res.json(rows);
 });
 
+/**
+ * @openapi
+ * /missions/{id}:
+ *   get:
+ *     summary: Get a single saved mission (owner only)
+ *     tags: [Missions]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: The mission, fully decoded (config, waypoints, pois, obstacles, buildings, templateGroups)
+ *       403:
+ *         description: Not the mission owner
+ *       404:
+ *         description: Mission not found
+ */
 // Get single mission (owner only)
 missionRoutes.get("/:id", authMiddleware, (req: AuthRequest, res) => {
   const db = getDb();
@@ -135,6 +167,45 @@ missionRoutes.get("/:id", authMiddleware, (req: AuthRequest, res) => {
   res.json(mission);
 });
 
+/**
+ * @openapi
+ * /missions:
+ *   post:
+ *     summary: Create a mission
+ *     description: >
+ *       Auth is optional — an anonymous mission is saved with no owner
+ *       (used by flows that don't require sign-in, e.g. quick exports).
+ *     tags: [Missions]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, config, waypoints]
+ *             properties:
+ *               name: { type: string }
+ *               client: { type: string, nullable: true }
+ *               config: { type: object }
+ *               waypoints: { type: array, items: { type: object } }
+ *               pois: { type: array, items: { type: object } }
+ *               obstacles: { type: array, items: { type: object } }
+ *               buildings: { type: array, items: { type: object } }
+ *               templateGroups: { type: object }
+ *     responses:
+ *       201:
+ *         description: Created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id: { type: string }
+ *                 name: { type: string }
+ *       400:
+ *         description: Missing required fields or invalid mission geometry
+ */
 // Create mission
 missionRoutes.post("/", optionalAuth, (req: AuthRequest, res) => {
   const {
@@ -269,6 +340,32 @@ missionRoutes.post("/segments", authMiddleware, (req: AuthRequest, res) => {
   res.status(201).json(created);
 });
 
+/**
+ * @openapi
+ * /missions/{id}:
+ *   put:
+ *     summary: Update a mission (owner only, partial update)
+ *     tags: [Missions]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             description: Any subset of the mission's fields — only provided fields are updated.
+ *     responses:
+ *       200:
+ *         description: Updated
+ *       403:
+ *         description: Not the mission owner
+ *       404:
+ *         description: Mission not found
+ */
 // Update mission (owner only)
 missionRoutes.put("/:id", authMiddleware, (req: AuthRequest, res) => {
   const {
@@ -358,6 +455,25 @@ missionRoutes.put("/:id", authMiddleware, (req: AuthRequest, res) => {
   res.json({ id: req.params.id, name });
 });
 
+/**
+ * @openapi
+ * /missions/{id}:
+ *   delete:
+ *     summary: Delete a mission (owner only)
+ *     tags: [Missions]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Deleted
+ *       403:
+ *         description: Not the mission owner
+ *       404:
+ *         description: Mission not found
+ */
 // Delete mission
 missionRoutes.delete("/:id", authMiddleware, (req: AuthRequest, res) => {
   const db = getDb();

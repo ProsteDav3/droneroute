@@ -31,7 +31,7 @@ export function authMiddleware(
   const db = getDb();
   const user = db
     .prepare(
-      "SELECT is_banned, is_admin, email_verified FROM users WHERE id = ?",
+      "SELECT is_banned, is_admin, email_verified, token_version FROM users WHERE id = ?",
     )
     .get(payload.userId) as any;
   if (!user) {
@@ -40,6 +40,15 @@ export function authMiddleware(
   }
   if (user.is_banned) {
     res.status(403).json({ error: "Váš účet byl pozastaven", banned: true });
+    return;
+  }
+
+  // A password change/reset bumps token_version, which immediately
+  // invalidates every JWT issued before that point — even ones that
+  // haven't otherwise expired yet — without needing a server-side
+  // session/token blocklist.
+  if ((user.token_version ?? 0) !== payload.tokenVersion) {
+    res.status(401).json({ error: "Neplatný nebo vypršený token" });
     return;
   }
 

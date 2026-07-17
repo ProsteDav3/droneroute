@@ -10,6 +10,7 @@
  */
 
 import type { AirspaceProvider, AirspaceZone, BBox } from "./types.js";
+import { logger } from "../../lib/logger.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -76,7 +77,7 @@ export const dgacProvider: AirspaceProvider = {
     const res = await fetch(url);
 
     if (!res.ok) {
-      console.error(`DGAC: WFS request failed – ${res.status}`);
+      logger.error(`DGAC: WFS request failed – ${res.status}`);
       return [];
     }
 

@@ -148,6 +148,51 @@ export function computeAltitudeForGsd(
 }
 
 /**
+ * Rough JPEG bytes-per-megapixel for typical DJI aerial-photography
+ * compression settings — matches the ballpark of real DJI JPEG file sizes
+ * (roughly 6-10MB for a 20MP photo, 15-20MB for a 48MP photo). Actual file
+ * size varies with scene detail and the drone's own compression settings,
+ * so this is a planning estimate, not a guaranteed figure.
+ */
+const ESTIMATED_JPEG_BYTES_PER_MEGAPIXEL = 400_000;
+
+/**
+ * Estimated JPEG file size (MB) for one photo from the given payload's
+ * wide/RGB camera, based on its known resolution. Returns `null` when the
+ * resolution isn't known (see `WIDE_CAMERA_FOV`) rather than guessing.
+ */
+export function estimatePhotoFileSizeMB(
+  payloadEnumValue: number,
+): number | null {
+  const fov = WIDE_CAMERA_FOV[payloadEnumValue];
+  if (!fov?.imageHeightPx) return null;
+  // Every WIDE_CAMERA_FOV entry with a known resolution uses a 4:3 sensor
+  // (see deriveHfovFromVfov above) — same assumption reused here rather
+  // than tracking a separate width field just for this estimate.
+  const megapixels = (fov.imageHeightPx * fov.imageHeightPx * (4 / 3)) / 1e6;
+  return (megapixels * ESTIMATED_JPEG_BYTES_PER_MEGAPIXEL) / 1e6;
+}
+
+export interface MissionPhotoDataEstimate {
+  photoCount: number;
+  /** `null` when the selected camera's resolution isn't known. */
+  estimatedSizeMB: number | null;
+}
+
+/** Estimated total photo count and JPEG data volume for a mission, given
+ * its `takePhoto` action count and selected camera payload. */
+export function estimateMissionPhotoData(
+  photoCount: number,
+  payloadEnumValue: number,
+): MissionPhotoDataEstimate {
+  const perPhotoMB = estimatePhotoFileSizeMB(payloadEnumValue);
+  return {
+    photoCount,
+    estimatedSizeMB: perPhotoMB !== null ? photoCount * perPhotoMB : null,
+  };
+}
+
+/**
  * Payloads with a multispectral sensor array (NDVI/vegetation-index
  * capture), as opposed to a plain RGB-only wide camera. Currently only the
  * DJI Mavic 3M — its 4-band multispectral bands share alignment with the

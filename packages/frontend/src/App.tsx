@@ -89,7 +89,8 @@ import { useMeasureStore } from "@/store/measureStore";
 import { useAuthStore } from "@/store/authStore";
 import { useConfigStore } from "@/store/configStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
-import { formatDistance, heightModeLabel } from "@/lib/units";
+import { formatDistance, heightModeLabel, formatDataSize } from "@/lib/units";
+import { estimateMissionPhotoData } from "@/lib/solarCamera";
 import { useAirspaceStore } from "@/store/airspaceStore";
 import { api } from "@/lib/api";
 import { getObstacleWarnings, getAirspaceWarnings } from "@/lib/geo";
@@ -1301,16 +1302,26 @@ export default function App() {
               {(() => {
                 const { photoCount, videoCount } =
                   countCaptureActions(waypoints);
+                const photoData = estimateMissionPhotoData(
+                  photoCount,
+                  config.payloadEnumValue,
+                );
                 return (
                   <>
                     {photoCount > 0 && (
                       <span
                         className="flex items-center gap-1 text-[11px]"
-                        title="Akce fotografování"
+                        title={
+                          photoData.estimatedSizeMB !== null
+                            ? `Akce fotografování — odhad velikosti dat: ${formatDataSize(photoData.estimatedSizeMB)}`
+                            : "Akce fotografování"
+                        }
                       >
                         <Camera className="h-3 w-3 text-sky-400" />
                         <span className="text-sky-300 font-medium">
                           {photoCount}
+                          {photoData.estimatedSizeMB !== null &&
+                            ` (~${formatDataSize(photoData.estimatedSizeMB)})`}
                         </span>
                       </span>
                     )}

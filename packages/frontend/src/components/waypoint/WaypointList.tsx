@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   MapPin,
   X,
@@ -6,13 +6,17 @@ import {
   Settings,
   ArrowUp,
   Gauge,
+  CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useMissionStore } from "@/store/missionStore";
 import type { SelectionMode } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
+import { useConfigStore } from "@/store/configStore";
+import { useDjiCloudOpsStore } from "@/store/djiCloudOpsStore";
 import { formatHeight, formatSpeed } from "@/lib/units";
+import { computeMissionProgress } from "@/lib/missionProgress";
 import { WaypointEditorInline } from "./WaypointEditor";
 
 export function WaypointList() {
@@ -25,6 +29,29 @@ export function WaypointList() {
     updateWaypoint,
   } = useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
+  const djiCloudEnabled = useConfigStore((s) => s.djiCloudEnabled);
+  const telemetry = useDjiCloudOpsStore((s) => s.telemetry);
+
+  // Cross-references the live DJI Cloud telemetry stream against this
+  // mission's own waypoints to highlight which ones the aircraft has
+  // already flown past — see lib/missionProgress.ts for the "nearest point
+  // on path" heuristic and its single-aircraft assumption.
+  const flownWaypointIndex = useMemo(() => {
+    if (!djiCloudEnabled) return -1;
+    const flying = Object.values(telemetry).find(
+      (d) =>
+        d.online &&
+        typeof d.latitude === "number" &&
+        typeof d.longitude === "number",
+    );
+    if (!flying) return -1;
+    const progress = computeMissionProgress(
+      waypoints,
+      { lat: flying.latitude!, lng: flying.longitude! },
+      flying.horizontalSpeed,
+    );
+    return progress?.flownWaypointIndex ?? -1;
+  }, [djiCloudEnabled, telemetry, waypoints]);
 
   const [expandedEditor, setExpandedEditor] = useState<number | null>(null);
   const [editingName, setEditingName] = useState<number | null>(null);
@@ -125,6 +152,7 @@ export function WaypointList() {
         const isEditorOpen =
           expandedEditor === wp.index && selectedWaypointIndices.size <= 1;
         const isRenaming = editingName === wp.index;
+        const isFlown = wp.index <= flownWaypointIndex;
 
         return (
           <div key={wp.index}>
@@ -136,7 +164,9 @@ export function WaypointList() {
                     ? "border-t-2 border-primary"
                     : isSelected
                       ? "bg-primary/20 border border-primary/40"
-                      : "hover:bg-secondary border border-transparent"
+                      : isFlown
+                        ? "opacity-60 hover:bg-secondary border border-transparent"
+                        : "hover:bg-secondary border border-transparent"
               }`}
               onClick={(e) => handleClick(e, wp.index)}
               draggable
@@ -151,9 +181,14 @@ export function WaypointList() {
               </span>
               <Badge
                 variant={isSelected ? "default" : "secondary"}
-                className="text-[10px] px-1.5 py-0"
+                className={`text-[10px] px-1.5 py-0 ${isFlown ? "bg-emerald-600/80 text-white" : ""}`}
+                title={isFlown ? "Bod trasy je za dronem" : undefined}
               >
-                {wp.index + 1}
+                {isFlown ? (
+                  <CheckCircle2 className="h-2.5 w-2.5" />
+                ) : (
+                  wp.index + 1
+                )}
               </Badge>
               <div className="flex-1 min-w-0">
                 {isRenaming ? (

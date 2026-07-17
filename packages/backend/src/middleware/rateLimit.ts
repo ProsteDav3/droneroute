@@ -82,6 +82,7 @@ export const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
+  skip: skipInTests,
   store: new SqliteRateLimitStore({
     prefix: "auth",
     windowMs: 15 * 60 * 1000,

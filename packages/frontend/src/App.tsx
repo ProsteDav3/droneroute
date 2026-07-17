@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, lazy, Suspense } from "react";
 import type mapboxgl from "mapbox-gl";
 import { toast } from "sonner";
 import {
@@ -31,6 +31,7 @@ import {
   FileText,
   FileSpreadsheet,
   CloudUpload,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,10 +45,29 @@ import { BuildingList } from "@/components/mission/BuildingList";
 import { TemplatePresetList } from "@/components/mission/TemplatePresetList";
 import { WeatherForecast } from "@/components/mission/WeatherForecast";
 import { useTemplatePresetsStore } from "@/store/templatePresetsStore";
-import { RoutesPage } from "@/components/routes/RoutesPage";
-import { SharedMissionPage } from "@/components/routes/SharedMissionPage";
-import { EmbedMissionPage } from "@/components/routes/EmbedMissionPage";
-import { AdminPage } from "@/pages/AdminPage";
+// Lazy-loaded: each of these is its own route-like view, rendered exclusively
+// of the main editor (see the `currentPage` branches below) and of each
+// other, so splitting them out of the main chunk means a visitor who only
+// ever opens the editor never downloads the admin panel, the routes list, or
+// the public share-view code.
+const RoutesPage = lazy(() =>
+  import("@/components/routes/RoutesPage").then((m) => ({
+    default: m.RoutesPage,
+  })),
+);
+const SharedMissionPage = lazy(() =>
+  import("@/components/routes/SharedMissionPage").then((m) => ({
+    default: m.SharedMissionPage,
+  })),
+);
+const EmbedMissionPage = lazy(() =>
+  import("@/components/routes/EmbedMissionPage").then((m) => ({
+    default: m.EmbedMissionPage,
+  })),
+);
+const AdminPage = lazy(() =>
+  import("@/pages/AdminPage").then((m) => ({ default: m.AdminPage })),
+);
 import { ElevationGraph } from "@/components/mission/ElevationGraph";
 import { DjiCloudOpsPanel } from "@/components/mission/DjiCloudOpsPanel";
 import { WarningsPanel } from "@/components/mission/WarningsPanel";
@@ -85,6 +105,17 @@ type SidebarSection =
   | "presets"
   | "weather"
   | "config";
+
+/** Fallback shown while a lazy-loaded page chunk (admin, routes list,
+ * shared/embed view) downloads. Brief on a warm cache; only visible long
+ * enough to matter on a cold load or slow connection. */
+function PageLoadingFallback() {
+  return (
+    <div className="flex h-dvh w-screen items-center justify-center bg-background">
+      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+    </div>
+  );
+}
 
 export default function App() {
   const {
@@ -777,36 +808,44 @@ export default function App() {
 
   // Show admin page
   if (currentPage === "admin") {
-    return <AdminPage />;
+    return (
+      <Suspense fallback={<PageLoadingFallback />}>
+        <AdminPage />
+      </Suspense>
+    );
   }
 
   // Show routes page
   if (currentPage === "routes") {
     return (
-      <>
+      <Suspense fallback={<PageLoadingFallback />}>
         <RoutesPage onRequestAuth={() => setShowAuthModal(true)} />
         {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
-      </>
+      </Suspense>
     );
   }
 
   // Show shared mission page
   if (currentPage === "shared" && shareToken) {
     return (
-      <>
+      <Suspense fallback={<PageLoadingFallback />}>
         <SharedMissionPage
           shareToken={shareToken}
           onRequestAuth={() => setShowAuthModal(true)}
         />
         {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
-      </>
+      </Suspense>
     );
   }
 
   // Show the embeddable read-only map+route view (no editor chrome) — meant
   // to be loaded inside an <iframe> on a third-party page.
   if (currentPage === "embed" && shareToken) {
-    return <EmbedMissionPage shareToken={shareToken} />;
+    return (
+      <Suspense fallback={<PageLoadingFallback />}>
+        <EmbedMissionPage shareToken={shareToken} />
+      </Suspense>
+    );
   }
 
   return (

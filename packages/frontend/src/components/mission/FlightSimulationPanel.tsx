@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Play, Pause, X, Clapperboard } from "lucide-react";
+import { Play, Pause, X, Clapperboard, Box, ArrowUp } from "lucide-react";
 import { useMissionStore } from "@/store/missionStore";
 import { useFlightSimulationStore } from "@/store/flightSimulationStore";
 import {
@@ -23,10 +23,17 @@ export function FlightSimulationPanel() {
   const editingTemplateGroupId = useMissionStore(
     (s) => s.editingTemplateGroupId,
   );
-  const { isActive, isPlaying, frameIndex, frameCount, speed } =
+  const { isActive, isPlaying, frameIndex, frameCount, speed, cameraMode } =
     useFlightSimulationStore();
-  const { start, stop, togglePlay, setFrameIndex, setSpeed, advanceFrame } =
-    useFlightSimulationStore.getState();
+  const {
+    start,
+    stop,
+    togglePlay,
+    setFrameIndex,
+    setSpeed,
+    setCameraMode,
+    advanceFrame,
+  } = useFlightSimulationStore.getState();
 
   const frames = useMemo(
     () => buildSimulationFrames(waypoints, pois, FRAMES_PER_SEGMENT),
@@ -118,6 +125,35 @@ export function FlightSimulationPanel() {
       <span className="text-xs text-muted-foreground tabular-nums w-14 text-center">
         WP {legLabel}
       </span>
+
+      <div className="flex items-center rounded-md border border-border overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setCameraMode("top")}
+          title="Pohled shora"
+          className={`flex items-center gap-1 px-1.5 py-1 text-xs transition-colors ${
+            cameraMode === "top"
+              ? "bg-[#00c2ff] text-white"
+              : "text-muted-foreground hover:bg-muted"
+          }`}
+        >
+          <ArrowUp className="h-3 w-3" />
+          Shora
+        </button>
+        <button
+          type="button"
+          onClick={() => setCameraMode("flythrough")}
+          title="Reálný 3D přelet trasy"
+          className={`flex items-center gap-1 px-1.5 py-1 text-xs transition-colors ${
+            cameraMode === "flythrough"
+              ? "bg-[#00c2ff] text-white"
+              : "text-muted-foreground hover:bg-muted"
+          }`}
+        >
+          <Box className="h-3 w-3" />
+          3D let
+        </button>
+      </div>
 
       <select
         value={speed}

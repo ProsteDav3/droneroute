@@ -8,6 +8,13 @@ import { FlightTrackPanel } from "./FlightTrackPanel";
 
 const LS_KEY = "djiCloudOpsPanelOpen";
 
+/** Some platform responses store the literal string "undefined" (a client
+ * that stringified a missing value before sending it) instead of actually
+ * omitting the field — treat that the same as not having a value at all. */
+function realValue(value: string | undefined | null): string | undefined {
+  return value && value !== "undefined" ? value : undefined;
+}
+
 /** Short "naposledy přihlášen před Xh/Xd" label from an ISO timestamp — the
  * platform's device-list endpoint doesn't expose a true last-flight time, so
  * this (`login_time`) is the closest honest proxy for device recency. */
@@ -129,7 +136,9 @@ export function DjiCloudOpsPanel() {
                   />
                   <Plane className="h-3 w-3 text-muted-foreground shrink-0" />
                   <span className="truncate">
-                    {device.nickname || device.device_name || device.device_sn}
+                    {realValue(device.nickname) ??
+                      realValue(device.device_name) ??
+                      device.device_sn}
                   </span>
                   {typeof battery === "number" && (
                     <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">

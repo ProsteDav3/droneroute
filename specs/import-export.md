@@ -64,14 +64,20 @@ Bring in existing missions or export your planned flight as a file ready for DJI
 
 1. Plan a route with 2 or more waypoints.
 2. Click "Stáhnout PDF report".
-3. A PDF downloads with the mission name, drone/camera, waypoint count,
-   distance, estimated flight time, altitude range, photo/video action
-   counts, a map snapshot automatically framed to the whole route with each
-   waypoint numbered on it, and a table listing every waypoint (very dense
-   missions show the first 200 rows with a note about how many more exist,
-   to keep the report a manageable length). Framing the snapshot briefly
-   moves the live map to fit the mission and restores your original view
-   afterward. Czech diacritics render correctly throughout the report.
+3. A PDF downloads with the mission name, generation date and time, drone/camera,
+   waypoint count, distance, estimated flight time, and altitude range (labeled
+   min–max so it's clear what the two numbers mean). A photo count row and a
+   video row never both appear — a mission normally uses one or the other, and
+   a single continuous recording reads as "Video záznam" rather than a count of one.
+4. A large map snapshot, automatically framed to the whole route, follows on
+   the first page — each waypoint is numbered on it, and each route segment
+   shows the distance to the next waypoint. Framing the snapshot briefly moves
+   the live map to fit the mission and restores your original view afterward.
+5. Waypoint coordinates get their own page: full (untruncated) latitude/longitude
+   for every waypoint, plus the distance and flight time from the previous
+   waypoint for each segment (very dense missions show the first 200 rows with
+   a note about how many more exist, to keep the report a manageable length).
+   Czech diacritics render correctly throughout the report.
 
 ### Export for Pix4D/Metashape
 

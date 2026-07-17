@@ -1,5 +1,8 @@
 import type { jsPDF } from "jspdf";
 import type mapboxgl from "mapbox-gl";
+import type { UnitSystem } from "@droneroute/shared";
+import { haversine } from "@/lib/flightStats";
+import { formatDistance } from "@/lib/units";
 
 /** A waypoint's projected position within the captured canvas's own pixel
  * space (not the PDF's mm coordinate space — the caller scales that
@@ -8,6 +11,9 @@ export interface SnapshotMarker {
   x: number;
   y: number;
   index: number;
+  /** Great-circle distance (m) from the previous waypoint — undefined for
+   * the first waypoint, which has no incoming segment. */
+  segmentDistanceM?: number;
 }
 
 /**
@@ -94,7 +100,11 @@ export async function captureMissionMapSnapshot(
     const snapshot = captureMapSnapshot(map);
     const waypointPixels = waypoints.map((wp, index) => {
       const point = map.project([wp.longitude, wp.latitude]);
-      return { x: point.x, y: point.y, index };
+      const prev = waypoints[index - 1];
+      const segmentDistanceM = prev
+        ? haversine(prev.latitude, prev.longitude, wp.latitude, wp.longitude)
+        : undefined;
+      return { x: point.x, y: point.y, index, segmentDistanceM };
     });
     return { ...snapshot, waypointPixels };
   } finally {
@@ -120,6 +130,7 @@ export function addMapSnapshotToPdf(
   y: number,
   maxWidth: number,
   maxHeight?: number,
+  unitSystem: UnitSystem = "metric",
 ): number {
   const aspectRatio = snapshot.height / snapshot.width;
   let width = maxWidth;
@@ -132,21 +143,52 @@ export function addMapSnapshotToPdf(
 
   doc.addImage(snapshot.dataUrl, "PNG", x, y, width, height);
 
-  if (snapshot.waypointPixels && snapshot.waypointPixels.length > 0) {
+  const markers = snapshot.waypointPixels;
+  if (markers && markers.length > 0) {
     const scaleX = width / snapshot.width;
     const scaleY = height / snapshot.height;
     const savedFontSize = doc.getFontSize();
     const savedTextColor = doc.getTextColor();
+    const inFrame = (px: number, py: number) =>
+      px >= x && px <= x + width && py >= y && py <= y + height;
+
+    // Segment distance labels first, so the numbered markers drawn after
+    // them sit on top rather than under a label's background pill.
+    doc.setFontSize(4.5);
+    for (let i = 1; i < markers.length; i++) {
+      const a = markers[i - 1];
+      const b = markers[i];
+      if (b.segmentDistanceM === undefined) continue;
+      const midX = x + ((a.x + b.x) / 2) * scaleX;
+      const midY = y + ((a.y + b.y) / 2) * scaleY;
+      if (!inFrame(midX, midY)) continue;
+
+      const label = formatDistance(b.segmentDistanceM, unitSystem);
+      const textWidth = doc.getTextWidth(label);
+      doc.setFillColor(255, 255, 255);
+      doc.roundedRect(
+        midX - textWidth / 2 - 0.8,
+        midY - 1.9,
+        textWidth + 1.6,
+        3,
+        0.5,
+        0.5,
+        "F",
+      );
+      doc.setTextColor(30, 30, 30);
+      doc.text(label, midX, midY + 0.9, { align: "center" });
+    }
+
     doc.setFillColor(0, 148, 196);
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(5);
-    for (const marker of snapshot.waypointPixels) {
+    for (const marker of markers) {
       const px = x + marker.x * scaleX;
       const py = y + marker.y * scaleY;
       // A marker can fall outside the captured frame if fitBounds' padding
       // rounded differently than expected at the aspect ratio jsPDF ended
       // up placing the image at — skip rather than draw off the image.
-      if (px < x || px > x + width || py < y || py > y + height) continue;
+      if (!inFrame(px, py)) continue;
       doc.circle(px, py, 1.6, "F");
       doc.text(String(marker.index + 1), px, py + 0.6, { align: "center" });
     }

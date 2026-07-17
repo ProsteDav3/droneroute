@@ -76,14 +76,21 @@ export function DjiLiveVideoPanel() {
   }, [expanded]);
 
   const cameras = liveCapacity.flatMap((device) =>
-    device.cameras_list.flatMap((camera) =>
-      camera.videos_list.map((video) => ({
+    device.cameras_list.flatMap((camera) => {
+      // The platform doesn't always populate a camera name (e.g. an M4T's
+      // single payload reports none at all) — fall back to the video's own
+      // lens type ("wide"/"normal"/...) rather than showing "undefined".
+      const cameraLabel =
+        camera.name && camera.name !== "undefined" ? camera.name : null;
+      return camera.videos_list.map((video) => ({
         videoId: video.id,
-        label: `${device.name} — ${camera.name}${
-          camera.videos_list.length > 1 ? ` (${video.type})` : ""
-        }`,
-      })),
-    ),
+        label: cameraLabel
+          ? `${device.name} — ${cameraLabel}${
+              camera.videos_list.length > 1 ? ` (${video.type})` : ""
+            }`
+          : `${device.name} — ${video.type}`,
+      }));
+    }),
   );
 
   return (

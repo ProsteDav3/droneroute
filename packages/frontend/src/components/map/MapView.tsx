@@ -175,6 +175,95 @@ function SceneSetup({ is3D, mapStyle }: { is3D: boolean; mapStyle: string }) {
 }
 
 /**
+ * Drives the map's own camera (center/bearing/pitch/zoom) to chase the
+ * drone frame by frame during a flight simulation when "3D flythrough" is
+ * selected, instead of the default fixed overhead view with just a moving
+ * dot. Forces the map into 3D for the duration — pitch is clamped to 0 in
+ * 2D mode, per SceneSetup above — and restores the original camera view
+ * and 2D/3D state once the flythrough ends.
+ */
+function FlightSimulationCamera({
+  is3D,
+  setIs3D,
+}: {
+  is3D: boolean;
+  setIs3D: (value: boolean) => void;
+}) {
+  const { current: map } = useMap();
+  const simulationActive = useFlightSimulationStore((s) => s.isActive);
+  const cameraMode = useFlightSimulationStore((s) => s.cameraMode);
+  const frameIndex = useFlightSimulationStore((s) => s.frameIndex);
+  const waypoints = useMissionStore((s) => s.waypoints);
+  const pois = useMissionStore((s) => s.pois);
+
+  const flying = simulationActive && cameraMode === "flythrough";
+
+  const frames = useMemo(
+    () =>
+      flying ? buildSimulationFrames(waypoints, pois, FRAMES_PER_SEGMENT) : [],
+    [flying, waypoints, pois],
+  );
+
+  const originalViewRef = useRef<{
+    center: mapboxgl.LngLat;
+    zoom: number;
+    bearing: number;
+    pitch: number;
+  } | null>(null);
+  const wasIs3DRef = useRef(is3D);
+
+  // Enter/exit: capture (or restore) the view the pilot had before starting
+  // the flythrough, and force 3D on for its duration.
+  useEffect(() => {
+    if (!map) return;
+    const m = map.getMap();
+
+    if (flying && !originalViewRef.current) {
+      wasIs3DRef.current = is3D;
+      originalViewRef.current = {
+        center: m.getCenter(),
+        zoom: m.getZoom(),
+        bearing: m.getBearing(),
+        pitch: m.getPitch(),
+      };
+      if (!is3D) setIs3D(true);
+    } else if (!flying && originalViewRef.current) {
+      const original = originalViewRef.current;
+      originalViewRef.current = null;
+      if (!wasIs3DRef.current) setIs3D(false);
+      m.easeTo({ ...original, duration: 500 });
+    }
+    // is3D/setIs3D deliberately excluded: this effect only cares about the
+    // flying transition, not about is3D changes for other reasons (e.g. the
+    // pilot manually toggling 2D/3D mid-flythrough).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flying, map]);
+
+  // Per-frame: chase the drone. A plain jumpTo (not easeTo) so our own
+  // frame interpolation drives the motion smoothly — queuing a new eased
+  // transition on every frame would fight itself.
+  useEffect(() => {
+    if (!flying || !map || frames.length === 0) return;
+    const frame = frames[Math.min(frameIndex, frames.length - 1)];
+    const m = map.getMap();
+    // Closer to the ground reads better zoomed in; higher survey altitudes
+    // need to zoom out to keep the ground in frame at all.
+    const zoom = Math.max(
+      14,
+      Math.min(20, 18 - Math.log2(Math.max(frame.height, 10) / 50)),
+    );
+    m.jumpTo({
+      center: [frame.longitude, frame.latitude],
+      bearing: frame.headingAngle,
+      pitch: 70,
+      zoom,
+    });
+  }, [flying, map, frameIndex, frames]);
+
+  return null;
+}
+
+/**
  * Mapbox's default Shift+drag "box zoom" interaction claims the Shift
  * modifier at mousedown, which also swallows the plain Shift+click we use
  * to accumulate building fragments for merging — disable it so Shift is
@@ -275,6 +364,12 @@ function GeolocateControl() {
       positionOptions: { enableHighAccuracy: true },
       trackUserLocation: true,
       showUserHeading: true,
+      // By default GeolocateControl zooms out enough to fit the whole
+      // accuracy-radius circle, which on a low-precision fix (no real GPS
+      // hardware, network/IP-based positioning) can mean the entire city.
+      // A pilot standing on site wants to see their immediate surroundings
+      // regardless of how uncertain the fix is, so cap how far out it'll go.
+      fitBoundsOptions: { maxZoom: 17 },
     });
 
     m.addControl(control, "bottom-right");
@@ -869,6 +964,7 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
         <GeolocateControl />
         <FlyToTargetHandler />
         <SceneSetup is3D={is3D} mapStyle={mapStyle} />
+        <FlightSimulationCamera is3D={is3D} setIs3D={setIs3D} />
         <FlightPath is3D={is3D} />
         <PoiPointingLines is3D={is3D} />
         <TemplateDrawHandler />

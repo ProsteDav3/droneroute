@@ -30,3 +30,4 @@ Quick reference for all available keyboard shortcuts.
 
 - Shortcuts only work when you're not typing in a text field.
 - You can also access all these tools from the toolbar buttons on the map.
+- Press **?** (or click the help icon next to the SkyRoute logo) to see this same list in-app at any time.

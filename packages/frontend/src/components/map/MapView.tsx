@@ -14,7 +14,7 @@ import "@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css";
 import { useMissionStore } from "@/store/missionStore";
 import { useConfigStore } from "@/store/configStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
-import { getObstacleWarnings } from "@/lib/geo";
+import { getObstacleWarnings, mergeBuildingFootprints } from "@/lib/geo";
 import { valueToGradientColor } from "@/lib/colorScale";
 import { WaypointMarker } from "./WaypointMarker";
 import { PoiMarker } from "./PoiMarker";
@@ -44,11 +44,17 @@ import { useMeasureStore } from "@/store/measureStore";
 import { Triangle, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+interface BuildingFragment {
+  height: number | null;
+  vertices: [number, number][]; // [lat, lng][]
+}
+
 interface BuildingPopupData {
   lng: number;
   lat: number;
-  height: number | null;
-  vertices: [number, number][]; // [lat, lng][]
+  /** One entry normally; more when Shift-click accumulated adjacent
+   * fragments of the same real-world building for merging. */
+  fragments: BuildingFragment[];
 }
 
 /** Sets up 3D buildings layer and syncs 2D/3D pitch/rotation. */
@@ -664,6 +670,11 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
         return;
       }
 
+      // Shift-click accumulates adjacent building fragments into the
+      // current selection (for merging several OSM footprints that make
+      // up one real building) instead of replacing it.
+      const isMultiSelect = e.originalEvent?.shiftKey === true;
+
       // Check if a 3D building was clicked
       const map = e.target as any;
       if (map.getLayer && map.getLayer("3d-buildings")) {
@@ -683,17 +694,39 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
 
             if (vertices.length >= 3) {
               const height = feature.properties?.height ?? null;
-              setBuildingPopup({
-                lng: e.lngLat.lng,
-                lat: e.lngLat.lat,
+              const fragment: BuildingFragment = {
                 height: height ? Math.round(height) : null,
                 vertices,
+              };
+              const fragmentKey = JSON.stringify(fragment.vertices);
+
+              setBuildingPopup((prev) => {
+                if (isMultiSelect && prev) {
+                  const alreadySelected = prev.fragments.some(
+                    (f) => JSON.stringify(f.vertices) === fragmentKey,
+                  );
+                  if (alreadySelected) return prev;
+                  return {
+                    lng: e.lngLat.lng,
+                    lat: e.lngLat.lat,
+                    fragments: [...prev.fragments, fragment],
+                  };
+                }
+                return {
+                  lng: e.lngLat.lng,
+                  lat: e.lngLat.lat,
+                  fragments: [fragment],
+                };
               });
               return;
             }
           }
         }
       }
+
+      // Shift-clicked empty space while fragments were already selected —
+      // keep the selection instead of dismissing it.
+      if (isMultiSelect) return;
 
       // Clicked elsewhere — dismiss popup
       setBuildingPopup(null);
@@ -841,66 +874,113 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
 
         <DjiTelemetryMarkers />
 
-        {/* Building-to-obstacle popup */}
-        {buildingPopup && (
-          <Popup
-            longitude={buildingPopup.lng}
-            latitude={buildingPopup.lat}
-            anchor="bottom"
-            closeOnClick={false}
-            onClose={() => setBuildingPopup(null)}
-            className="building-popup"
-          >
-            <div className="flex flex-col gap-2 p-1 min-w-[160px]">
-              <div className="text-xs text-zinc-300">
-                <strong className="text-white">Budova</strong>
-                {buildingPopup.height != null && (
-                  <span className="ml-2 text-zinc-400">
-                    výška {buildingPopup.height}m
-                  </span>
-                )}
-              </div>
-              <div className="text-[10px] text-zinc-500">
-                {buildingPopup.vertices.length}{" "}
-                {buildingPopup.vertices.length === 1
-                  ? "vrchol"
-                  : buildingPopup.vertices.length >= 2 &&
-                      buildingPopup.vertices.length <= 4
-                    ? "vrcholy"
-                    : "vrcholů"}
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full gap-1.5 h-7 text-xs"
-                onClick={() => {
-                  // 20m matches BuildingDrawHandler's own default for a
-                  // manually-drawn building with no set height yet.
-                  addBuilding(
-                    buildingPopup.vertices,
-                    buildingPopup.height ?? 20,
-                  );
-                  setBuildingPopup(null);
-                }}
+        {/* Building-to-obstacle / building-to-Budova popup. Shift-click
+            accumulates several adjacent OSM fragments (a large complex is
+            often split into many footprints) so they can be merged into
+            one Budova instead of converting each fragment separately. */}
+        {buildingPopup &&
+          (() => {
+            const { fragments } = buildingPopup;
+            const isMulti = fragments.length > 1;
+            const single = fragments[0];
+            const totalVertices = fragments.reduce(
+              (sum, f) => sum + f.vertices.length,
+              0,
+            );
+
+            return (
+              <Popup
+                longitude={buildingPopup.lng}
+                latitude={buildingPopup.lat}
+                anchor="bottom"
+                closeOnClick={false}
+                onClose={() => setBuildingPopup(null)}
+                className="building-popup"
               >
-                <Building2 className="h-3 w-3" />
-                Převést na budovu
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full gap-1.5 h-7 text-xs"
-                onClick={() => {
-                  addObstacle(buildingPopup.vertices);
-                  setBuildingPopup(null);
-                }}
-              >
-                <Triangle className="h-3 w-3" />
-                Převést na překážku
-              </Button>
-            </div>
-          </Popup>
-        )}
+                <div className="flex flex-col gap-2 p-1 min-w-[160px]">
+                  <div className="text-xs text-zinc-300">
+                    <strong className="text-white">
+                      {isMulti
+                        ? `${fragments.length} vybrané budovy`
+                        : "Budova"}
+                    </strong>
+                    {!isMulti && single.height != null && (
+                      <span className="ml-2 text-zinc-400">
+                        výška {single.height}m
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10px] text-zinc-500">
+                    {isMulti
+                      ? `${totalVertices} vrcholů celkem — Shift+klik přidá další sousední fragment`
+                      : `${single.vertices.length} ${
+                          single.vertices.length === 1
+                            ? "vrchol"
+                            : single.vertices.length >= 2 &&
+                                single.vertices.length <= 4
+                              ? "vrcholy"
+                              : "vrcholů"
+                        }`}
+                  </div>
+                  {isMulti ? (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full gap-1.5 h-7 text-xs"
+                        onClick={() => {
+                          const merged = mergeBuildingFootprints(fragments);
+                          addBuilding(merged.vertices, merged.height);
+                          setBuildingPopup(null);
+                        }}
+                      >
+                        <Building2 className="h-3 w-3" />
+                        Sloučit a převést na budovu
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="w-full h-7 text-xs text-zinc-400"
+                        onClick={() => setBuildingPopup(null)}
+                      >
+                        Zrušit výběr
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full gap-1.5 h-7 text-xs"
+                        onClick={() => {
+                          // 20m matches BuildingDrawHandler's own default
+                          // for a manually-drawn building with no set
+                          // height yet.
+                          addBuilding(single.vertices, single.height ?? 20);
+                          setBuildingPopup(null);
+                        }}
+                      >
+                        <Building2 className="h-3 w-3" />
+                        Převést na budovu
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full gap-1.5 h-7 text-xs"
+                        onClick={() => {
+                          addObstacle(single.vertices);
+                          setBuildingPopup(null);
+                        }}
+                      >
+                        <Triangle className="h-3 w-3" />
+                        Převést na překážku
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </Popup>
+            );
+          })()}
       </Map>
 
       {/* Style switcher + 2D/3D toggle */}

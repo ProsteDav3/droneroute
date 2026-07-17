@@ -720,6 +720,91 @@ describe("missionStore — pasteActionsToSelected", () => {
   });
 });
 
+describe("missionStore — interpolateBetween", () => {
+  beforeEach(() => {
+    useMissionStore.getState().clearMission();
+  });
+
+  it("inserts N evenly-spaced waypoints between two adjacent ones, interpolating position and height", () => {
+    useMissionStore.getState().appendWaypoints([
+      { ...baseWaypoint(50, 14), height: 20 },
+      { ...baseWaypoint(50.004, 14), height: 60 },
+    ]);
+
+    useMissionStore.getState().interpolateBetween(0, 1, 3);
+
+    const { waypoints } = useMissionStore.getState();
+    expect(waypoints).toHaveLength(5);
+    expect(waypoints.map((wp) => wp.index)).toEqual([0, 1, 2, 3, 4]);
+
+    // Original endpoints preserved at the ends.
+    expect(waypoints[0].latitude).toBe(50);
+    expect(waypoints[4].latitude).toBeCloseTo(50.004, 6);
+
+    // 3 inserted points at t = 0.25, 0.5, 0.75 of the way from 20 to 60.
+    expect(waypoints[1].height).toBeCloseTo(30, 5);
+    expect(waypoints[2].height).toBeCloseTo(40, 5);
+    expect(waypoints[3].height).toBeCloseTo(50, 5);
+
+    // Latitude increases monotonically along the interpolated points too.
+    expect(waypoints[1].latitude).toBeLessThan(waypoints[2].latitude);
+    expect(waypoints[2].latitude).toBeLessThan(waypoints[3].latitude);
+  });
+
+  it("accepts indices in either order", () => {
+    useMissionStore
+      .getState()
+      .appendWaypoints([baseWaypoint(50, 14), baseWaypoint(50.001, 14)]);
+
+    useMissionStore.getState().interpolateBetween(1, 0, 1);
+
+    expect(useMissionStore.getState().waypoints).toHaveLength(3);
+  });
+
+  it("is a no-op when the two indices aren't adjacent", () => {
+    useMissionStore
+      .getState()
+      .appendWaypoints([
+        baseWaypoint(50, 14),
+        baseWaypoint(50.001, 14),
+        baseWaypoint(50.002, 14),
+      ]);
+
+    useMissionStore.getState().interpolateBetween(0, 2, 1);
+
+    expect(useMissionStore.getState().waypoints).toHaveLength(3);
+  });
+
+  it("selects the newly inserted waypoints", () => {
+    useMissionStore
+      .getState()
+      .appendWaypoints([baseWaypoint(50, 14), baseWaypoint(50.001, 14)]);
+
+    useMissionStore.getState().interpolateBetween(0, 1, 2);
+
+    const { selectedWaypointIndices } = useMissionStore.getState();
+    expect(selectedWaypointIndices).toEqual(new Set([1, 2]));
+  });
+
+  it("new waypoints carry no actions and no template-group tag", () => {
+    useMissionStore
+      .getState()
+      .appendWaypoints([baseWaypoint(50, 14), baseWaypoint(50.001, 14)]);
+    useMissionStore.getState().addAction(0, {
+      actionId: 0,
+      actionType: "hover",
+      params: { hoverTime: 5 },
+    });
+
+    useMissionStore.getState().interpolateBetween(0, 1, 1);
+
+    expect(useMissionStore.getState().waypoints[1].actions).toEqual([]);
+    expect(
+      useMissionStore.getState().waypoints[1].templateGroupId,
+    ).toBeUndefined();
+  });
+});
+
 describe("missionStore — reverseWaypoints", () => {
   beforeEach(() => {
     useMissionStore.getState().clearMission();

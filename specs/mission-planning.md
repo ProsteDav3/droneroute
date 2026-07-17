@@ -10,6 +10,7 @@ Plan a drone flight by placing waypoints on the map and configuring what the dro
 - Choose a heading mode: follow the flight path, set a fixed angle, smooth transition between angles, or aim toward a point of interest.
 - Choose a turn mode: smooth curve, stop at the waypoint then continue, or fly through without stopping.
 - Reorder waypoints by dragging them in the sidebar list.
+- Reverse the whole route's flying order with one click ("Obrátit trasu" in the map toolbar) — the last waypoint becomes the first. Handy for time-lapse missions that should fly the same physical path back and forth.
 - Select multiple waypoints at once (Ctrl+click, Shift+click, or Ctrl+A) and edit them all in bulk.
 - Set a target flight duration for a selection of waypoints instead of a speed: enter how long that stretch of the route should take (in seconds) in the bulk-edit panel and click "Dopočítat rychlost" to have the speed for those waypoints computed backward from the selected path.
 - Shift the height of a selection of waypoints relatively instead of setting them all to one value: the bulk-edit panel's "Posunout výšku o" field adds (or, with a negative number, subtracts) the same amount from each selected waypoint's own height, preserving whatever altitude differences they already had — unlike the "Výška" field next to it, which sets every selected waypoint to the same absolute height.

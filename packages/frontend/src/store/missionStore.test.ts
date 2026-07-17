@@ -670,6 +670,59 @@ describe("missionStore — setWaypointHeights", () => {
   });
 });
 
+describe("missionStore — reverseWaypoints", () => {
+  beforeEach(() => {
+    useMissionStore.getState().clearMission();
+  });
+
+  it("flips the flying order and re-indexes sequentially", () => {
+    useMissionStore.getState().appendWaypoints([
+      { ...baseWaypoint(50, 14), height: 10 },
+      { ...baseWaypoint(50.001, 14), height: 20 },
+      { ...baseWaypoint(50.002, 14), height: 30 },
+    ]);
+
+    useMissionStore.getState().reverseWaypoints();
+
+    const { waypoints } = useMissionStore.getState();
+    expect(waypoints.map((wp) => wp.height)).toEqual([30, 20, 10]);
+    expect(waypoints.map((wp) => wp.index)).toEqual([0, 1, 2]);
+  });
+
+  it("clears the waypoint selection", () => {
+    useMissionStore
+      .getState()
+      .appendWaypoints([
+        { ...baseWaypoint(50, 14) },
+        { ...baseWaypoint(50.001, 14) },
+      ]);
+    useMissionStore.getState().selectWaypoint(0);
+
+    useMissionStore.getState().reverseWaypoints();
+
+    expect(useMissionStore.getState().selectedWaypointIndices.size).toBe(0);
+  });
+
+  it("marks the mission dirty", () => {
+    useMissionStore
+      .getState()
+      .appendWaypoints([baseWaypoint(50, 14), baseWaypoint(50.001, 14)]);
+    useMissionStore.setState({ dirty: false });
+
+    useMissionStore.getState().reverseWaypoints();
+
+    expect(useMissionStore.getState().dirty).toBe(true);
+  });
+
+  it("is a no-op for fewer than 2 waypoints", () => {
+    useMissionStore.getState().appendWaypoints([baseWaypoint(50, 14)]);
+
+    useMissionStore.getState().reverseWaypoints();
+
+    expect(useMissionStore.getState().waypoints).toHaveLength(1);
+  });
+});
+
 describe("missionStore — undo/redo history", () => {
   beforeEach(() => {
     useMissionStore.getState().clearMission();

@@ -76,6 +76,7 @@ import { DjiWaylineLibraryPanel } from "@/components/mission/DjiWaylineLibraryPa
 import { WarningsPanel } from "@/components/mission/WarningsPanel";
 import { UndoRedoControls } from "@/components/mission/UndoRedoControls";
 import { DraftRecoveryBanner } from "@/components/mission/DraftRecoveryBanner";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { MissionProgressPanel } from "@/components/mission/MissionProgressPanel";
 import { FlightSimulationPanel } from "@/components/mission/FlightSimulationPanel";
 import type { Warning } from "@/components/mission/WarningsPanel";
@@ -1502,6 +1503,7 @@ export default function App() {
         <MapView onMapLoad={(map) => (mapRef.current = map)} />
         <UndoRedoControls />
         <DraftRecoveryBanner />
+        <OfflineBanner />
         <MissionProgressPanel />
         <BulkActionToolbar />
         <WarningsPanel warnings={warnings} mapRef={mapRef} />

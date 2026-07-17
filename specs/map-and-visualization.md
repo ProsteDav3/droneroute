@@ -47,6 +47,13 @@ When you switch to 3D:
 - On legs where a waypoint's heading is set to **point toward a POI**, the simulated camera keeps tracking that POI continuously through the leg rather than snapping between fixed angles.
 - The readout shows which leg of the mission ("WP X / Y") the simulation is currently flying.
 
+## Measure tool
+
+- Click the **ruler button** in the toolbar (or press **M**) to measure distances and areas on the map, entirely independent of the loaded mission's waypoints.
+- Click the map to drop points — a running total distance is shown live, and once you've placed 3 or more points, the area the shape would enclose is shown too.
+- Press **Escape** or click the undo icon to remove the last point; the trash icon clears the whole measurement.
+- Starting another map tool (placing a waypoint, drawing an obstacle, opening a template, etc.) automatically ends the measurement, and starting a measurement exits whatever other tool was active — only one map tool works at a time.
+
 ## How it works
 
 The map is the central workspace. Everything you do — placing waypoints, POIs, obstacles, or templates — happens directly on the map. The sidebar shows lists and settings, and the two stay in sync.

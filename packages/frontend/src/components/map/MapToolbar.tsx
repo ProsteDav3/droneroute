@@ -15,10 +15,12 @@ import {
   Spline,
   Cable,
   Fan,
+  Ruler,
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { useMissionStore } from "@/store/missionStore";
+import { useMeasureStore } from "@/store/measureStore";
 import type { TemplateType } from "@/lib/templates";
 
 const activeClass =
@@ -111,6 +113,8 @@ export function MapToolbar() {
     buildings,
     clearMission,
   } = useMissionStore();
+  const isMeasuring = useMeasureStore((s) => s.isActive);
+  const toggleMeasure = useMeasureStore((s) => s.toggle);
 
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -126,6 +130,20 @@ export function MapToolbar() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [showTemplateMenu]);
+
+  const handleToggleMeasure = () => {
+    if (!isMeasuring) {
+      // Measuring is independent of mission content — exit whatever
+      // mission-editing mode is active first so a click isn't interpreted
+      // by two tools at once.
+      setIsAddingWaypoint(false);
+      setIsAddingPoi(false);
+      setIsDrawingObstacle(false);
+      setIsDrawingBuilding(false);
+      setTemplateMode(null);
+    }
+    toggleMeasure();
+  };
 
   const isPanning =
     !isAddingWaypoint &&
@@ -220,6 +238,22 @@ export function MapToolbar() {
           </Button>
         </div>
       )}
+
+      <Button
+        variant={isMeasuring ? "default" : "outline"}
+        size="sm"
+        onClick={handleToggleMeasure}
+        title="Měřit vzdálenost a plochu na mapě, nezávisle na trase (M)"
+        className={`justify-between ${isMeasuring ? activeClass : inactiveClass}`}
+      >
+        <span className="flex items-center gap-1.5">
+          <Ruler className="h-4 w-4" />
+          <span className="text-xs">Měřit</span>
+        </span>
+        <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
+          M
+        </kbd>
+      </Button>
 
       {/* Template dropdown */}
       <div className="relative" ref={menuRef}>

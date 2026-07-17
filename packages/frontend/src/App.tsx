@@ -83,6 +83,7 @@ import { AccountModal } from "@/components/auth/AccountModal";
 import { AboutDialog } from "@/components/AboutDialog";
 import { WelcomeDialog } from "@/components/WelcomeDialog";
 import { useMissionStore, clearMissionDraft } from "@/store/missionStore";
+import { useMeasureStore } from "@/store/measureStore";
 import { useAuthStore } from "@/store/authStore";
 import { useConfigStore } from "@/store/configStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
@@ -752,6 +753,20 @@ export default function App() {
           e.preventDefault();
           setIsDrawingBuilding(!useMissionStore.getState().isDrawingBuilding);
           break;
+        case "m": {
+          if (e.metaKey || e.ctrlKey) return;
+          e.preventDefault();
+          const measureStore = useMeasureStore.getState();
+          if (!measureStore.isActive) {
+            setIsAddingWaypoint(false);
+            setIsAddingPoi(false);
+            setIsDrawingObstacle(false);
+            setIsDrawingBuilding(false);
+            setTemplateMode(null);
+          }
+          measureStore.toggle();
+          break;
+        }
         case "a":
           if (e.metaKey || e.ctrlKey) {
             e.preventDefault();

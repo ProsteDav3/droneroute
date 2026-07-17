@@ -9,3 +9,9 @@ tsconfig.tsbuildinfo
 *.tsbuildinfo
 *.kmz
 audit-*.png
+
+# Playwright E2E (see e2e/)
+e2e/.auth/
+e2e/test-results/
+e2e/playwright-report/
+blob-report/

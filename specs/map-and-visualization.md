@@ -8,7 +8,7 @@ An interactive map where you plan flights and see everything at a glance.
 - Switch between **satellite** and **street** (dark) map styles using the bottom-left buttons.
 - Toggle between **2D** and **3D** view modes.
 - Search for any location using the **geocoding search box** (top-left magnifying glass icon). Type a place name, address, or landmark and the map flies there.
-- Jump straight to your current position with the **locate-me control** (bottom-right of the map, next to the attribution). It centers the map on your GPS location and keeps a small live dot there as you move — no need to search an address when you're already on site.
+- Jump straight to your current position with the **locate-me control** (bottom-right of the map, next to the attribution). It centers the map on your GPS location and keeps a small live dot there as you move — no need to search an address when you're already on site. Even on a low-precision fix (e.g. no real GPS hardware, network-based positioning), it always zooms in close rather than zooming out to fit the whole uncertainty radius.
 - See the flight path as a dashed line connecting all waypoints.
 - **Color the flight path by height or speed** instead of a flat color — set "Barvení trasy" in the Visualization tab of the settings dialog to "Podle výšky" or "Podle rychlosti" and each segment is colored along a blue (low) → green → yellow → red (high) gradient, normalized against the whole mission's own min/max. A segment that crosses an obstacle still always renders red regardless of this setting — that's a safety warning, not a style choice.
 - See colored lines from waypoints to POIs showing camera aim (green = correct pitch, red = needs adjustment).
@@ -51,6 +51,7 @@ When you switch to 3D:
 - A camera frustum follows the simulated drone position, showing exactly what the camera would see — including gimbal pitch — at every point along the path, not just at each waypoint.
 - On legs where a waypoint's heading is set to **point toward a POI**, the simulated camera keeps tracking that POI continuously through the leg rather than snapping between fixed angles.
 - The readout shows which leg of the mission ("WP X / Y") the simulation is currently flying.
+- A **"Shora" / "3D let"** toggle switches the simulation view between the original fixed top-down overview and a real 3D flythrough, where the map's own camera follows the drone's position, heading, and pitch frame by frame. Switching to 3D let temporarily forces the map into 3D mode (restored to its prior 2D/3D state and original view when the simulation ends).
 
 ## Measure tool
 

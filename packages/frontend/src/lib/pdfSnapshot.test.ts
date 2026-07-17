@@ -120,10 +120,23 @@ describe("captureMissionMapSnapshot", () => {
     map.__fireIdle();
     const snapshot = await promise;
 
-    expect(snapshot.waypointPixels).toEqual([
-      { x: 140, y: 500, index: 0 },
-      { x: 150, y: 510, index: 1 },
-    ]);
+    expect(snapshot.waypointPixels).toHaveLength(2);
+    expect(snapshot.waypointPixels?.[0]).toMatchObject({
+      x: 140,
+      y: 500,
+      index: 0,
+    });
+    expect(snapshot.waypointPixels?.[0].segmentDistanceM).toBeUndefined();
+    expect(snapshot.waypointPixels?.[1]).toMatchObject({
+      x: 150,
+      y: 510,
+      index: 1,
+    });
+    // 50,14 -> 51,15: a real ~1 degree diagonal hop, roughly 132km.
+    expect(snapshot.waypointPixels?.[1].segmentDistanceM).toBeCloseTo(
+      131780,
+      -3,
+    );
   });
 
   it("still restores the original view even if projecting throws", async () => {
@@ -168,7 +181,9 @@ describe("addMapSnapshotToPdf", () => {
       setFontSize: vi.fn(),
       getFontSize: vi.fn(() => 10),
       getTextColor: vi.fn(() => "#000000"),
+      getTextWidth: vi.fn(() => 8),
       circle: vi.fn(),
+      roundedRect: vi.fn(),
       text: vi.fn(),
     } as unknown as jsPDF;
   }
@@ -198,6 +213,51 @@ describe("addMapSnapshotToPdf", () => {
     expect(doc.text).toHaveBeenCalledWith("2", 14, 100.6, {
       align: "center",
     });
+  });
+
+  it("draws a distance label at the midpoint of each segment that has one", () => {
+    const doc = fakeDoc();
+    const snapshot = {
+      dataUrl: "data:image/png;base64,AAAA",
+      width: 800,
+      height: 400,
+      waypointPixels: [
+        { x: 0, y: 0, index: 0 },
+        { x: 400, y: 200, index: 1, segmentDistanceM: 42 },
+      ],
+    };
+
+    // 800x400 at maxWidth 180 -> placed at 180x90; midpoint of the two
+    // markers in source pixels is (200,100) -> 14 + 200/800*180 = 59,
+    // 100 + 100/400*90 = 122.5
+    addMapSnapshotToPdf(doc, snapshot, 14, 100, 180);
+
+    expect(doc.text).toHaveBeenCalledWith("42 m", 59, 123.4, {
+      align: "center",
+    });
+    expect(doc.roundedRect).toHaveBeenCalledWith(
+      54.2,
+      120.6,
+      9.6,
+      3,
+      0.5,
+      0.5,
+      "F",
+    );
+  });
+
+  it("does not draw a distance label for the first waypoint (no incoming segment)", () => {
+    const doc = fakeDoc();
+    const snapshot = {
+      dataUrl: "data:image/png;base64,AAAA",
+      width: 800,
+      height: 400,
+      waypointPixels: [{ x: 400, y: 200, index: 0 }],
+    };
+
+    addMapSnapshotToPdf(doc, snapshot, 14, 100, 180);
+
+    expect(doc.roundedRect).not.toHaveBeenCalled();
   });
 
   it("skips a marker that falls outside the placed image", () => {

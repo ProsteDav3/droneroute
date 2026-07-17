@@ -3,12 +3,35 @@ import {
   interpolatePoints,
   queryElevationProfile,
   queryElevationProfileWithRetry,
+  fillMissingElevations,
   buildFlightPathSamples,
   findTerrainCollisions,
   computeTerrainFollowingHeights,
   findMaxAltitudeViolations,
   MIN_TERRAIN_CLEARANCE_M,
 } from "./terrain";
+
+describe("fillMissingElevations", () => {
+  it("leaves a fully-known array untouched", () => {
+    expect(fillMissingElevations([10, 20, 30])).toEqual([10, 20, 30]);
+  });
+
+  it("fills an interior null with the nearest preceding known value", () => {
+    expect(fillMissingElevations([10, null, 30])).toEqual([10, 10, 30]);
+  });
+
+  it("fills leading nulls with the nearest following known value", () => {
+    expect(fillMissingElevations([null, null, 30])).toEqual([30, 30, 30]);
+  });
+
+  it("fills trailing nulls with the nearest preceding known value", () => {
+    expect(fillMissingElevations([10, null, null])).toEqual([10, 10, 10]);
+  });
+
+  it("falls back to 0 when every sample is null, rather than throwing", () => {
+    expect(fillMissingElevations([null, null])).toEqual([0, 0]);
+  });
+});
 
 describe("interpolatePoints", () => {
   it("returns just the start point when count < 2", () => {

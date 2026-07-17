@@ -9,6 +9,12 @@ export interface DjiDeviceSummary {
   bound_status: boolean;
   login_time?: string;
   status?: boolean;
+  /** 0 = aircraft, 2 = RC, 3 = dock. */
+  domain?: number;
+  /** SN of the aircraft this device (an RC or dock) controls. */
+  child_device_sn?: string;
+  /** SN of the gateway (RC/dock) controlling this device. */
+  parent_sn?: string;
 }
 
 export interface DjiHmsMessage {
@@ -27,10 +33,31 @@ export interface DeviceTelemetry {
   latitude?: number;
   longitude?: number;
   height?: number;
+  elevation?: number;
   horizontalSpeed?: number;
+  verticalSpeed?: number;
   attitudeHead?: number;
   batteryPercent?: number;
+  batteryPercents?: number[];
+  gpsQuality?: number;
+  homeDistance?: number;
+  windSpeed?: number;
+  signalQuality?: number;
   updatedAt: number;
+}
+
+/** Finds the SN of the RC/dock paired with a given aircraft — signal
+ * quality is only ever reported on the gateway's own OSD telemetry, not the
+ * aircraft's, so displaying it for an aircraft means looking up its paired
+ * gateway first. */
+export function findPairedGatewaySn(
+  devices: DjiDeviceSummary[],
+  aircraftSn: string,
+): string | null {
+  const byChildSn = devices.find((d) => d.child_device_sn === aircraftSn);
+  if (byChildSn) return byChildSn.device_sn;
+  const aircraft = devices.find((d) => d.device_sn === aircraftSn);
+  return aircraft?.parent_sn ?? null;
 }
 
 export interface DjiWaylineSummary {

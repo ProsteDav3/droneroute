@@ -191,6 +191,14 @@ export interface DjiDeviceSummary {
   workspace_id?: string;
   domain?: number;
   status?: boolean;
+  /** SN of the aircraft this device (an RC or dock) controls — set on the
+   * gateway's own record, used to find which RC/dock a given aircraft's
+   * signal-quality telemetry (reported on the gateway's OSD, not the
+   * aircraft's own) actually comes from. */
+  child_device_sn?: string;
+  /** SN of the gateway (RC/dock) controlling this device — set on the
+   * aircraft's own record, the reverse direction of `child_device_sn`. */
+  parent_sn?: string;
 }
 
 /**
@@ -629,10 +637,13 @@ export async function getMediaFileDownloadUrl(
   return location;
 }
 
-/** One selectable video feed (a specific lens on a specific camera) — `id`
- * is the exact `video_id` string `startLiveStream`/`stopLiveStream` expect,
- * already formatted as `{droneSn}/{payloadIndex}/{videoType}-0` by the
- * platform. */
+/** One selectable video feed (a specific lens on a specific camera). `id` is
+ * NOT a usable stream identifier — the platform's own reference backend
+ * fills it with a fresh random UUID on every capacity report, unrelated to
+ * the actual video. The real `video_id` `startLiveStream`/`stopLiveStream`
+ * expect is `{droneSn}/{payloadIndex}/{videoType}-N`, assembled by the
+ * frontend from the parent device's `sn`, the parent camera's `index`, and
+ * this video's own `index` field. */
 export interface DjiLiveVideo {
   id: string;
   index: string;

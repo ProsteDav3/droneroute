@@ -63,30 +63,36 @@ export function BuildingPolygon({ building, is3D }: BuildingPolygonProps) {
   return (
     <>
       <Source id={sourceId} type="geojson" data={geojson}>
-        {is3D ? (
-          // Real 3D extrusion at the building's actual height, matching
-          // the look of the source OSM buildings this is often converted
-          // from — a flat ground rectangle doesn't convey size at all.
-          <Layer
-            id={`${sourceId}-fill`}
-            type="fill-extrusion"
-            paint={{
-              "fill-extrusion-color": "#3b82f6",
-              "fill-extrusion-height": building.height,
-              "fill-extrusion-base": 0,
-              "fill-extrusion-opacity": isSelected ? 0.75 : 0.55,
-            }}
-          />
-        ) : (
-          <Layer
-            id={`${sourceId}-fill`}
-            type="fill"
-            paint={{
-              "fill-color": "#3b82f6",
-              "fill-opacity": isSelected ? 0.22 : 0.12,
-            }}
-          />
-        )}
+        {/* Both layers always mounted, toggled by opacity rather than
+         * switching one Layer's `type` between "fill" and "fill-extrusion"
+         * for the same id — react-map-gl's Layer asserts a layer's type
+         * never changes after creation and silently no-ops (just a
+         * console.warn) if it does, since Mapbox GL JS itself can't change
+         * a layer's type in place. Whichever mode this building's Layer
+         * first mounted in would otherwise stick forever, regardless of
+         * later is3D toggles — this is why buildings kept rendering flat
+         * even in 3D mode. */}
+        <Layer
+          id={`${sourceId}-fill-2d`}
+          type="fill"
+          paint={{
+            "fill-color": "#3b82f6",
+            "fill-opacity": is3D ? 0 : isSelected ? 0.22 : 0.12,
+          }}
+        />
+        {/* Real 3D extrusion at the building's actual height, matching the
+         * look of the source OSM buildings this is often converted from —
+         * a flat ground rectangle doesn't convey size at all. */}
+        <Layer
+          id={`${sourceId}-fill-3d`}
+          type="fill-extrusion"
+          paint={{
+            "fill-extrusion-color": "#3b82f6",
+            "fill-extrusion-height": building.height,
+            "fill-extrusion-base": 0,
+            "fill-extrusion-opacity": is3D ? (isSelected ? 0.75 : 0.55) : 0,
+          }}
+        />
         <Layer
           id={`${sourceId}-outline`}
           type="line"

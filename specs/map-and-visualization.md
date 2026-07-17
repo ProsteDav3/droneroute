@@ -51,7 +51,7 @@ When you switch to 3D:
 - A camera frustum follows the simulated drone position, showing exactly what the camera would see — including gimbal pitch — at every point along the path, not just at each waypoint.
 - On legs where a waypoint's heading is set to **point toward a POI**, the simulated camera keeps tracking that POI continuously through the leg rather than snapping between fixed angles.
 - The readout shows which leg of the mission ("WP X / Y") the simulation is currently flying.
-- A **"Shora" / "3D let"** toggle switches the simulation view between the original fixed top-down overview and a real 3D flythrough, where the map's own camera follows the drone's position, heading, and pitch frame by frame. Switching to 3D let temporarily forces the map into 3D mode (restored to its prior 2D/3D state and original view when the simulation ends).
+- A **"Shora" / "3D let"** toggle switches the simulation view between the original fixed top-down overview and a real first-person flythrough — the camera sits exactly at the drone's own position, altitude, heading, and gimbal pitch, updated continuously in real time so it's always precisely where the drone is along the route, never trailing behind it. Switching to 3D let temporarily forces the map into 3D mode (restored to its prior 2D/3D state and original view when the simulation ends).
 
 ## Measure tool
 

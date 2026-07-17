@@ -215,6 +215,35 @@ describe("addMapSnapshotToPdf", () => {
     });
   });
 
+  it("re-applies the marker fill/text color on every iteration, not just once before the loop", () => {
+    // jsPDF silently drops the active fill/text color after a text() call
+    // that uses a custom embedded TrueType font (our Czech-safe Inter
+    // subset) — verified against a real jsPDF render, not just this mock.
+    // Setting the color once before the loop meant every marker after the
+    // first drew in whatever color was left behind (a blank white circle
+    // with an invisible white-on-white number). Guard against reintroducing
+    // that by asserting the color is reapplied for every marker, not just
+    // called once total.
+    const doc = fakeDoc();
+    const snapshot = {
+      dataUrl: "data:image/png;base64,AAAA",
+      width: 800,
+      height: 400,
+      waypointPixels: [
+        { x: 0, y: 0, index: 0 },
+        { x: 400, y: 200, index: 1 },
+        { x: 800, y: 400, index: 2 },
+      ],
+    };
+
+    addMapSnapshotToPdf(doc, snapshot, 14, 100, 180);
+
+    expect(doc.setFillColor).toHaveBeenCalledTimes(3);
+    expect(doc.setFillColor).toHaveBeenNthCalledWith(1, 0, 148, 196);
+    expect(doc.setFillColor).toHaveBeenNthCalledWith(2, 0, 148, 196);
+    expect(doc.setFillColor).toHaveBeenNthCalledWith(3, 0, 148, 196);
+  });
+
   it("draws a distance label at the midpoint of each segment that has one", () => {
     const doc = fakeDoc();
     const snapshot = {

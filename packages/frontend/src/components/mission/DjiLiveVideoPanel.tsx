@@ -82,14 +82,26 @@ export function DjiLiveVideoPanel() {
       // lens type ("wide"/"normal"/...) rather than showing "undefined".
       const cameraLabel =
         camera.name && camera.name !== "undefined" ? camera.name : null;
-      return camera.videos_list.map((video) => ({
-        videoId: video.id,
-        label: cameraLabel
-          ? `${device.name} — ${cameraLabel}${
-              camera.videos_list.length > 1 ? ` (${video.type})` : ""
-            }`
-          : `${device.name} — ${video.type}`,
-      }));
+      return camera.videos_list
+        .filter((video) => camera.index && video.index)
+        .map((video) => ({
+          // `video.id` is NOT a usable stream identifier — the platform's
+          // own reference backend fills it with a fresh random UUID on
+          // every capacity report (see CameraVideoServiceImpl), unrelated
+          // to the actual video. The `video_id` the start/stop endpoints
+          // actually validate against is `{droneSn}/{payloadIndex}/{videoType}-N`
+          // (see VideoId.java's constructor), which has to be assembled
+          // from `device_sn` + the camera's own `index` + the video's own
+          // `index` fields instead — sending `video.id` here is exactly
+          // why starting a feed always failed with an "Invalid parameter"
+          // error from the platform.
+          videoId: `${device.sn}/${camera.index}/${video.index}`,
+          label: cameraLabel
+            ? `${device.name} — ${cameraLabel}${
+                camera.videos_list.length > 1 ? ` (${video.type})` : ""
+              }`
+            : `${device.name} — ${video.type}`,
+        }));
     }),
   );
 

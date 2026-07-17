@@ -64,6 +64,57 @@ describe("mqttTelemetry — message parsing", () => {
     });
   });
 
+  it("parses home distance, wind speed, per-cell battery, and nested GPS quality", () => {
+    handleMessage(
+      "thing/product/SN123/osd",
+      Buffer.from(
+        JSON.stringify({
+          data: {
+            home_distance: 123.4,
+            wind_speed: 3.2,
+            position_state: { gps_number: 14 },
+            battery: {
+              capacity_percent: 47,
+              batteries: [{ capacity_percent: 40 }, { capacity_percent: 54 }],
+            },
+          },
+        }),
+      ),
+    );
+    const [record] = getTelemetrySnapshot();
+    expect(record).toMatchObject({
+      homeDistance: 123.4,
+      windSpeed: 3.2,
+      gpsQuality: 14,
+      batteryPercent: 47,
+      batteryPercents: [40, 54],
+    });
+  });
+
+  it("parses signal quality from a wireless_link object (RC/dock OSD, not the aircraft's)", () => {
+    handleMessage(
+      "thing/product/RC123/osd",
+      Buffer.from(
+        JSON.stringify({
+          data: { wireless_link: { sdr_quality: 4, "4g_quality": 2 } },
+        }),
+      ),
+    );
+    const [record] = getTelemetrySnapshot();
+    expect(record.signalQuality).toBe(4);
+  });
+
+  it("falls back to 4g_quality when sdr_quality isn't present", () => {
+    handleMessage(
+      "thing/product/RC123/osd",
+      Buffer.from(
+        JSON.stringify({ data: { wireless_link: { "4g_quality": 3 } } }),
+      ),
+    );
+    const [record] = getTelemetrySnapshot();
+    expect(record.signalQuality).toBe(3);
+  });
+
   it("merges successive updates for the same device rather than overwriting the whole record", () => {
     handleMessage(
       "thing/product/SN123/osd",

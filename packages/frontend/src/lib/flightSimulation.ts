@@ -20,7 +20,11 @@ export interface SimulationFrame {
 /** Shortest-path interpolation between two headings in degrees, correctly
  * wrapping across the 0/360 boundary (e.g. 350° -> 10° goes forward through
  * 360°/0°, a 20° turn, not backward through 180°, a 340° turn). */
-function interpolateHeading(fromDeg: number, toDeg: number, t: number): number {
+export function interpolateHeading(
+  fromDeg: number,
+  toDeg: number,
+  t: number,
+): number {
   let delta = ((toDeg - fromDeg + 540) % 360) - 180;
   return (fromDeg + delta * t + 360) % 360;
 }

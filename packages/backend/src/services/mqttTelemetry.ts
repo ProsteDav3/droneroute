@@ -28,8 +28,22 @@ export interface DeviceTelemetry {
   horizontalSpeed?: number;
   verticalSpeed?: number;
   attitudeHead?: number;
+  /** Aircraft's own aggregate battery reading. */
   batteryPercent?: number;
+  /** Per-cell percentages for a dual-battery aircraft (e.g. Matrice 4 series),
+   * in the same order the platform reports them — when present, this is what
+   * DJI Pilot's own HUD actually shows (two separate numbers), not the single
+   * aggregate `batteryPercent`. */
+  batteryPercents?: number[];
   gpsQuality?: number;
+  /** Straight-line distance from the aircraft's home/launch point, meters. */
+  homeDistance?: number;
+  /** Wind speed at the aircraft's position, m/s. */
+  windSpeed?: number;
+  /** Uplink/downlink signal quality (0-5 scale), reported by the paired RC
+   * or dock's own OSD topic — not the aircraft's, so this only ends up
+   * populated on the RC/dock's own telemetry record, not the aircraft's. */
+  signalQuality?: number;
   /** ms since epoch this record was last updated. */
   updatedAt: number;
 }
@@ -92,6 +106,14 @@ export function handleMessage(topic: string, payload: Buffer): void {
   // OSD payloads nest the actual telemetry under `data`.
   const data = (body.data as Record<string, unknown>) ?? body;
   const battery = data.battery as Record<string, unknown> | undefined;
+  const batteries = battery?.batteries;
+  const positionState = data.position_state as
+    | Record<string, unknown>
+    | undefined;
+  const wirelessLink = data.wireless_link as
+    | Record<string, unknown>
+    | undefined;
+
   upsert(deviceSn, {
     online: true,
     latitude: readNumber(data, "latitude"),
@@ -104,7 +126,30 @@ export function handleMessage(topic: string, payload: Buffer): void {
     batteryPercent: battery
       ? readNumber(battery, "capacity_percent")
       : undefined,
-    gpsQuality: readNumber(data, "gps_number") ?? readNumber(data, "gear"),
+    batteryPercents: Array.isArray(batteries)
+      ? batteries
+          .map((b) =>
+            typeof b === "object" && b !== null
+              ? readNumber(b as Record<string, unknown>, "capacity_percent")
+              : undefined,
+          )
+          .filter((v): v is number => v !== undefined)
+      : undefined,
+    // Older/simpler payloads (or a subset of devices) can put gps_number
+    // directly on `data`; the platform's own schema nests it under
+    // `position_state` — check both rather than assume one shape.
+    gpsQuality:
+      (positionState ? readNumber(positionState, "gps_number") : undefined) ??
+      readNumber(data, "gps_number") ??
+      readNumber(data, "gear"),
+    homeDistance: readNumber(data, "home_distance"),
+    windSpeed: readNumber(data, "wind_speed"),
+    // Only the RC/dock's own OSD carries this — an aircraft message simply
+    // won't have a `wireless_link` object, so this is a no-op for it.
+    signalQuality: wirelessLink
+      ? (readNumber(wirelessLink, "sdr_quality") ??
+        readNumber(wirelessLink, "4g_quality"))
+      : undefined,
   });
 }
 

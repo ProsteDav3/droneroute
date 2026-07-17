@@ -50,6 +50,29 @@ export async function queryElevationProfileWithRetry(
 }
 
 /**
+ * Replaces every `null` (DEM tile not loaded / no coverage) with the
+ * nearest preceding known elevation, or the nearest following one for
+ * leading nulls — used where a missing sample must still get *some*
+ * plausible elevation (e.g. positioning a 3D camera), and falling back to
+ * sea level (0) would put it underground in mountainous terrain. Returns
+ * all zeros only if every sample is null.
+ */
+export function fillMissingElevations(elevations: (number | null)[]): number[] {
+  const filled = [...elevations];
+  let lastKnown: number | null = null;
+  for (let i = 0; i < filled.length; i++) {
+    if (filled[i] === null) filled[i] = lastKnown;
+    else lastKnown = filled[i];
+  }
+  lastKnown = null;
+  for (let i = filled.length - 1; i >= 0; i--) {
+    if (filled[i] === null) filled[i] = lastKnown;
+    else lastKnown = filled[i];
+  }
+  return filled.map((e) => e ?? 0);
+}
+
+/**
  * Interpolates N evenly-spaced points (inclusive of both ends) along a
  * great-circle-approximated straight line between two waypoints — used to
  * sample terrain between waypoints, not just at them, since ground

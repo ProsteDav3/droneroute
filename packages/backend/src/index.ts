@@ -6,6 +6,7 @@ initSentry();
 
 import express from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
 import path from "path";
@@ -116,6 +117,10 @@ app.use(
   ),
 );
 app.use(express.json({ limit: "50mb" }));
+// Unsigned — the auth cookie's value is the JWT itself, which is already
+// signed and tamper-evident (see authService.ts's verifyToken). A second
+// cookie-parser signature would be redundant.
+app.use(cookieParser());
 app.use(globalLimiter);
 
 // Per-request access logging. See lib/logger.ts for why the Authorization

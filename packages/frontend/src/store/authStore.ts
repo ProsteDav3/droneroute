@@ -2,6 +2,18 @@ import { create } from "zustand";
 import { api } from "@/lib/api";
 import { useMissionStore } from "./missionStore";
 
+/**
+ * The session itself now lives in an httpOnly cookie the backend sets on
+ * login/register/etc (see packages/backend/src/lib/authCookie.ts) — the
+ * frontend never holds the real JWT in JS-readable state anymore, since
+ * that would defeat the point of `httpOnly` (any XSS could just read it
+ * from here instead of `document.cookie`). `token` stays in this shape as a
+ * plain "is there a session" marker so the handful of existing truthy
+ * checks (`if (token)`, `disabled={!token}`) elsewhere keep working
+ * unchanged — its value is never the actual token.
+ */
+const SESSION_MARKER = "session";
+
 interface AuthState {
   token: string | null;
   email: string | null;
@@ -25,8 +37,11 @@ interface AuthState {
     bootstrapToken?: string,
   ) => Promise<void>;
   googleLogin: (credential: string) => Promise<void>;
-  logout: () => void;
-  restore: () => void;
+  logout: () => Promise<void>;
+  /** Asks the backend (via the httpOnly cookie) whether a session already
+   * exists — replaces the old synchronous localStorage read, since the
+   * cookie's value isn't readable from JS to check locally. */
+  restore: () => Promise<void>;
   setNeedsVerification: (value: boolean) => void;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, newPassword: string) => Promise<void>;
@@ -62,11 +77,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         return { requiresTwoFactor: true };
       }
 
-      localStorage.setItem("droneroute_token", res.token!);
-      localStorage.setItem("droneroute_email", res.email!);
-      localStorage.setItem("droneroute_is_admin", String(res.isAdmin));
       set({
-        token: res.token!,
+        token: SESSION_MARKER,
         email: res.email!,
         userId: res.userId!,
         isAdmin: !!res.isAdmin,
@@ -94,11 +106,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         email: string;
         isAdmin: boolean;
       }>("/auth/2fa/login", { challengeToken, code });
-      localStorage.setItem("droneroute_token", res.token);
-      localStorage.setItem("droneroute_email", res.email);
-      localStorage.setItem("droneroute_is_admin", String(res.isAdmin));
       set({
-        token: res.token,
+        token: SESSION_MARKER,
         email: res.email,
         userId: res.userId,
         isAdmin: res.isAdmin,
@@ -123,11 +132,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         email: string;
         isAdmin: boolean;
       }>("/auth/register", { email, password, bootstrapToken });
-      localStorage.setItem("droneroute_token", res.token);
-      localStorage.setItem("droneroute_email", res.email);
-      localStorage.setItem("droneroute_is_admin", String(res.isAdmin));
       set({
-        token: res.token,
+        token: SESSION_MARKER,
         email: res.email,
         userId: res.userId,
         isAdmin: res.isAdmin,
@@ -149,11 +155,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         email: string;
         isAdmin: boolean;
       }>("/auth/google", { credential });
-      localStorage.setItem("droneroute_token", res.token);
-      localStorage.setItem("droneroute_email", res.email);
-      localStorage.setItem("droneroute_is_admin", String(res.isAdmin));
       set({
-        token: res.token,
+        token: SESSION_MARKER,
         email: res.email,
         userId: res.userId,
         isAdmin: res.isAdmin,
@@ -166,10 +169,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  logout: () => {
-    localStorage.removeItem("droneroute_token");
-    localStorage.removeItem("droneroute_email");
-    localStorage.removeItem("droneroute_is_admin");
+  logout: async () => {
+    // The cookie is httpOnly — this tab's JS can't clear it itself, so
+    // logout now needs a real request. Clear local state regardless of
+    // whether the request succeeds (e.g. the network is down): staying
+    // "logged in" client-side when the user asked to log out would be
+    // worse than a cookie that lingers until it expires.
+    try {
+      await api.post("/auth/logout");
+    } catch {
+      // best-effort — see comment above
+    }
     set({
       token: null,
       email: null,
@@ -181,13 +191,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     useMissionStore.getState().clearMission();
   },
 
-  restore: () => {
-    const token = localStorage.getItem("droneroute_token");
-    const email = localStorage.getItem("droneroute_email");
-    const isAdmin = localStorage.getItem("droneroute_is_admin") === "true";
-    if (token && email) {
-      set({ token, email, isAdmin, hasRestored: true });
-    } else {
+  restore: async () => {
+    try {
+      const res = await api.get<{
+        userId: string;
+        email: string;
+        isAdmin: boolean;
+      }>("/auth/me");
+      set({
+        token: SESSION_MARKER,
+        email: res.email,
+        userId: res.userId,
+        isAdmin: res.isAdmin,
+        hasRestored: true,
+      });
+    } catch {
+      // No valid session cookie (never logged in, expired, or logged out
+      // elsewhere) — same end state as before this migration's "no token in
+      // localStorage" case.
       set({ hasRestored: true });
     }
   },

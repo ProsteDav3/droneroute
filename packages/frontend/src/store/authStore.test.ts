@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useAuthStore } from "./authStore";
 import { api } from "@/lib/api";
 
@@ -13,23 +13,6 @@ vi.mock("@/lib/api", () => ({
 
 const mockedApi = vi.mocked(api);
 
-// The frontend test environment is plain Node (no jsdom), which has no
-// localStorage global — stub a minimal in-memory implementation since
-// authStore reads/writes it directly.
-function createMemoryStorage(): Storage {
-  const data = new Map<string, string>();
-  return {
-    getItem: (key: string) => data.get(key) ?? null,
-    setItem: (key: string, value: string) => void data.set(key, value),
-    removeItem: (key: string) => void data.delete(key),
-    clear: () => data.clear(),
-    key: (index: number) => Array.from(data.keys())[index] ?? null,
-    get length() {
-      return data.size;
-    },
-  } as Storage;
-}
-
 function resetStore() {
   useAuthStore.setState({
     token: null,
@@ -41,7 +24,6 @@ function resetStore() {
     hasRestored: false,
     twoFactorChallenge: null,
   });
-  vi.stubGlobal("localStorage", createMemoryStorage());
 }
 
 describe("authStore.restore", () => {
@@ -50,26 +32,28 @@ describe("authStore.restore", () => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
+  it("restores the session via GET /auth/me and marks hasRestored", async () => {
+    mockedApi.get.mockResolvedValue({
+      userId: "u1",
+      email: "user@test.dev",
+      isAdmin: true,
+    });
 
-  it("restores the token from localStorage and marks hasRestored", () => {
-    localStorage.setItem("droneroute_token", "tok123");
-    localStorage.setItem("droneroute_email", "user@test.dev");
-    localStorage.setItem("droneroute_is_admin", "true");
-
-    useAuthStore.getState().restore();
+    await useAuthStore.getState().restore();
 
     const state = useAuthStore.getState();
-    expect(state.token).toBe("tok123");
+    expect(state.token).not.toBeNull();
+    expect(state.userId).toBe("u1");
     expect(state.email).toBe("user@test.dev");
     expect(state.isAdmin).toBe(true);
     expect(state.hasRestored).toBe(true);
+    expect(mockedApi.get).toHaveBeenCalledWith("/auth/me");
   });
 
-  it("marks hasRestored even when no stored session exists", () => {
-    useAuthStore.getState().restore();
+  it("marks hasRestored (logged out) when there's no valid session cookie", async () => {
+    mockedApi.get.mockRejectedValue(new Error("401"));
+
+    await useAuthStore.getState().restore();
 
     const state = useAuthStore.getState();
     expect(state.token).toBeNull();
@@ -83,11 +67,7 @@ describe("authStore.register", () => {
     vi.clearAllMocks();
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("stores the token and admin flag on successful bootstrap registration", async () => {
+  it("marks the session authenticated on successful bootstrap registration, without exposing the raw token", async () => {
     mockedApi.post.mockResolvedValue({
       token: "tok456",
       userId: "u1",
@@ -98,9 +78,12 @@ describe("authStore.register", () => {
     await useAuthStore.getState().register("founder@test.dev", "secret123");
 
     const state = useAuthStore.getState();
-    expect(state.token).toBe("tok456");
+    // The real JWT now lives only in the httpOnly cookie the backend set —
+    // the store must never hold the raw token value in JS-readable state
+    // (that would defeat httpOnly's XSS protection).
+    expect(state.token).not.toBe("tok456");
+    expect(state.token).not.toBeNull();
     expect(state.isAdmin).toBe(true);
-    expect(localStorage.getItem("droneroute_token")).toBe("tok456");
   });
 
   it("resets isLoading and rethrows when registration is closed", async () => {
@@ -118,10 +101,6 @@ describe("authStore.login — 2FA challenge", () => {
   beforeEach(() => {
     resetStore();
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
   });
 
   it("stores the challenge token and reports requiresTwoFactor instead of signing in", async () => {
@@ -152,7 +131,8 @@ describe("authStore.login — 2FA challenge", () => {
       .login("user@test.dev", "secret123");
 
     expect(result).toEqual({ requiresTwoFactor: false });
-    expect(useAuthStore.getState().token).toBe("tok789");
+    expect(useAuthStore.getState().token).not.toBeNull();
+    expect(useAuthStore.getState().userId).toBe("u1");
   });
 
   it("loginWithTwoFactorCode throws when no challenge is pending", async () => {
@@ -173,11 +153,46 @@ describe("authStore.login — 2FA challenge", () => {
     await useAuthStore.getState().loginWithTwoFactorCode("123456");
 
     const state = useAuthStore.getState();
-    expect(state.token).toBe("tok999");
+    expect(state.token).not.toBeNull();
     expect(state.twoFactorChallenge).toBeNull();
     expect(mockedApi.post).toHaveBeenCalledWith("/auth/2fa/login", {
       challengeToken: "challenge-abc",
       code: "123456",
     });
+  });
+});
+
+describe("authStore.logout", () => {
+  beforeEach(() => {
+    resetStore();
+    vi.clearAllMocks();
+  });
+
+  it("calls POST /auth/logout to clear the httpOnly cookie and resets local state", async () => {
+    useAuthStore.setState({
+      token: "session",
+      userId: "u1",
+      email: "user@test.dev",
+      isAdmin: true,
+    });
+    mockedApi.post.mockResolvedValue({ message: "Odhlášeno" });
+
+    await useAuthStore.getState().logout();
+
+    expect(mockedApi.post).toHaveBeenCalledWith("/auth/logout");
+    const state = useAuthStore.getState();
+    expect(state.token).toBeNull();
+    expect(state.userId).toBeNull();
+    expect(state.email).toBeNull();
+    expect(state.isAdmin).toBe(false);
+  });
+
+  it("still clears local state even when the logout request fails", async () => {
+    useAuthStore.setState({ token: "session", isAdmin: true });
+    mockedApi.post.mockRejectedValue(new Error("network down"));
+
+    await useAuthStore.getState().logout();
+
+    expect(useAuthStore.getState().token).toBeNull();
   });
 });

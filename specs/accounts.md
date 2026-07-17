@@ -23,6 +23,11 @@ account.
 A shared mission link (`/shared/...`) is the one exception — anyone with the
 link can view it without signing in, since that's the whole point of sharing.
 
+Your session is kept in a secure cookie the browser manages on its own —
+there's nothing for you to configure, and it means logging in on one tab
+keeps you logged in everywhere in that browser. Signing out clears it
+immediately.
+
 ## Registration
 
 Self-hosted installations are **not publicly registerable**. The very first

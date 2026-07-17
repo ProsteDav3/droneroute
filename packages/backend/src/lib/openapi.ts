@@ -38,6 +38,11 @@ export function buildOpenApiSpec() {
             type: "http",
             scheme: "bearer",
             bearerFormat: "JWT",
+            description:
+              "For CLI/API/script clients. The browser SPA instead uses the " +
+              "httpOnly `droneroute_token` cookie set by the auth endpoints " +
+              "below — not usable from this docs UI, but documented here so " +
+              "the two auth paths aren't a surprise.",
           },
         },
       },

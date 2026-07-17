@@ -227,7 +227,8 @@ export default function App() {
     }
   }, [token]);
 
-  // Detect /shared/:token, /embed/:token, or /admin URL on mount
+  // Detect /shared/:token or /embed/:token on mount — these don't need an
+  // authenticated session, so they're resolved immediately.
   useEffect(() => {
     const match = window.location.pathname.match(/^\/shared\/([^/]+)$/);
     const embedMatch = window.location.pathname.match(/^\/embed\/([^/]+)$/);
@@ -237,16 +238,23 @@ export default function App() {
     } else if (embedMatch) {
       setShareToken(embedMatch[1]);
       setCurrentPage("embed");
-    } else if (window.location.pathname === "/admin") {
-      const token = localStorage.getItem("droneroute_token");
-      const adminFlag = localStorage.getItem("droneroute_is_admin") === "true";
-      if (token && adminFlag) {
-        setCurrentPage("admin");
-      } else {
-        window.history.replaceState({}, "", "/");
-      }
     }
   }, []);
+
+  // Detect /admin separately: whether the session is an admin one isn't
+  // knowable synchronously anymore (the session cookie is httpOnly, so it
+  // can only be confirmed by asking the backend — see authStore.ts's
+  // `restore`), so this waits for that to resolve instead of reading
+  // localStorage directly.
+  useEffect(() => {
+    if (!hasRestored) return;
+    if (window.location.pathname !== "/admin") return;
+    if (token && isAdmin) {
+      setCurrentPage("admin");
+    } else {
+      window.history.replaceState({}, "", "/");
+    }
+  }, [hasRestored, token, isAdmin]);
 
   // Warn before closing/navigating away with unsaved changes
   useEffect(() => {
@@ -851,7 +859,8 @@ export default function App() {
   // The shared-mission page is intentionally public (that's the whole point
   // of a share link); everything else requires signing in. Wait for
   // hasRestored so a returning, already-logged-in user doesn't flash the
-  // login screen before the stored token is read back from localStorage.
+  // login screen before authStore's restore() confirms the session via the
+  // httpOnly cookie (GET /api/auth/me).
   if (
     hasRestored &&
     !token &&

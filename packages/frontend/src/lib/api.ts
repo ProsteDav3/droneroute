@@ -9,14 +9,9 @@ import { useAuthStore } from "@/store/authStore";
 const API_BASE = "/api";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = localStorage.getItem("droneroute_token");
   const headers: Record<string, string> = {
     ...(options?.headers as Record<string, string>),
   };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
 
   if (!(options?.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
@@ -25,6 +20,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers,
+    // The session lives in an httpOnly cookie (see authStore.ts) — "include"
+    // is only strictly necessary for the split-deployment case where the SPA
+    // and API are on different origins (matching the backend's own
+    // `credentials: true` CORS config for that case); harmless no-op for the
+    // standard same-origin deployment, which already sends cookies by
+    // default.
+    credentials: "include",
   });
 
   if (!res.ok) {
@@ -32,9 +34,6 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
     // Handle banned user — force logout
     if (res.status === 403 && err.banned) {
-      localStorage.removeItem("droneroute_token");
-      localStorage.removeItem("droneroute_email");
-      localStorage.removeItem("droneroute_is_admin");
       useMissionStore.getState().clearMission();
       window.location.reload();
       throw new Error(err.error || "Your account has been suspended");

@@ -216,6 +216,22 @@ export function initDb(): void {
     `CREATE INDEX IF NOT EXISTS idx_mission_versions_mission_id ON mission_versions(mission_id, created_at)`,
   );
 
+  // Migration: create rate_limit_hits table — backs the SQLite-based
+  // express-rate-limit Store (see middleware/sqliteRateLimitStore.ts), which
+  // survives redeploys and Fly.io auto_stop_machines cold starts, unlike the
+  // library's default in-memory Store. `reset_at` is a Unix ms timestamp;
+  // the index keeps the periodic expired-row sweep cheap.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS rate_limit_hits (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL,
+      reset_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_rate_limit_hits_reset_at
+      ON rate_limit_hits(reset_at);
+  `);
+
   // Ensure ADMIN_EMAIL user has admin privileges (cloud mode)
   const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
   const adminEmail = process.env.ADMIN_EMAIL || "";

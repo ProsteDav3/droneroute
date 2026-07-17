@@ -66,19 +66,40 @@ function dedupeConsecutiveHms(messages: DjiHmsMessage[]): DjiHmsMessage[] {
   return result;
 }
 
-/** Live HUD readout for one aircraft — signal, battery, altitude, distance
- * from home, climb/flight speed, and wind, mirroring the fields DJI
- * Pilot's own flight screen shows. Pulls straight from the store's
- * SSE-fed `telemetry` map, so every field updates in real time as new OSD
- * messages arrive — no polling or manual refresh involved. */
+/** How long telemetry can go without a fresh OSD message before it's shown
+ * as stale rather than confidently presented as current — the aircraft/RC
+ * normally streams updates multiple times a second, so anything older than
+ * this means the connection likely dropped silently (the bridge has no
+ * timeout-based "went offline" detection of its own, so without this the
+ * panel would otherwise keep showing a frozen last-known battery/position
+ * indefinitely with no sign anything was wrong). */
+const STALE_TELEMETRY_MS = 15_000;
+
+/** Live HUD readout for one aircraft — signal, battery (its own and its
+ * paired RC/dock's), altitude, distance from home, climb/flight speed, and
+ * wind, mirroring the fields DJI Pilot's own flight screen shows. Pulls
+ * straight from the store's SSE-fed `telemetry` map, so every field updates
+ * in real time as new OSD messages arrive — no polling or manual refresh
+ * involved. */
 function DeviceTelemetryHud({
   telemetry,
-  signalQuality,
+  gatewayTelemetry,
 }: {
   telemetry: DeviceTelemetry;
-  signalQuality: number | undefined;
+  gatewayTelemetry: DeviceTelemetry | undefined;
 }) {
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
+  // Re-render every few seconds even with no new telemetry, purely so the
+  // staleness check below actually notices time passing instead of only
+  // re-evaluating whenever a new OSD message happens to arrive.
+  const [, forceTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => forceTick((n) => n + 1), 5_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const isStale = Date.now() - telemetry.updatedAt > STALE_TELEMETRY_MS;
+  const signalQuality = gatewayTelemetry?.signalQuality;
 
   const batteryLabel =
     telemetry.batteryPercents && telemetry.batteryPercents.length > 1
@@ -89,7 +110,13 @@ function DeviceTelemetryHud({
 
   const rows: [string, string][] = [
     ["Signál", typeof signalQuality === "number" ? `${signalQuality}/5` : "—"],
-    ["Baterie", batteryLabel],
+    ["Baterie (dron)", batteryLabel],
+    [
+      "Baterie (ovladač)",
+      typeof gatewayTelemetry?.batteryPercent === "number"
+        ? `${gatewayTelemetry.batteryPercent} %`
+        : "—",
+    ],
     [
       "ASL",
       typeof telemetry.elevation === "number"
@@ -129,13 +156,24 @@ function DeviceTelemetryHud({
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-x-3 gap-y-1 pl-4 pt-1 text-[10px]">
-      {rows.map(([label, value]) => (
-        <div key={label} className="flex justify-between gap-2">
-          <span className="text-muted-foreground">{label}</span>
-          <span className="tabular-nums">{value}</span>
-        </div>
-      ))}
+    <div className="pl-4 pt-1">
+      {isStale && (
+        <p className="text-[10px] text-amber-400 pb-1">
+          Data neaktualizována přes {Math.round(STALE_TELEMETRY_MS / 1000)} s —
+          spojení mohlo vypadnout, hodnoty níže nemusí odpovídat aktuálnímu
+          stavu.
+        </p>
+      )}
+      <div
+        className={`grid grid-cols-2 gap-x-3 gap-y-1 text-[10px] ${isStale ? "opacity-50" : ""}`}
+      >
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex justify-between gap-2">
+            <span className="text-muted-foreground">{label}</span>
+            <span className="tabular-nums">{value}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -228,8 +266,8 @@ export function DjiCloudOpsPanel() {
             const gatewaySn = showHud
               ? findPairedGatewaySn(devices, device.device_sn)
               : null;
-            const signalQuality = gatewaySn
-              ? telemetry[gatewaySn]?.signalQuality
+            const gatewayTelemetry = gatewaySn
+              ? telemetry[gatewaySn]
               : undefined;
             return (
               <div key={device.device_sn}>
@@ -284,7 +322,7 @@ export function DjiCloudOpsPanel() {
                 {showHud && deviceTelemetry && (
                   <DeviceTelemetryHud
                     telemetry={deviceTelemetry}
-                    signalQuality={signalQuality}
+                    gatewayTelemetry={gatewayTelemetry}
                   />
                 )}
               </div>

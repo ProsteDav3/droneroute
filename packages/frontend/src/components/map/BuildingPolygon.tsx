@@ -63,7 +63,7 @@ export function BuildingPolygon({ building, is3D }: BuildingPolygonProps) {
   return (
     <>
       <Source id={sourceId} type="geojson" data={geojson}>
-        {/* Both layers always mounted, toggled by opacity rather than
+        {/* Both layers always mounted, toggled by `visibility` rather than
          * switching one Layer's `type` between "fill" and "fill-extrusion"
          * for the same id — react-map-gl's Layer asserts a layer's type
          * never changes after creation and silently no-ops (just a
@@ -71,13 +71,18 @@ export function BuildingPolygon({ building, is3D }: BuildingPolygonProps) {
          * a layer's type in place. Whichever mode this building's Layer
          * first mounted in would otherwise stick forever, regardless of
          * later is3D toggles — this is why buildings kept rendering flat
-         * even in 3D mode. */}
+         * even in 3D mode. `visibility: "none"` (not `opacity: 0`) so the
+         * hidden layer is actually skipped by the renderer instead of still
+         * being rasterized fully transparent — with many buildings this
+         * doubling of active fill-extrusion draws was a real contributor to
+         * general 3D sluggishness. */}
         <Layer
           id={`${sourceId}-fill-2d`}
           type="fill"
+          layout={{ visibility: is3D ? "none" : "visible" }}
           paint={{
             "fill-color": "#3b82f6",
-            "fill-opacity": is3D ? 0 : isSelected ? 0.22 : 0.12,
+            "fill-opacity": isSelected ? 0.22 : 0.12,
           }}
         />
         {/* Real 3D extrusion at the building's actual height, matching the
@@ -86,11 +91,12 @@ export function BuildingPolygon({ building, is3D }: BuildingPolygonProps) {
         <Layer
           id={`${sourceId}-fill-3d`}
           type="fill-extrusion"
+          layout={{ visibility: is3D ? "visible" : "none" }}
           paint={{
             "fill-extrusion-color": "#3b82f6",
             "fill-extrusion-height": building.height,
             "fill-extrusion-base": 0,
-            "fill-extrusion-opacity": is3D ? (isSelected ? 0.75 : 0.55) : 0,
+            "fill-extrusion-opacity": isSelected ? 0.75 : 0.55,
           }}
         />
         <Layer

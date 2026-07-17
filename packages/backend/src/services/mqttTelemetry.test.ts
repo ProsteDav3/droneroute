@@ -91,6 +91,19 @@ describe("mqttTelemetry — message parsing", () => {
     });
   });
 
+  it("parses an RC/dock's own flat capacity_percent battery field, not just the aircraft's nested one", () => {
+    handleMessage(
+      "thing/product/RC123/osd",
+      Buffer.from(
+        JSON.stringify({
+          data: { capacity_percent: 25, wireless_link: { sdr_quality: 5 } },
+        }),
+      ),
+    );
+    const [record] = getTelemetrySnapshot();
+    expect(record.batteryPercent).toBe(25);
+  });
+
   it("parses signal quality from a wireless_link object (RC/dock OSD, not the aircraft's)", () => {
     handleMessage(
       "thing/product/RC123/osd",

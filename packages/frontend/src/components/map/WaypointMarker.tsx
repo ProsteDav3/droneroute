@@ -3,8 +3,7 @@ import type { SelectionMode } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { formatHeight, formatSpeed } from "@/lib/units";
 import type { Waypoint } from "@droneroute/shared";
-import { useMemo, useCallback, useState, useEffect } from "react";
-import { useMap } from "react-map-gl/mapbox";
+import { useMemo, useCallback } from "react";
 import { Marker3D } from "./Marker3D";
 
 interface WaypointMarkerProps {
@@ -57,53 +56,6 @@ function getActionIconsHtml(waypoint: Waypoint): string {
       pointer-events: none;
     ">${icons}${extra}</div>
   `;
-}
-
-/**
- * Renders a subtle vertical drop line from the waypoint marker down to the ground.
- * Computes pixel distance between altitude and ground using map.project(),
- * updating on every camera move.
- */
-function DropLine({ waypoint }: { waypoint: Waypoint }) {
-  const { current: mapRef } = useMap();
-  const [length, setLength] = useState(0);
-
-  useEffect(() => {
-    if (!mapRef) return;
-    const map = mapRef.getMap();
-
-    const update = () => {
-      const lngLat = { lng: waypoint.longitude, lat: waypoint.latitude };
-      const atAlt = map.project(lngLat, waypoint.height);
-      const atGround = map.project(lngLat, 0);
-      // Vertical distance in pixels (ground is below, so larger y)
-      setLength(Math.max(0, atGround.y - atAlt.y));
-    };
-
-    update();
-    map.on("move", update);
-    return () => {
-      map.off("move", update);
-    };
-  }, [mapRef, waypoint.longitude, waypoint.latitude, waypoint.height]);
-
-  if (length < 2) return null;
-
-  return (
-    <div
-      style={{
-        position: "absolute",
-        top: "50%",
-        left: "50%",
-        width: 1,
-        height: length,
-        marginLeft: -0.5,
-        background: "rgba(148, 163, 184, 0.35)",
-        pointerEvents: "none",
-        transformOrigin: "top center",
-      }}
-    />
-  );
 }
 
 export function WaypointMarker({ waypoint, is3D }: WaypointMarkerProps) {
@@ -213,7 +165,6 @@ export function WaypointMarker({ waypoint, is3D }: WaypointMarkerProps) {
             />
           </div>
         )}
-        {is3D && <DropLine waypoint={waypoint} />}
       </div>
     </Marker3D>
   );

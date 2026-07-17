@@ -253,3 +253,42 @@ export function findMaxAltitudeViolations(
   }
   return violations;
 }
+
+/**
+ * Computes a new height for each waypoint that would give it a constant
+ * `targetAglM` clearance above the real ground beneath it — "terrain
+ * following" for the two height modes where the aircraft doesn't already
+ * do this live via its own sensors (see `findTerrainCollisions`'s doc
+ * comment for why `aboveGroundLevel` is excluded here too: the mode itself
+ * already means this).
+ *
+ * A waypoint whose ground elevation is unknown (still-loading DEM tile, or
+ * `relativeToStartPoint` mode when the launch point's own elevation is
+ * unknown) is simply omitted from the returned map rather than guessed —
+ * callers should leave that waypoint's existing height untouched.
+ */
+export function computeTerrainFollowingHeights(
+  waypointIndices: number[],
+  groundElevations: (number | null)[],
+  targetAglM: number,
+  heightMode: HeightMode,
+): Record<number, number> {
+  if (heightMode === "aboveGroundLevel") return {};
+
+  const launchGroundElevation = groundElevations[0];
+  if (heightMode === "relativeToStartPoint" && launchGroundElevation === null) {
+    return {};
+  }
+
+  const heights: Record<number, number> = {};
+  for (let i = 0; i < waypointIndices.length; i++) {
+    const ground = groundElevations[i];
+    if (ground === null) continue;
+
+    heights[waypointIndices[i]] =
+      heightMode === "EGM96"
+        ? ground + targetAglM
+        : ground - (launchGroundElevation as number) + targetAglM;
+  }
+  return heights;
+}

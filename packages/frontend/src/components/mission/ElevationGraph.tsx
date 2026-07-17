@@ -1,9 +1,14 @@
 import type mapboxgl from "mapbox-gl";
 import { useRef, useState, useCallback, useEffect } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Mountain } from "lucide-react";
 import { useMissionStore } from "@/store/missionStore";
 import type { SelectionMode } from "@/store/missionStore";
-import { queryElevationProfileWithRetry } from "@/lib/terrain";
+import {
+  queryElevationProfileWithRetry,
+  computeTerrainFollowingHeights,
+} from "@/lib/terrain";
+import { Button } from "@/components/ui/button";
+import { NumericInput } from "@/components/ui/numeric-input";
 
 interface ElevationGraphProps {
   mapRef: React.RefObject<mapboxgl.Map | null>;
@@ -28,6 +33,8 @@ export function ElevationGraph({ mapRef }: ElevationGraphProps) {
   const updateWaypoint = useMissionStore((s) => s.updateWaypoint);
   const selectWaypoint = useMissionStore((s) => s.selectWaypoint);
   const heightMode = useMissionStore((s) => s.config.heightMode);
+  const setWaypointHeights = useMissionStore((s) => s.setWaypointHeights);
+  const [targetAgl, setTargetAgl] = useState(30);
 
   // Real ground elevation at each waypoint (meters above sea level, from the
   // map's DEM terrain — see lib/terrain.ts), converted below into the same
@@ -100,6 +107,18 @@ export function ElevationGraph({ mapRef }: ElevationGraphProps) {
       return next;
     });
   }, []);
+
+  const handleApplyTerrainFollowing = useCallback(() => {
+    const newHeights = computeTerrainFollowingHeights(
+      waypoints.map((wp) => wp.index),
+      groundElevations,
+      targetAgl,
+      heightMode,
+    );
+    if (Object.keys(newHeights).length > 0) {
+      setWaypointHeights(newHeights);
+    }
+  }, [waypoints, groundElevations, targetAgl, heightMode, setWaypointHeights]);
 
   // Measure container width
   useEffect(() => {
@@ -507,6 +526,38 @@ export function ElevationGraph({ mapRef }: ElevationGraphProps) {
               );
             })}
           </svg>
+
+          {/* Terrain following — recomputes every waypoint's height to hold
+              a constant clearance above the real ground beneath it. Hidden
+              for aboveGroundLevel mode (the aircraft already does this live
+              via its own sensors) and while no terrain data has resolved
+              yet. */}
+          {heightMode !== "aboveGroundLevel" &&
+            groundElevations.some((g) => g !== null) && (
+              <div className="flex items-center gap-2 px-2 py-1.5 border-t border-border/50 text-[10px] text-muted-foreground">
+                <Mountain className="h-3 w-3 shrink-0" />
+                <span>Sledovat terén ve výšce</span>
+                <NumericInput
+                  value={targetAgl}
+                  onChange={setTargetAgl}
+                  min={MIN_HEIGHT}
+                  max={MAX_HEIGHT}
+                  fallback={30}
+                  integer
+                  className="w-14 h-6 text-[10px] px-1.5"
+                />
+                <span>m</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-6 text-[10px] px-2 ml-auto"
+                  onClick={handleApplyTerrainFollowing}
+                  title="Nastaví výšku každého waypointu tak, aby dron letěl v zadané výšce nad skutečným terénem"
+                >
+                  Použít
+                </Button>
+              </div>
+            )}
         </div>
       )}
     </div>

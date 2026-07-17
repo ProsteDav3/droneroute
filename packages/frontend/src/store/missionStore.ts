@@ -108,6 +108,11 @@ interface MissionState {
   removeSelectedWaypoints: () => void;
   updateSelectedWaypoints: (updates: Partial<Waypoint>) => void;
   updateAllWaypoints: (updates: Partial<Waypoint>) => void;
+  /** Sets each waypoint's height individually from a `{ index: height }`
+   * map, in a single store update (one undo-history entry) — used by
+   * terrain following, which computes a different height per waypoint
+   * rather than one uniform value like `updateAllWaypoints`. */
+  setWaypointHeights: (heights: Record<number, number>) => void;
   reorderWaypoints: (fromIndex: number, toIndex: number) => void;
   setIsAddingWaypoint: (adding: boolean) => void;
   addAction: (waypointIndex: number, action: WaypointAction) => void;
@@ -440,6 +445,14 @@ export const useMissionStore = create<MissionState>()(
       updateAllWaypoints: (updates) =>
         set((state) => ({
           waypoints: state.waypoints.map((wp) => ({ ...wp, ...updates })),
+          dirty: true,
+        })),
+
+      setWaypointHeights: (heights) =>
+        set((state) => ({
+          waypoints: state.waypoints.map((wp) =>
+            wp.index in heights ? { ...wp, height: heights[wp.index] } : wp,
+          ),
           dirty: true,
         })),
 

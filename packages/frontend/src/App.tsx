@@ -73,6 +73,7 @@ import { DjiCloudOpsPanel } from "@/components/mission/DjiCloudOpsPanel";
 import { WarningsPanel } from "@/components/mission/WarningsPanel";
 import { UndoRedoControls } from "@/components/mission/UndoRedoControls";
 import { DraftRecoveryBanner } from "@/components/mission/DraftRecoveryBanner";
+import { MissionProgressPanel } from "@/components/mission/MissionProgressPanel";
 import type { Warning } from "@/components/mission/WarningsPanel";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { LoginGate } from "@/components/auth/LoginGate";
@@ -1400,6 +1401,7 @@ export default function App() {
         <MapView onMapLoad={(map) => (mapRef.current = map)} />
         <UndoRedoControls />
         <DraftRecoveryBanner />
+        <MissionProgressPanel />
         <BulkActionToolbar />
         <WarningsPanel warnings={warnings} />
       </div>

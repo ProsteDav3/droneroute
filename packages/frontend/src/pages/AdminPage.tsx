@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
+  History,
   Users,
   Loader2,
   Search,
@@ -28,10 +29,12 @@ import {
 import { useMissionStore } from "@/store/missionStore";
 import { useAuthStore } from "@/store/authStore";
 import { adminApi } from "@/lib/api";
+import { AdminAuditLog } from "@/components/AdminAuditLog";
 import type { AdminUser } from "@droneroute/shared";
 
 type SortField = "email" | "created_at" | "last_login_at" | "mission_count";
 type SortOrder = "asc" | "desc";
+type AdminTab = "users" | "auditLog";
 
 export function AdminPage() {
   const setCurrentPage = useMissionStore((s) => s.setCurrentPage);
@@ -48,6 +51,8 @@ export function AdminPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [sortBy, setSortBy] = useState<SortField>("created_at");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+
+  const [tab, setTab] = useState<AdminTab>("users");
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newEmail, setNewEmail] = useState("");
@@ -216,302 +221,341 @@ export function AdminPage() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="max-w-5xl mx-auto">
-            {/* Filters */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="relative flex-1 max-w-xs">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  placeholder="Hledat podle e-mailu..."
-                  className="pl-8 h-8 text-sm"
-                  defaultValue={search}
-                  onChange={handleSearchInput}
-                />
-              </div>
-              <Select
-                value={statusFilter || "all"}
-                onValueChange={handleStatusChange}
+            {/* Tabs */}
+            <div className="flex items-center gap-1 mb-4 border-b border-border">
+              <button
+                type="button"
+                onClick={() => setTab("users")}
+                className={`flex items-center gap-1.5 px-3 py-2 text-sm border-b-2 -mb-px transition-colors ${
+                  tab === "users"
+                    ? "border-purple-400 text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
               >
-                <SelectTrigger className="w-[130px] h-8 text-sm">
-                  <SelectValue placeholder="Všechny stavy" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Všechny stavy</SelectItem>
-                  <SelectItem value="active">Aktivní</SelectItem>
-                  <SelectItem value="admin">Administrátoři</SelectItem>
-                  <SelectItem value="banned">Zablokovaní</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-sm ml-auto"
-                onClick={() => setShowCreateForm((v) => !v)}
+                <Users className="h-3.5 w-3.5" />
+                Uživatelé
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("auditLog")}
+                className={`flex items-center gap-1.5 px-3 py-2 text-sm border-b-2 -mb-px transition-colors ${
+                  tab === "auditLog"
+                    ? "border-purple-400 text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
               >
-                <UserPlus className="h-3.5 w-3.5 mr-1.5" />
-                Přidat uživatele
-              </Button>
+                <History className="h-3.5 w-3.5" />
+                Historie akcí
+              </button>
             </div>
 
-            {showCreateForm && (
-              <form
-                onSubmit={handleCreateUser}
-                className="border border-border rounded-lg p-4 mb-4 flex items-end gap-3"
-              >
-                <div className="space-y-1.5">
-                  <Label htmlFor="new-user-email" className="text-xs">
-                    E-mail
-                  </Label>
-                  <Input
-                    id="new-user-email"
-                    type="email"
-                    value={newEmail}
-                    onChange={(e) => setNewEmail(e.target.value)}
-                    placeholder="person@example.com"
-                    className="h-8 text-sm w-56"
-                    required
-                    autoFocus
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="new-user-password" className="text-xs">
-                    Heslo
-                  </Label>
-                  <Input
-                    id="new-user-password"
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Min. 6 znaků"
-                    className="h-8 text-sm w-48"
-                    required
-                    minLength={6}
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  size="sm"
-                  className="h-8 text-sm"
-                  disabled={creating}
-                >
-                  {creating ? "..." : "Vytvořit"}
-                </Button>
-                {createError && (
-                  <p className="text-xs text-destructive">{createError}</p>
-                )}
-              </form>
-            )}
+            {tab === "auditLog" && <AdminAuditLog />}
 
-            {loading && (
-              <div className="flex flex-col items-center justify-center py-20">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            )}
-
-            {error && (
-              <div className="flex flex-col items-center justify-center py-20">
-                <p className="text-sm text-destructive">{error}</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-4"
-                  onClick={loadUsers}
-                >
-                  Zkusit znovu
-                </Button>
-              </div>
-            )}
-
-            {!loading && !error && users.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20">
-                <Users className="h-8 w-8 text-muted-foreground mb-2" />
-                <p className="text-sm text-muted-foreground">
-                  Nenalezeni žádní uživatelé
-                </p>
-              </div>
-            )}
-
-            {!loading && !error && users.length > 0 && (
+            {tab === "users" && (
               <>
-                <div className="border border-border rounded-lg overflow-hidden">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="bg-muted/50 border-b border-border">
-                        <SortHeader field="email">E-mail</SortHeader>
-                        <SortHeader field="created_at">Registrace</SortHeader>
-                        <SortHeader field="last_login_at">
-                          Poslední přihlášení
-                        </SortHeader>
-                        <SortHeader field="mission_count" align="center">
-                          Trasy
-                        </SortHeader>
-                        <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                          Stav
-                        </th>
-                        <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                          Akce
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {users.map((user) => {
-                        const isSelf = user.id === currentUserId;
-                        return (
-                          <tr
-                            key={user.id}
-                            className="border-b border-border last:border-0 hover:bg-muted/30"
-                          >
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm">{user.email}</span>
-                                {isSelf && (
-                                  <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                    vy
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground text-xs">
-                              {formatDate(user.createdAt)}
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground text-xs">
-                              {formatDate(user.lastLoginAt)}
-                            </td>
-                            <td className="px-4 py-3 text-center text-xs tabular-nums">
-                              {user.missionCount}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <div className="flex items-center justify-center gap-1.5">
-                                {user.isAdmin && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded-full">
-                                    <Shield className="h-3 w-3" />
-                                    Administrátor
-                                  </span>
-                                )}
-                                {user.isBanned && (
-                                  <span className="inline-flex items-center gap-1 text-[10px] font-medium text-red-400 bg-red-400/10 px-2 py-0.5 rounded-full">
-                                    <Ban className="h-3 w-3" />
-                                    Zablokován
-                                  </span>
-                                )}
-                                {!user.isAdmin && !user.isBanned && (
-                                  <span className="text-[10px] text-muted-foreground">
-                                    Aktivní
-                                  </span>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-right">
-                              {!isSelf && (
-                                <div className="flex items-center justify-end gap-1">
-                                  {user.isBanned ? (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 text-xs text-emerald-400 hover:text-emerald-300"
-                                      disabled={actionLoading === user.id}
-                                      onClick={() => {
-                                        setActionLoading(user.id);
-                                        handleAction(() =>
-                                          adminApi.unbanUser(user.id),
-                                        );
-                                      }}
-                                      title="Odblokovat uživatele"
-                                    >
-                                      <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                                      Odblokovat
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 text-xs text-red-400 hover:text-red-300"
-                                      disabled={actionLoading === user.id}
-                                      onClick={() => {
-                                        setActionLoading(user.id);
-                                        confirmAction(
-                                          `Zablokovat uživatele ${user.email}? Ztratí přístup ke svému účtu.`,
-                                          () => adminApi.banUser(user.id),
-                                        );
-                                      }}
-                                      title="Zablokovat uživatele"
-                                    >
-                                      <Ban className="h-3.5 w-3.5 mr-1" />
-                                      Zablokovat
-                                    </Button>
-                                  )}
-                                  {user.isAdmin ? (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 text-xs text-amber-400 hover:text-amber-300"
-                                      disabled={actionLoading === user.id}
-                                      onClick={() => {
-                                        setActionLoading(user.id);
-                                        confirmAction(
-                                          `Odebrat uživateli ${user.email} administrátorská práva? Přijde o administrátorská oprávnění.`,
-                                          () => adminApi.demoteUser(user.id),
-                                        );
-                                      }}
-                                      title="Odebrat administrátorská práva"
-                                    >
-                                      <ShieldOff className="h-3.5 w-3.5 mr-1" />
-                                      Odebrat práva
-                                    </Button>
-                                  ) : (
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className="h-7 text-xs text-purple-400 hover:text-purple-300"
-                                      disabled={actionLoading === user.id}
-                                      onClick={() => {
-                                        setActionLoading(user.id);
-                                        handleAction(() =>
-                                          adminApi.promoteUser(user.id),
-                                        );
-                                      }}
-                                      title="Povýšit na administrátora"
-                                    >
-                                      <Shield className="h-3.5 w-3.5 mr-1" />
-                                      Povýšit
-                                    </Button>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                {/* Filters */}
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="relative flex-1 max-w-xs">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Hledat podle e-mailu..."
+                      className="pl-8 h-8 text-sm"
+                      defaultValue={search}
+                      onChange={handleSearchInput}
+                    />
+                  </div>
+                  <Select
+                    value={statusFilter || "all"}
+                    onValueChange={handleStatusChange}
+                  >
+                    <SelectTrigger className="w-[130px] h-8 text-sm">
+                      <SelectValue placeholder="Všechny stavy" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Všechny stavy</SelectItem>
+                      <SelectItem value="active">Aktivní</SelectItem>
+                      <SelectItem value="admin">Administrátoři</SelectItem>
+                      <SelectItem value="banned">Zablokovaní</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-sm ml-auto"
+                    onClick={() => setShowCreateForm((v) => !v)}
+                  >
+                    <UserPlus className="h-3.5 w-3.5 mr-1.5" />
+                    Přidat uživatele
+                  </Button>
                 </div>
 
-                {/* Pagination */}
-                {totalPages > 1 && (
-                  <div className="flex items-center justify-between mt-4">
-                    <span className="text-xs text-muted-foreground">
-                      Stránka {page} z {totalPages}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7"
-                        disabled={page <= 1}
-                        onClick={() => setPage((p) => p - 1)}
-                      >
-                        <ChevronLeft className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7"
-                        disabled={page >= totalPages}
-                        onClick={() => setPage((p) => p + 1)}
-                      >
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </Button>
+                {showCreateForm && (
+                  <form
+                    onSubmit={handleCreateUser}
+                    className="border border-border rounded-lg p-4 mb-4 flex items-end gap-3"
+                  >
+                    <div className="space-y-1.5">
+                      <Label htmlFor="new-user-email" className="text-xs">
+                        E-mail
+                      </Label>
+                      <Input
+                        id="new-user-email"
+                        type="email"
+                        value={newEmail}
+                        onChange={(e) => setNewEmail(e.target.value)}
+                        placeholder="person@example.com"
+                        className="h-8 text-sm w-56"
+                        required
+                        autoFocus
+                      />
                     </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="new-user-password" className="text-xs">
+                        Heslo
+                      </Label>
+                      <Input
+                        id="new-user-password"
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Min. 6 znaků"
+                        className="h-8 text-sm w-48"
+                        required
+                        minLength={6}
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      size="sm"
+                      className="h-8 text-sm"
+                      disabled={creating}
+                    >
+                      {creating ? "..." : "Vytvořit"}
+                    </Button>
+                    {createError && (
+                      <p className="text-xs text-destructive">{createError}</p>
+                    )}
+                  </form>
+                )}
+
+                {loading && (
+                  <div className="flex flex-col items-center justify-center py-20">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
+                )}
+
+                {error && (
+                  <div className="flex flex-col items-center justify-center py-20">
+                    <p className="text-sm text-destructive">{error}</p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4"
+                      onClick={loadUsers}
+                    >
+                      Zkusit znovu
+                    </Button>
+                  </div>
+                )}
+
+                {!loading && !error && users.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-20">
+                    <Users className="h-8 w-8 text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      Nenalezeni žádní uživatelé
+                    </p>
+                  </div>
+                )}
+
+                {!loading && !error && users.length > 0 && (
+                  <>
+                    <div className="border border-border rounded-lg overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-muted/50 border-b border-border">
+                            <SortHeader field="email">E-mail</SortHeader>
+                            <SortHeader field="created_at">
+                              Registrace
+                            </SortHeader>
+                            <SortHeader field="last_login_at">
+                              Poslední přihlášení
+                            </SortHeader>
+                            <SortHeader field="mission_count" align="center">
+                              Trasy
+                            </SortHeader>
+                            <th className="text-center px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Stav
+                            </th>
+                            <th className="text-right px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              Akce
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {users.map((user) => {
+                            const isSelf = user.id === currentUserId;
+                            return (
+                              <tr
+                                key={user.id}
+                                className="border-b border-border last:border-0 hover:bg-muted/30"
+                              >
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm">
+                                      {user.email}
+                                    </span>
+                                    {isSelf && (
+                                      <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                        vy
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-muted-foreground text-xs">
+                                  {formatDate(user.createdAt)}
+                                </td>
+                                <td className="px-4 py-3 text-muted-foreground text-xs">
+                                  {formatDate(user.lastLoginAt)}
+                                </td>
+                                <td className="px-4 py-3 text-center text-xs tabular-nums">
+                                  {user.missionCount}
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    {user.isAdmin && (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded-full">
+                                        <Shield className="h-3 w-3" />
+                                        Administrátor
+                                      </span>
+                                    )}
+                                    {user.isBanned && (
+                                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-red-400 bg-red-400/10 px-2 py-0.5 rounded-full">
+                                        <Ban className="h-3 w-3" />
+                                        Zablokován
+                                      </span>
+                                    )}
+                                    {!user.isAdmin && !user.isBanned && (
+                                      <span className="text-[10px] text-muted-foreground">
+                                        Aktivní
+                                      </span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  {!isSelf && (
+                                    <div className="flex items-center justify-end gap-1">
+                                      {user.isBanned ? (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 text-xs text-emerald-400 hover:text-emerald-300"
+                                          disabled={actionLoading === user.id}
+                                          onClick={() => {
+                                            setActionLoading(user.id);
+                                            handleAction(() =>
+                                              adminApi.unbanUser(user.id),
+                                            );
+                                          }}
+                                          title="Odblokovat uživatele"
+                                        >
+                                          <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                                          Odblokovat
+                                        </Button>
+                                      ) : (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 text-xs text-red-400 hover:text-red-300"
+                                          disabled={actionLoading === user.id}
+                                          onClick={() => {
+                                            setActionLoading(user.id);
+                                            confirmAction(
+                                              `Zablokovat uživatele ${user.email}? Ztratí přístup ke svému účtu.`,
+                                              () => adminApi.banUser(user.id),
+                                            );
+                                          }}
+                                          title="Zablokovat uživatele"
+                                        >
+                                          <Ban className="h-3.5 w-3.5 mr-1" />
+                                          Zablokovat
+                                        </Button>
+                                      )}
+                                      {user.isAdmin ? (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 text-xs text-amber-400 hover:text-amber-300"
+                                          disabled={actionLoading === user.id}
+                                          onClick={() => {
+                                            setActionLoading(user.id);
+                                            confirmAction(
+                                              `Odebrat uživateli ${user.email} administrátorská práva? Přijde o administrátorská oprávnění.`,
+                                              () =>
+                                                adminApi.demoteUser(user.id),
+                                            );
+                                          }}
+                                          title="Odebrat administrátorská práva"
+                                        >
+                                          <ShieldOff className="h-3.5 w-3.5 mr-1" />
+                                          Odebrat práva
+                                        </Button>
+                                      ) : (
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-7 text-xs text-purple-400 hover:text-purple-300"
+                                          disabled={actionLoading === user.id}
+                                          onClick={() => {
+                                            setActionLoading(user.id);
+                                            handleAction(() =>
+                                              adminApi.promoteUser(user.id),
+                                            );
+                                          }}
+                                          title="Povýšit na administrátora"
+                                        >
+                                          <Shield className="h-3.5 w-3.5 mr-1" />
+                                          Povýšit
+                                        </Button>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Pagination */}
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between mt-4">
+                        <span className="text-xs text-muted-foreground">
+                          Stránka {page} z {totalPages}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7"
+                            disabled={page <= 1}
+                            onClick={() => setPage((p) => p - 1)}
+                          >
+                            <ChevronLeft className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7"
+                            disabled={page >= totalPages}
+                            onClick={() => setPage((p) => p + 1)}
+                          >
+                            <ChevronRight className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}

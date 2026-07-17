@@ -29,6 +29,7 @@ import { BuildingDrawHandler } from "./BuildingDrawHandler";
 import { BuildingPolygon } from "./BuildingPolygon";
 import { AirspaceOverlay } from "./AirspaceOverlay";
 import { CameraFrustum } from "./CameraFrustum";
+import { DjiTelemetryMarkers } from "./DjiTelemetryMarkers";
 import { Triangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -210,6 +211,24 @@ function FlyToTargetHandler() {
  * Automatically fits the map to show all waypoints when a mission is loaded.
  * Triggers when waypoints go from 0 to N (N >= 2).
  */
+/**
+ * Hands the raw mapboxgl.Map instance up to the caller once it's ready —
+ * used for capturing a PDF-report snapshot of the current view (see
+ * lib/pdfSnapshot.ts), which needs direct canvas access that react-map-gl
+ * doesn't otherwise expose to a parent component.
+ */
+function MapLoadNotifier({
+  onMapLoad,
+}: {
+  onMapLoad?: (map: mapboxgl.Map) => void;
+}) {
+  const { current: map } = useMap();
+  useEffect(() => {
+    if (map && onMapLoad) onMapLoad(map.getMap());
+  }, [map, onMapLoad]);
+  return null;
+}
+
 function FitBoundsOnLoad() {
   const { current: map } = useMap();
   const waypoints = useMissionStore((s) => s.waypoints);
@@ -488,7 +507,12 @@ function PoiPointingLines({ is3D }: { is3D: boolean }) {
   );
 }
 
-export function MapView() {
+interface MapViewProps {
+  /** Called once the underlying mapboxgl.Map is ready — see MapLoadNotifier. */
+  onMapLoad?: (map: mapboxgl.Map) => void;
+}
+
+export function MapView({ onMapLoad }: MapViewProps = {}) {
   const mapboxToken = useConfigStore((s) => s.mapboxToken);
   const defaultMapView = useConfigStore((s) => s.defaultMapView);
   const waypoints = useMissionStore((s) => s.waypoints);
@@ -621,7 +645,12 @@ export function MapView() {
         doubleClickZoom={false}
         id="main-map"
         terrain={is3D ? { source: "mapbox-dem", exaggeration: 1 } : undefined}
+        // Required for lib/pdfSnapshot.ts's canvas.toDataURL() capture --
+        // without it the WebGL buffer is cleared right after each paint and
+        // the snapshot comes back blank.
+        preserveDrawingBuffer={true}
       >
+        <MapLoadNotifier onMapLoad={onMapLoad} />
         {/* DEM source — always present so terrain prop can reference it */}
         <Source
           id="mapbox-dem"
@@ -664,6 +693,8 @@ export function MapView() {
         {pois.map((poi) => (
           <PoiMarker key={poi.id} poi={poi} is3D={is3D} />
         ))}
+
+        <DjiTelemetryMarkers />
 
         {/* Building-to-obstacle popup */}
         {buildingPopup && (

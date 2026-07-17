@@ -15,6 +15,8 @@ Everything SkyRoute can do, explained in plain language.
 - [Saving and sharing](saving-and-sharing.md) — save missions to your account and share them with others
 - [Import and export](import-export.md) — bring in existing missions or export for DJI drones
 - [Upload to controller](upload-to-controller.md) — send missions directly to a connected DJI controller
+- [Flight logbook](flight-logbook.md) — record actual flights against a saved mission
+- [Risk assessment and permits](risk-assessment-and-permits.md) — SORA-lite risk questionnaire, permit tracking, and a preflight checklist PDF
 - [Accounts](accounts.md) — sign up, log in, and manage your account
 - [Privacy & data](privacy.md) — what SkyRoute stores about you and where it lives
 - [Keyboard shortcuts](keyboard-shortcuts.md) — quick reference for all shortcuts

@@ -7,6 +7,8 @@ import { useAuthStore } from "@/store/authStore";
 import { useConfigStore } from "@/store/configStore";
 import { api } from "@/lib/api";
 
+type GateMode = "credentials" | "twoFactor" | "forgotPassword";
+
 /**
  * Gates the entire app behind sign-in. Self-hosted deployments start with no
  * accounts, so the very first submission here bootstraps the founder/admin
@@ -14,15 +16,28 @@ import { api } from "@/lib/api";
  * regular sign-in, and further accounts can only be created by that admin.
  */
 export function LoginGate() {
-  const { login, register, googleLogin, isLoading } = useAuthStore();
+  const {
+    login,
+    loginWithTwoFactorCode,
+    cancelTwoFactorChallenge,
+    register,
+    googleLogin,
+    forgotPassword,
+    isLoading,
+  } = useAuthStore();
   const { selfHosted } = useConfigStore();
   const [registrationOpen, setRegistrationOpen] = useState<boolean | null>(
     null,
   );
   const [requiresBootstrapToken, setRequiresBootstrapToken] = useState(false);
+  const [gateMode, setGateMode] = useState<GateMode>("credentials");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [token, setToken] = useState("");
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSubmitted, setForgotSubmitted] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -45,11 +60,45 @@ export function LoginGate() {
     try {
       if (isBootstrap) {
         await register(email, password, token || undefined);
-      } else {
-        await login(email, password);
+        return;
+      }
+      const result = await login(email, password);
+      if (result.requiresTwoFactor) {
+        setGateMode("twoFactor");
       }
     } catch (err: any) {
       setError(err.message || "Něco se pokazilo");
+    }
+  };
+
+  const handleTwoFactorSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await loginWithTwoFactorCode(twoFactorCode);
+    } catch (err: any) {
+      setError(err.message || "Neplatný kód");
+    }
+  };
+
+  const handleBackFromTwoFactor = () => {
+    cancelTwoFactorChallenge();
+    setTwoFactorCode("");
+    setError(null);
+    setGateMode("credentials");
+  };
+
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setForgotLoading(true);
+    try {
+      await forgotPassword(forgotEmail);
+      setForgotSubmitted(true);
+    } catch (err: any) {
+      setError(err.message || "Něco se pokazilo");
+    } finally {
+      setForgotLoading(false);
     }
   };
 
@@ -79,20 +128,123 @@ export function LoginGate() {
 
         <div className="bg-card border border-border rounded-lg shadow-[0_0_60px_rgba(0,194,255,0.25)] p-5 space-y-4">
           <h2 className="text-sm font-semibold text-center">
-            {isBootstrap
-              ? "Vytvořit administrátorský účet"
-              : selfHosted
-                ? "Přihlásit se"
-                : "Přihlásit se přes Google"}
+            {gateMode === "twoFactor"
+              ? "Dvoufázové ověření"
+              : gateMode === "forgotPassword"
+                ? "Obnovení hesla"
+                : isBootstrap
+                  ? "Vytvořit administrátorský účet"
+                  : selfHosted
+                    ? "Přihlásit se"
+                    : "Přihlásit se přes Google"}
           </h2>
-          {isBootstrap && (
+          {gateMode === "credentials" && isBootstrap && (
             <p className="text-xs text-muted-foreground text-center">
               Zatím neexistuje žádný účet. První účet, který zde vytvoříte, se
               stane administrátorským a registrace se poté uzavře.
             </p>
           )}
 
-          {selfHosted ? (
+          {gateMode === "twoFactor" ? (
+            <form onSubmit={handleTwoFactorSubmit} className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                Zadejte 6místný kód z vaší aplikace pro ověřování.
+              </p>
+              <div className="space-y-1.5">
+                <Label htmlFor="gate-two-factor-code" className="text-xs">
+                  Ověřovací kód
+                </Label>
+                <Input
+                  id="gate-two-factor-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={twoFactorCode}
+                  onChange={(e) => setTwoFactorCode(e.target.value)}
+                  placeholder="123456"
+                  className="h-9 text-sm"
+                  required
+                  autoFocus
+                />
+              </div>
+
+              {error && <p className="text-xs text-destructive">{error}</p>}
+
+              <Button
+                type="submit"
+                className="w-full h-9 text-sm"
+                disabled={isLoading}
+              >
+                {isLoading ? "..." : "Potvrdit"}
+              </Button>
+              <button
+                type="button"
+                onClick={handleBackFromTwoFactor}
+                className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Zpět na přihlášení
+              </button>
+            </form>
+          ) : gateMode === "forgotPassword" ? (
+            <>
+              {forgotSubmitted ? (
+                <div className="space-y-3 text-center">
+                  <p className="text-xs text-emerald-400">
+                    Pokud tento e-mail existuje, byl na něj odeslán odkaz pro
+                    obnovení hesla.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setGateMode("credentials")}
+                    className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Zpět na přihlášení
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleForgotSubmit} className="space-y-4">
+                  <p className="text-xs text-muted-foreground">
+                    Zadejte svůj e-mail a pošleme vám odkaz pro obnovení hesla.
+                  </p>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="gate-forgot-email" className="text-xs">
+                      E-mail
+                    </Label>
+                    <Input
+                      id="gate-forgot-email"
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="h-9 text-sm"
+                      required
+                      autoFocus
+                    />
+                  </div>
+
+                  {error && <p className="text-xs text-destructive">{error}</p>}
+
+                  <Button
+                    type="submit"
+                    className="w-full h-9 text-sm"
+                    disabled={forgotLoading}
+                  >
+                    {forgotLoading ? "..." : "Odeslat odkaz"}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      setGateMode("credentials");
+                    }}
+                    className="w-full text-center text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Zpět na přihlášení
+                  </button>
+                </form>
+              )}
+            </>
+          ) : selfHosted ? (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="gate-email" className="text-xs">
@@ -110,9 +262,25 @@ export function LoginGate() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="gate-password" className="text-xs">
-                  Heslo
-                </Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="gate-password" className="text-xs">
+                    Heslo
+                  </Label>
+                  {!isBootstrap && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setError(null);
+                        setForgotEmail(email);
+                        setForgotSubmitted(false);
+                        setGateMode("forgotPassword");
+                      }}
+                      className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      Zapomenuté heslo?
+                    </button>
+                  )}
+                </div>
                 <Input
                   id="gate-password"
                   type="password"

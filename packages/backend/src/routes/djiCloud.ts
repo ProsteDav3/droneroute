@@ -257,7 +257,7 @@ djiCloudRoutes.get("/devices", authMiddleware, async (_req, res) => {
     const devices = await listBoundDevices();
     res.json({ devices });
   } catch (err) {
-    console.error("DJI Cloud device list error:", err);
+    logger.error({ err }, "DJI Cloud device list error");
     res.status(502).json({ error: "Načtení zařízení z DJI Cloud selhalo" });
   }
 });
@@ -269,7 +269,7 @@ djiCloudRoutes.get("/hms", authMiddleware, async (_req, res) => {
     const messages = await listHmsMessages();
     res.json({ messages });
   } catch (err) {
-    console.error("DJI Cloud HMS error:", err);
+    logger.error({ err }, "DJI Cloud HMS error");
     res.status(502).json({ error: "Načtení HMS zpráv z DJI Cloud selhalo" });
   }
 });
@@ -284,7 +284,7 @@ djiCloudRoutes.get("/jobs", authMiddleware, async (_req, res) => {
     const jobs = await listWaylineJobs();
     res.json({ jobs });
   } catch (err) {
-    console.error("DJI Cloud jobs list error:", err);
+    logger.error({ err }, "DJI Cloud jobs list error");
     res.status(502).json({ error: "Načtení úloh z DJI Cloud selhalo" });
   }
 });
@@ -307,7 +307,7 @@ djiCloudRoutes.delete(
       await deleteWayline(waylineId);
       res.json({ success: true });
     } catch (err) {
-      console.error("DJI Cloud wayline delete error:", err);
+      logger.error({ err }, "DJI Cloud wayline delete error");
       res.status(502).json({ error: "Smazání z DJI Cloud selhalo" });
     }
   },

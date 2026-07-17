@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { FileClock, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useMissionStore } from "@/store/missionStore";
 import {
   peekMissionDraft,
   restoreMissionDraft,
   clearMissionDraft,
-  useMissionStore,
-} from "@/store/missionStore";
+} from "@/store/missionDraft";
 
 function formatSavedAt(iso: string): string {
   try {

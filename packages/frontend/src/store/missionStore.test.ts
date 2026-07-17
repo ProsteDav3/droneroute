@@ -2,12 +2,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import {
   useMissionStore,
   DEFAULT_MISSION_NAME,
+  type TemplateGroup,
+} from "./missionStore";
+import {
   peekMissionDraft,
   restoreMissionDraft,
   clearMissionDraft,
-  type TemplateGroup,
   type MissionDraft,
-} from "./missionStore";
+} from "./missionDraft";
 import { useConfigStore } from "./configStore";
 import { DEFAULT_ORBIT_PARAMS, destinationPoint } from "@/lib/templates";
 import type { OrbitParams } from "@/lib/templates";

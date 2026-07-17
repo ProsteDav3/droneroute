@@ -1,6 +1,6 @@
 import { Undo2, Redo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useMissionHistory } from "@/store/missionStore";
+import { useMissionHistory } from "@/store/missionDraft";
 
 /** Floating undo/redo buttons — mirrors the Ctrl+Z / Ctrl+Shift+Z shortcuts. */
 export function UndoRedoControls() {

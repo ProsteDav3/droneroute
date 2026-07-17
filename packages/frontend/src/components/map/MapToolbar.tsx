@@ -167,7 +167,7 @@ export function MapToolbar() {
           <MousePointerClick className="h-4 w-4" />
           <span className="text-xs">Přidat WP</span>
         </span>
-        <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
+        <kbd className="text-[10px] font-mono font-bold border border-foreground/20 bg-foreground/10 px-1.5 py-0.5 rounded text-foreground/80">
           W
         </kbd>
       </Button>
@@ -182,7 +182,7 @@ export function MapToolbar() {
           <Crosshair className="h-4 w-4" />
           <span className="text-xs">Přidat POI</span>
         </span>
-        <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
+        <kbd className="text-[10px] font-mono font-bold border border-foreground/20 bg-foreground/10 px-1.5 py-0.5 rounded text-foreground/80">
           P
         </kbd>
       </Button>
@@ -197,7 +197,7 @@ export function MapToolbar() {
           <Triangle className="h-4 w-4" />
           <span className="text-xs">Překážka</span>
         </span>
-        <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
+        <kbd className="text-[10px] font-mono font-bold border border-foreground/20 bg-foreground/10 px-1.5 py-0.5 rounded text-foreground/80">
           B
         </kbd>
       </Button>
@@ -212,7 +212,7 @@ export function MapToolbar() {
           <Warehouse className="h-4 w-4" />
           <span className="text-xs">Budova</span>
         </span>
-        <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
+        <kbd className="text-[10px] font-mono font-bold border border-foreground/20 bg-foreground/10 px-1.5 py-0.5 rounded text-foreground/80">
           H
         </kbd>
       </Button>
@@ -252,7 +252,7 @@ export function MapToolbar() {
           <Ruler className="h-4 w-4" />
           <span className="text-xs">Měřit</span>
         </span>
-        <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
+        <kbd className="text-[10px] font-mono font-bold border border-foreground/20 bg-foreground/10 px-1.5 py-0.5 rounded text-foreground/80">
           M
         </kbd>
       </Button>
@@ -315,7 +315,7 @@ export function MapToolbar() {
                       {opt.description}
                     </div>
                   </div>
-                  <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80 shrink-0">
+                  <kbd className="text-[10px] font-mono font-bold border border-foreground/20 bg-foreground/10 px-1.5 py-0.5 rounded text-foreground/80 shrink-0">
                     {opt.key}
                   </kbd>
                 </button>
@@ -342,7 +342,7 @@ export function MapToolbar() {
           <Hand className="h-4 w-4" />
           <span className="text-xs">Posun</span>
         </span>
-        <kbd className="text-[10px] font-mono font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
+        <kbd className="text-[10px] font-mono font-bold border border-foreground/20 bg-foreground/10 px-1.5 py-0.5 rounded text-foreground/80">
           Esc
         </kbd>
       </Button>

@@ -200,6 +200,18 @@ export default function App() {
     }
   }, [token]);
 
+  // Apply the color theme preference to the document root — index.css
+  // defines the light palette under :root[data-theme="light"], falling
+  // back to the app's default dark theme when unset.
+  const colorTheme = preferences.visualization?.colorTheme;
+  useEffect(() => {
+    if (colorTheme === "light") {
+      document.documentElement.dataset.theme = "light";
+    } else {
+      delete document.documentElement.dataset.theme;
+    }
+  }, [colorTheme]);
+
   // Fetch saved template presets after auth is restored
   const { presets, fetchPresets } = useTemplatePresetsStore();
   useEffect(() => {

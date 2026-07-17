@@ -24,6 +24,37 @@
   --radius: 0.5rem;
 }
 
+/* Light theme override — applied when the user picks "Light" in the
+ * Visualization settings tab (see App.tsx, which sets this attribute from
+ * preferences.visualization.colorTheme). Tailwind v4 compiles utilities
+ * like `bg-background` to `background-color: var(--color-background)`, so
+ * redefining these custom properties re-themes the whole app chrome at
+ * runtime with no rebuild. Mapbox's own control chrome (geocoder, building
+ * and airspace popups, further down this file) intentionally stays dark —
+ * it isn't meaningfully themeable and the map imagery itself dominates
+ * either way. */
+:root[data-theme="light"] {
+  --color-background: #f4f8fc;
+  --color-foreground: #0a1628;
+  --color-card: #ffffff;
+  --color-card-foreground: #0a1628;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0a1628;
+  --color-primary: #0284c7;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #e2ecf7;
+  --color-secondary-foreground: #0a1628;
+  --color-muted: #eaf1f8;
+  --color-muted-foreground: rgba(10, 22, 40, 0.65);
+  --color-accent: rgba(2, 132, 199, 0.1);
+  --color-accent-foreground: #0284c7;
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+  --color-border: rgba(10, 22, 40, 0.12);
+  --color-input: rgba(10, 22, 40, 0.18);
+  --color-ring: #0284c7;
+}
+
 body {
   @apply bg-background text-foreground;
   font-family:

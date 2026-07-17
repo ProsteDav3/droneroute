@@ -637,6 +637,27 @@ export function AccountModal({ onClose }: AccountModalProps) {
               </div>
 
               <div>
+                <Label className="text-xs">Barevný motiv</Label>
+                <Select
+                  value={vizPrefs.colorTheme ?? "dark"}
+                  onValueChange={(v) =>
+                    setVizPrefs((prev: VisualizationPreferences) => ({
+                      ...prev,
+                      colorTheme: v as "dark" | "light",
+                    }))
+                  }
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="dark">Tmavý</SelectItem>
+                    <SelectItem value="light">Světlý</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
                 <Label className="text-xs">Barvení trasy</Label>
                 <Select
                   value={vizPrefs.routeColorMode ?? "flat"}

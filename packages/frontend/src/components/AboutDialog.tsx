@@ -104,7 +104,7 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
                       className="border-b border-border last:border-0"
                     >
                       <td className="py-1 pl-2 pr-2 w-28 shrink-0">
-                        <kbd className="font-mono text-[10px] font-bold border border-white/20 bg-white/10 px-1.5 py-0.5 rounded text-foreground/80">
+                        <kbd className="font-mono text-[10px] font-bold border border-foreground/20 bg-foreground/10 px-1.5 py-0.5 rounded text-foreground/80">
                           {key}
                         </kbd>
                       </td>

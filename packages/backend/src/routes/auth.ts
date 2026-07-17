@@ -22,6 +22,7 @@ import {
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { authLimiter } from "../middleware/rateLimit.js";
 import { logger } from "../lib/logger.js";
+import { setAuthCookie, clearAuthCookie } from "../lib/authCookie.js";
 
 export const authRoutes = Router();
 
@@ -175,6 +176,7 @@ authRoutes.post("/google", authLimiter, async (req, res) => {
       !!existingByGoogle.is_admin,
       existingByGoogle.token_version ?? 0,
     );
+    setAuthCookie(res, token);
     res.json({
       token,
       userId: existingByGoogle.id,
@@ -206,6 +208,7 @@ authRoutes.post("/google", authLimiter, async (req, res) => {
       !!existingByEmail.is_admin,
       existingByEmail.token_version ?? 0,
     );
+    setAuthCookie(res, token);
     res.json({
       token,
       userId: existingByEmail.id,
@@ -228,6 +231,7 @@ authRoutes.post("/google", authLimiter, async (req, res) => {
   ).run(id, email, googleId, isAdmin ? 1 : 0);
 
   const token = generateToken(id, isAdmin, 0);
+  setAuthCookie(res, token);
   res.status(201).json({ token, userId: id, email, isAdmin });
 });
 
@@ -334,6 +338,7 @@ authRoutes.post("/register", authLimiter, (req, res) => {
   }
 
   const token = generateToken(id, true, 0);
+  setAuthCookie(res, token);
   res.status(201).json({ token, userId: id, email, isAdmin: true });
 });
 
@@ -446,6 +451,7 @@ authRoutes.post("/login", authLimiter, (req, res) => {
     !!user.is_admin,
     user.token_version ?? 0,
   );
+  setAuthCookie(res, token);
   res.json({
     token,
     userId: user.id,
@@ -662,6 +668,18 @@ authRoutes.post("/reset-password", authLimiter, (req, res) => {
   });
 });
 
+/**
+ * Clears the httpOnly auth cookie. The frontend's own JS can't do this
+ * itself (that's the point of `httpOnly`), so logout now needs a real
+ * request instead of just clearing localStorage client-side. No-op for
+ * CLI/API clients using the Authorization header — they simply discard
+ * their own stored token instead.
+ */
+authRoutes.post("/logout", (_req, res) => {
+  clearAuthCookie(res);
+  res.json({ message: "Odhlášeno" });
+});
+
 // ---------------------------------------------------------------------------
 // Current user profile (used by the account settings dialog to show 2FA state)
 // ---------------------------------------------------------------------------
@@ -678,6 +696,7 @@ authRoutes.get("/me", authMiddleware, (req: AuthRequest, res) => {
   }
 
   res.json({
+    userId: req.userId,
     email: user.email,
     isAdmin: !!user.is_admin,
     totpEnabled: !!user.totp_enabled,
@@ -831,6 +850,7 @@ authRoutes.post("/2fa/login", authLimiter, (req, res) => {
     !!user.is_admin,
     user.token_version ?? 0,
   );
+  setAuthCookie(res, token);
   res.json({
     token,
     userId: user.id,

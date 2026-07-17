@@ -25,12 +25,12 @@ export const logger = pino({
 });
 
 /**
- * Paths to strip from every logged request before it's written out. Every
- * authenticated route requires `Authorization: Bearer <JWT>`, and pino-http's
- * default request serializer otherwise writes that header (i.e. the caller's
- * live token) verbatim into each log line — which in production ships
- * straight to a log aggregator. `cookie` is redacted defensively even though
- * this API doesn't currently rely on cookie-based auth.
+ * Paths to strip from every logged request before it's written out. An
+ * authenticated route accepts the session JWT either via `Authorization:
+ * Bearer <JWT>` (CLI/API clients) or the `droneroute_token` httpOnly cookie
+ * (the browser SPA) — pino-http's default request serializer otherwise
+ * writes either verbatim into each log line, which in production ships the
+ * caller's live token straight to a log aggregator.
  */
 export const httpLogRedactPaths = [
   "req.headers.authorization",

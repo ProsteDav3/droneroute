@@ -1,4 +1,5 @@
 import express from "express";
+import cookieParser from "cookie-parser";
 import request from "supertest";
 import jwt from "jsonwebtoken";
 import { describe, it, expect, beforeAll, vi } from "vitest";
@@ -6,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import { authenticator } from "otplib";
 import { initDb, getDb } from "../models/db.js";
 import { hashPassword, hashResetToken } from "../services/authService.js";
+import { AUTH_COOKIE_NAME } from "../lib/authCookie.js";
 
 const sendPasswordResetEmailMock = vi.fn().mockResolvedValue(undefined);
 
@@ -19,6 +21,7 @@ const { authRoutes } = await import("./auth.js");
 
 const app = express();
 app.use(express.json());
+app.use(cookieParser());
 app.use("/api/auth", authRoutes);
 
 // Registration is a one-time bootstrap (see auth.bootstrap.test.ts) — every
@@ -492,7 +495,7 @@ describe("GET /api/auth/me", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns the current user's profile including 2FA state", async () => {
+  it("returns the current user's profile including 2FA state and userId", async () => {
     seedUser("me@test.dev", "secret123");
     const token = await loginToken("me@test.dev", "secret123");
 
@@ -502,5 +505,75 @@ describe("GET /api/auth/me", () => {
     expect(res.status).toBe(200);
     expect(res.body.email).toBe("me@test.dev");
     expect(res.body.totpEnabled).toBe(false);
+    expect(typeof res.body.userId).toBe("string");
+  });
+});
+
+describe("httpOnly cookie auth", () => {
+  it("login sets an httpOnly droneroute_token cookie", async () => {
+    seedUser("cookie-login@test.dev", "secret123");
+
+    const res = await request(app)
+      .post("/api/auth/login")
+      .send({ email: "cookie-login@test.dev", password: "secret123" });
+
+    const setCookie = res.headers["set-cookie"];
+    expect(setCookie).toBeDefined();
+    const cookieHeader = Array.isArray(setCookie)
+      ? setCookie.find((c: string) => c.startsWith(`${AUTH_COOKIE_NAME}=`))
+      : undefined;
+    expect(cookieHeader).toBeDefined();
+    expect(cookieHeader).toContain("HttpOnly");
+    expect(cookieHeader).toContain("SameSite=Lax");
+  });
+
+  it("a protected route accepts the cookie with no Authorization header", async () => {
+    seedUser("cookie-only@test.dev", "secret123");
+    const agent = request.agent(app);
+
+    await agent
+      .post("/api/auth/login")
+      .send({ email: "cookie-only@test.dev", password: "secret123" });
+
+    // supertest's agent persists Set-Cookie across requests automatically,
+    // matching how a real browser carries the cookie — no Authorization
+    // header is set on this request at all.
+    const res = await agent.get("/api/auth/me");
+    expect(res.status).toBe(200);
+    expect(res.body.email).toBe("cookie-only@test.dev");
+  });
+
+  it("the Authorization header still works for CLI/API clients with no cookie", async () => {
+    seedUser("header-only@test.dev", "secret123");
+    const token = await loginToken("header-only@test.dev", "secret123");
+
+    // A fresh (cookie-less) request, deliberately not using the agent that
+    // persists cookies — mirrors the CLI, which only ever sends the header.
+    const res = await request(app)
+      .get("/api/auth/me")
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+  });
+
+  it("logout clears the cookie", async () => {
+    seedUser("logout-test@test.dev", "secret123");
+    const agent = request.agent(app);
+    await agent
+      .post("/api/auth/login")
+      .send({ email: "logout-test@test.dev", password: "secret123" });
+
+    const logoutRes = await agent.post("/api/auth/logout");
+    expect(logoutRes.status).toBe(200);
+    const setCookie = logoutRes.headers["set-cookie"];
+    const cleared = Array.isArray(setCookie)
+      ? setCookie.find((c: string) => c.startsWith(`${AUTH_COOKIE_NAME}=`))
+      : undefined;
+    expect(cleared).toBeDefined();
+    expect(cleared).toMatch(/Expires=Thu, 01 Jan 1970/);
+
+    // The agent now carries the cleared cookie — a subsequent request should
+    // no longer be authenticated via it.
+    const res = await agent.get("/api/auth/me");
+    expect(res.status).toBe(401);
   });
 });

@@ -119,20 +119,18 @@ export const useDjiCloudOpsStore = create<DjiCloudOpsState>((set, get) => ({
    * cleanup function that closes it — call from a useEffect's return.
    *
    * Uses `fetch` + a manual stream reader rather than the native
-   * `EventSource` API: EventSource can't set an Authorization header, and
-   * this endpoint requires one — putting the JWT in the URL instead would
-   * leak it into server access logs and browser history, so it isn't an
-   * acceptable alternative. */
+   * `EventSource` API: EventSource can't set request headers, and although
+   * auth here is now the same httpOnly session cookie every other request
+   * uses (sent automatically), `fetch`'s manual stream reading is kept
+   * anyway since it's what the rest of this store's error handling already
+   * assumes. */
   startTelemetryStream: () => {
-    const token = localStorage.getItem("droneroute_token");
-    if (!token) return () => {};
-
     const controller = new AbortController();
 
     (async () => {
       try {
         const res = await fetch("/api/dji-cloud/telemetry/stream", {
-          headers: { Authorization: `Bearer ${token}` },
+          credentials: "include",
           signal: controller.signal,
         });
         if (!res.ok || !res.body) return;

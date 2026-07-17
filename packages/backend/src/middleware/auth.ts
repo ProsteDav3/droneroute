@@ -1,10 +1,28 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../services/authService.js";
 import { getDb } from "../models/db.js";
+import { AUTH_COOKIE_NAME } from "../lib/authCookie.js";
 
 export interface AuthRequest extends Request {
   userId?: string;
   isAdmin?: boolean;
+}
+
+/**
+ * The session JWT arrives one of two ways: the `droneroute_token` httpOnly
+ * cookie (the browser SPA, set by auth.ts on login/register/etc.), or an
+ * `Authorization: Bearer <token>` header (the CLI and any script/API
+ * client, which can't receive or send cookies the way a browser does). The
+ * cookie is checked first since it's what the SPA now uses.
+ */
+function extractToken(req: Request): string | null {
+  const cookieToken = req.cookies?.[AUTH_COOKIE_NAME];
+  if (typeof cookieToken === "string" && cookieToken) return cookieToken;
+
+  const header = req.headers.authorization;
+  if (header?.startsWith("Bearer ")) return header.slice(7);
+
+  return null;
 }
 
 export function authMiddleware(
@@ -12,15 +30,14 @@ export function authMiddleware(
   res: Response,
   next: NextFunction,
 ): void {
-  const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) {
+  const token = extractToken(req);
+  if (!token) {
     res
       .status(401)
       .json({ error: "Chybí nebo je neplatná autorizační hlavička" });
     return;
   }
 
-  const token = header.slice(7);
   const payload = verifyToken(token);
   if (!payload) {
     res.status(401).json({ error: "Neplatný nebo vypršený token" });
@@ -74,9 +91,8 @@ export function optionalAuth(
   _res: Response,
   next: NextFunction,
 ): void {
-  const header = req.headers.authorization;
-  if (header?.startsWith("Bearer ")) {
-    const token = header.slice(7);
+  const token = extractToken(req);
+  if (token) {
     const payload = verifyToken(token);
     if (payload) {
       req.userId = payload.userId;

@@ -20,6 +20,7 @@ import type {
 import { orbitParamsForBuilding } from "@/lib/templates";
 import { WIDE_CAMERA_FOV } from "@/lib/solarCamera";
 import { pointInPolygon } from "@/lib/geo";
+import { cloneActionsForPaste } from "@/store/actionClipboardStore";
 
 export type SelectionMode = "replace" | "toggle" | "range";
 
@@ -113,6 +114,11 @@ interface MissionState {
    * terrain following, which computes a different height per waypoint
    * rather than one uniform value like `updateAllWaypoints`. */
   setWaypointHeights: (heights: Record<number, number>) => void;
+  /** Replaces every currently-selected waypoint's actions with a fresh
+   * clone of the given list (own object identities, sequential
+   * `actionId`s per waypoint) in a single update — used to paste a
+   * copied waypoint's actions onto a bulk selection at once. */
+  pasteActionsToSelected: (actions: WaypointAction[]) => void;
   reorderWaypoints: (fromIndex: number, toIndex: number) => void;
   /** Flips the whole route's flying order (last waypoint becomes first) —
    * useful for time-lapse missions that should fly the same physical path
@@ -456,6 +462,16 @@ export const useMissionStore = create<MissionState>()(
         set((state) => ({
           waypoints: state.waypoints.map((wp) =>
             wp.index in heights ? { ...wp, height: heights[wp.index] } : wp,
+          ),
+          dirty: true,
+        })),
+
+      pasteActionsToSelected: (actions) =>
+        set((state) => ({
+          waypoints: state.waypoints.map((wp) =>
+            state.selectedWaypointIndices.has(wp.index)
+              ? { ...wp, actions: cloneActionsForPaste(actions) }
+              : wp,
           ),
           dirty: true,
         })),

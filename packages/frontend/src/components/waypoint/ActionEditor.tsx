@@ -10,6 +10,8 @@ import {
   ZoomIn,
   Focus,
   MoveDown,
+  Copy,
+  ClipboardPaste,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +24,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useMissionStore } from "@/store/missionStore";
+import {
+  useActionClipboardStore,
+  cloneActionsForPaste,
+} from "@/store/actionClipboardStore";
 import type { ActionType, WaypointAction } from "@droneroute/shared";
 
 const ACTION_OPTIONS: {
@@ -112,8 +118,10 @@ interface ActionEditorProps {
 }
 
 export function ActionEditor({ waypointIndex }: ActionEditorProps) {
-  const { waypoints, addAction, updateAction, removeAction } =
+  const { waypoints, addAction, updateAction, removeAction, updateWaypoint } =
     useMissionStore();
+  const clipboardActions = useActionClipboardStore((s) => s.actions);
+  const copyToClipboard = useActionClipboardStore((s) => s.copy);
   const wp = waypoints[waypointIndex];
   if (!wp) return null;
 
@@ -130,12 +138,45 @@ export function ActionEditor({ waypointIndex }: ActionEditorProps) {
     });
   };
 
+  const handlePaste = () => {
+    if (!clipboardActions) return;
+    updateWaypoint(waypointIndex, {
+      actions: cloneActionsForPaste(clipboardActions),
+    });
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <Label className="text-xs font-semibold">
           Akce ({wp.actions.length})
         </Label>
+        <div className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            onClick={() => copyToClipboard(wp.actions)}
+            disabled={wp.actions.length === 0}
+            title="Kopírovat akce tohoto bodu"
+          >
+            <Copy className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            onClick={handlePaste}
+            disabled={!clipboardActions}
+            title={
+              clipboardActions
+                ? `Vložit zkopírované akce (${clipboardActions.length}) — nahradí stávající`
+                : "Nejprve zkopírujte akce z jiného bodu"
+            }
+          >
+            <ClipboardPaste className="h-3 w-3" />
+          </Button>
+        </div>
       </div>
 
       {wp.actions.map((action) => (

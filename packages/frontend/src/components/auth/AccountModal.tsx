@@ -15,7 +15,7 @@ import { useConfigStore } from "@/store/configStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { useAirspaceStore, AIRSPACE_PROVIDERS } from "@/store/airspaceStore";
 import { api } from "@/lib/api";
-import { X, KeyRound } from "lucide-react";
+import { X, KeyRound, ShieldCheck, ShieldOff } from "lucide-react";
 import {
   speedLabel,
   heightLabel,
@@ -73,6 +73,31 @@ export function AccountModal({ onClose }: AccountModalProps) {
   const [success, setSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // 2FA state — Google-only accounts have no password to confirm a disable
+  // with, so this section (like change-password) is self-hosted only.
+  const [totpEnabled, setTotpEnabled] = useState(false);
+  const [twoFactorStep, setTwoFactorStep] = useState<
+    "idle" | "settingUp" | "disabling"
+  >("idle");
+  const [twoFactorSecret, setTwoFactorSecret] = useState("");
+  const [twoFactorOtpauthUrl, setTwoFactorOtpauthUrl] = useState("");
+  const [twoFactorCode, setTwoFactorCode] = useState("");
+  const [twoFactorPassword, setTwoFactorPassword] = useState("");
+  const [twoFactorError, setTwoFactorError] = useState<string | null>(null);
+  const [twoFactorSuccess, setTwoFactorSuccess] = useState<string | null>(null);
+  const [twoFactorSaving, setTwoFactorSaving] = useState(false);
+
+  useEffect(() => {
+    if (!selfHosted) return;
+    api
+      .get<{ totpEnabled: boolean }>("/auth/me")
+      .then((res) => setTotpEnabled(res.totpEnabled))
+      .catch(() => {
+        // Non-critical — the section just falls back to showing "enable"
+        // until the next successful fetch.
+      });
+  }, [selfHosted]);
+
   // Local copies of preferences for editing
   const [vizPrefs, setVizPrefs] = useState(
     preferences?.visualization ?? DEFAULT_USER_PREFERENCES.visualization,
@@ -115,6 +140,60 @@ export function AccountModal({ onClose }: AccountModalProps) {
       setError(err.message || "Změna hesla se nezdařila");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleStartTwoFactorSetup = async () => {
+    setTwoFactorError(null);
+    setTwoFactorSuccess(null);
+    try {
+      const res = await api.post<{ secret: string; otpauthUrl: string }>(
+        "/auth/2fa/setup",
+      );
+      setTwoFactorSecret(res.secret);
+      setTwoFactorOtpauthUrl(res.otpauthUrl);
+      setTwoFactorCode("");
+      setTwoFactorStep("settingUp");
+    } catch (err: any) {
+      setTwoFactorError(err.message || "Nastavení se nezdařilo");
+    }
+  };
+
+  const handleVerifyTwoFactor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTwoFactorError(null);
+    setTwoFactorSaving(true);
+    try {
+      await api.post("/auth/2fa/verify", { code: twoFactorCode });
+      setTotpEnabled(true);
+      setTwoFactorStep("idle");
+      setTwoFactorCode("");
+      setTwoFactorSecret("");
+      setTwoFactorOtpauthUrl("");
+      setTwoFactorSuccess("Dvoufázové ověření bylo zapnuto");
+    } catch (err: any) {
+      setTwoFactorError(err.message || "Neplatný kód");
+    } finally {
+      setTwoFactorSaving(false);
+    }
+  };
+
+  const handleDisableTwoFactor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setTwoFactorError(null);
+    setTwoFactorSaving(true);
+    try {
+      await api.post("/auth/2fa/disable", {
+        currentPassword: twoFactorPassword,
+      });
+      setTotpEnabled(false);
+      setTwoFactorStep("idle");
+      setTwoFactorPassword("");
+      setTwoFactorSuccess("Dvoufázové ověření bylo vypnuto");
+    } catch (err: any) {
+      setTwoFactorError(err.message || "Vypnutí se nezdařilo");
+    } finally {
+      setTwoFactorSaving(false);
     }
   };
 
@@ -250,6 +329,174 @@ export function AccountModal({ onClose }: AccountModalProps) {
                     {saving ? "Ukládání..." : "Změnit heslo"}
                   </Button>
                 </form>
+              )}
+
+              {selfHosted && (
+                <div className="space-y-3 border-t border-border pt-4">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    {totpEnabled ? (
+                      <ShieldCheck className="h-3 w-3" />
+                    ) : (
+                      <ShieldOff className="h-3 w-3" />
+                    )}
+                    Dvoufázové ověření
+                  </div>
+
+                  {twoFactorStep === "settingUp" ? (
+                    <form
+                      onSubmit={handleVerifyTwoFactor}
+                      className="space-y-3"
+                    >
+                      <p className="text-[11px] text-muted-foreground">
+                        Přidejte účet do aplikace pro ověřování (např. Google
+                        Authenticator) pomocí odkazu níže, nebo zadejte klíč
+                        ručně, a potvrďte vygenerovaným kódem.
+                      </p>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Klíč pro ruční zadání</Label>
+                        <p className="text-[11px] font-mono break-all bg-background/50 rounded p-2 border border-border">
+                          {twoFactorSecret}
+                        </p>
+                        <a
+                          href={twoFactorOtpauthUrl}
+                          className="text-[11px] text-primary hover:underline break-all block"
+                        >
+                          Otevřít v aplikaci pro ověřování
+                        </a>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="twoFactorSetupCode" className="text-xs">
+                          Ověřovací kód
+                        </Label>
+                        <Input
+                          id="twoFactorSetupCode"
+                          type="text"
+                          inputMode="numeric"
+                          autoComplete="one-time-code"
+                          value={twoFactorCode}
+                          onChange={(e) => setTwoFactorCode(e.target.value)}
+                          placeholder="123456"
+                          className="h-9 text-sm"
+                          required
+                          autoFocus
+                        />
+                      </div>
+                      {twoFactorError && (
+                        <p className="text-xs text-destructive">
+                          {twoFactorError}
+                        </p>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          type="submit"
+                          className="flex-1 h-9 text-sm"
+                          disabled={twoFactorSaving}
+                        >
+                          {twoFactorSaving
+                            ? "Ověřování..."
+                            : "Potvrdit a zapnout"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-9 text-sm"
+                          onClick={() => {
+                            setTwoFactorStep("idle");
+                            setTwoFactorError(null);
+                          }}
+                        >
+                          Zrušit
+                        </Button>
+                      </div>
+                    </form>
+                  ) : twoFactorStep === "disabling" ? (
+                    <form
+                      onSubmit={handleDisableTwoFactor}
+                      className="space-y-3"
+                    >
+                      <div className="space-y-1.5">
+                        <Label
+                          htmlFor="twoFactorDisablePassword"
+                          className="text-xs"
+                        >
+                          Současné heslo
+                        </Label>
+                        <Input
+                          id="twoFactorDisablePassword"
+                          type="password"
+                          value={twoFactorPassword}
+                          onChange={(e) => setTwoFactorPassword(e.target.value)}
+                          className="h-9 text-sm"
+                          required
+                          autoFocus
+                        />
+                      </div>
+                      {twoFactorError && (
+                        <p className="text-xs text-destructive">
+                          {twoFactorError}
+                        </p>
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          type="submit"
+                          variant="destructive"
+                          className="flex-1 h-9 text-sm"
+                          disabled={twoFactorSaving}
+                        >
+                          {twoFactorSaving ? "Vypínání..." : "Vypnout"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-9 text-sm"
+                          onClick={() => {
+                            setTwoFactorStep("idle");
+                            setTwoFactorPassword("");
+                            setTwoFactorError(null);
+                          }}
+                        >
+                          Zrušit
+                        </Button>
+                      </div>
+                    </form>
+                  ) : (
+                    <>
+                      <p className="text-[11px] text-muted-foreground">
+                        {totpEnabled
+                          ? "Dvoufázové ověření je zapnuté. Při přihlášení budete kromě hesla potřebovat i kód z aplikace pro ověřování."
+                          : "Zapněte dvoufázové ověření pro dodatečnou ochranu účtu heslem a kódem z aplikace pro ověřování."}
+                      </p>
+                      {twoFactorSuccess && (
+                        <p className="text-xs text-emerald-400">
+                          {twoFactorSuccess}
+                        </p>
+                      )}
+                      {twoFactorError && (
+                        <p className="text-xs text-destructive">
+                          {twoFactorError}
+                        </p>
+                      )}
+                      <Button
+                        type="button"
+                        variant={totpEnabled ? "destructive" : "default"}
+                        className="w-full h-9 text-sm"
+                        onClick={() => {
+                          setTwoFactorSuccess(null);
+                          setTwoFactorError(null);
+                          if (totpEnabled) {
+                            setTwoFactorStep("disabling");
+                          } else {
+                            handleStartTwoFactorSetup();
+                          }
+                        }}
+                      >
+                        {totpEnabled
+                          ? "Vypnout dvoufázové ověření"
+                          : "Zapnout dvoufázové ověření"}
+                      </Button>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           </TabsContent>

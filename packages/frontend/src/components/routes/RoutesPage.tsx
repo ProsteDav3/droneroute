@@ -18,9 +18,18 @@ import {
   Copy,
   Briefcase,
   Search,
+  Folder,
+  History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useMissionStore } from "@/store/missionStore";
 import { useAuthStore } from "@/store/authStore";
 import { useConfigStore } from "@/store/configStore";
@@ -34,11 +43,16 @@ import type {
   MissionConfig,
   PointOfInterest,
 } from "@droneroute/shared";
+import { MissionVersionHistory } from "./MissionVersionHistory";
+
+/** Sentinel value for the folder filter's "all folders" option — Radix `Select.Item` requires a non-empty `value`. */
+const ALL_FOLDERS = "__all__";
 
 interface SavedMission {
   id: string;
   name: string;
   client: string | null;
+  folder: string | null;
   created_at: string;
   updated_at: string;
   config: string;
@@ -72,16 +86,34 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [clientFilter, setClientFilter] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [folderFilter, setFolderFilter] = useState(ALL_FOLDERS);
+  const [historyMission, setHistoryMission] = useState<SavedMission | null>(
+    null,
+  );
 
   const filteredMissions = useMemo(() => {
-    const query = clientFilter.trim().toLowerCase();
-    if (!query) return missions;
-    return missions.filter((m) =>
-      (m.client ?? "").toLowerCase().includes(query),
-    );
-  }, [missions, clientFilter]);
+    const clientQuery = clientFilter.trim().toLowerCase();
+    const nameQuery = searchQuery.trim().toLowerCase();
+    return missions.filter((m) => {
+      if (clientQuery && !(m.client ?? "").toLowerCase().includes(clientQuery))
+        return false;
+      if (nameQuery && !(m.name ?? "").toLowerCase().includes(nameQuery))
+        return false;
+      if (folderFilter !== ALL_FOLDERS && (m.folder ?? "") !== folderFilter)
+        return false;
+      return true;
+    });
+  }, [missions, clientFilter, searchQuery, folderFilter]);
 
   const hasAnyClient = missions.some((m) => m.client);
+  const folderOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const m of missions) {
+      if (m.folder) set.add(m.folder);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [missions]);
 
   const fetchMissions = async () => {
     setLoading(true);
@@ -230,27 +262,11 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
   const handleDuplicate = async (mission: SavedMission) => {
     setDuplicatingId(mission.id);
     try {
-      const waypoints = JSON.parse(mission.waypoints);
-      const config = JSON.parse(mission.config);
-      const pois = mission.pois ? JSON.parse(mission.pois) : [];
-      const obstacles = mission.obstacles ? JSON.parse(mission.obstacles) : [];
-      const buildings = mission.buildings ? JSON.parse(mission.buildings) : [];
-      const templateGroups = mission.template_groups
-        ? JSON.parse(mission.template_groups)
-        : {};
-
+      // Server-side copy (owner-scoped) — a single request, and guarantees
+      // the copy never carries over the share token, comments, or version
+      // history, even if new copyable fields are added to missions later.
       const created = await api.post<{ id: string; name: string }>(
-        "/missions",
-        {
-          name: `${mission.name || "Trasa bez názvu"} (kopie)`,
-          client: mission.client,
-          config,
-          waypoints,
-          pois,
-          obstacles,
-          buildings,
-          templateGroups,
-        },
+        `/missions/${mission.id}/duplicate`,
       );
       toast.success(`Trasa zduplikována jako „${created.name}“`);
       await fetchMissions();
@@ -258,6 +274,26 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
       toast.error(`Duplikace se nezdařila: ${err.message}`);
     } finally {
       setDuplicatingId(null);
+    }
+  };
+
+  const handleSetFolder = async (mission: SavedMission) => {
+    const next = prompt(
+      "Zadejte název složky (prázdné pro odebrání ze složky):",
+      mission.folder || "",
+    );
+    if (next === null) return; // cancelled
+    const folder = next.trim() || null;
+    if (folder === mission.folder) return;
+    try {
+      await api.put(`/missions/${mission.id}`, { folder });
+      setMissions((prev) =>
+        prev.map((m) => (m.id === mission.id ? { ...m, folder } : m)),
+      );
+    } catch (e: any) {
+      toast.error(
+        "Nastavení složky se nezdařilo: " + (e.message || "Neznámá chyba"),
+      );
     }
   };
 
@@ -317,17 +353,44 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
               Nová trasa
             </Button>
           </div>
-          {hasAnyClient && (
-            <div className="max-w-5xl mx-auto mt-3">
-              <div className="relative max-w-xs">
+          {(missions.length > 0 || hasAnyClient) && (
+            <div className="max-w-5xl mx-auto mt-3 flex flex-wrap items-center gap-2">
+              <div className="relative max-w-xs flex-1 min-w-[160px]">
                 <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
-                  value={clientFilter}
-                  onChange={(e) => setClientFilter(e.target.value)}
-                  placeholder="Filtrovat podle klienta/zakázky…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Hledat podle názvu trasy…"
                   className="h-8 pl-8 text-xs"
                 />
               </div>
+              {hasAnyClient && (
+                <div className="relative max-w-xs flex-1 min-w-[160px]">
+                  <Briefcase className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    value={clientFilter}
+                    onChange={(e) => setClientFilter(e.target.value)}
+                    placeholder="Filtrovat podle klienta/zakázky…"
+                    className="h-8 pl-8 text-xs"
+                  />
+                </div>
+              )}
+              {folderOptions.length > 0 && (
+                <Select value={folderFilter} onValueChange={setFolderFilter}>
+                  <SelectTrigger className="h-8 w-auto min-w-[140px] text-xs gap-1.5">
+                    <Folder className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <SelectValue placeholder="Všechny složky" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ALL_FOLDERS}>Všechny složky</SelectItem>
+                    {folderOptions.map((folder) => (
+                      <SelectItem key={folder} value={folder}>
+                        {folder}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           )}
         </div>
@@ -397,7 +460,11 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setClientFilter("")}
+                    onClick={() => {
+                      setClientFilter("");
+                      setSearchQuery("");
+                      setFolderFilter(ALL_FOLDERS);
+                    }}
                   >
                     Zrušit filtr
                   </Button>
@@ -462,6 +529,14 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
                                 </span>
                               </div>
                             )}
+                            {mission.folder && (
+                              <div className="flex items-center gap-1 text-[10px] text-sky-400 mt-0.5">
+                                <Folder className="h-2.5 w-2.5 shrink-0" />
+                                <span className="truncate">
+                                  {mission.folder}
+                                </span>
+                              </div>
+                            )}
                           </div>
                           <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
                             {!selfHosted && (
@@ -510,13 +585,37 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
                               size="icon"
                               className="h-7 w-7 text-muted-foreground hover:text-foreground"
                               disabled={duplicatingId === mission.id}
-                              title="Duplikovat trasu (např. pro příští návštěvu)"
+                              title="Uložit jako kopii (např. pro příští návštěvu)"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleDuplicate(mission);
                               }}
                             >
                               <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              title="Nastavit složku"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSetFolder(mission);
+                              }}
+                            >
+                              <Folder className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                              title="Historie verzí"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setHistoryMission(mission);
+                              }}
+                            >
+                              <History className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                               variant="ghost"
@@ -614,6 +713,17 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
           </div>
         </div>
       </div>
+
+      {historyMission && (
+        <MissionVersionHistory
+          missionId={historyMission.id}
+          missionName={historyMission.name}
+          onClose={() => setHistoryMission(null)}
+          onRestored={() => {
+            fetchMissions();
+          }}
+        />
+      )}
     </div>
   );
 }

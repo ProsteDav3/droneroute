@@ -53,6 +53,35 @@ function adminGuard(req: AuthRequest, res: Response, next: NextFunction): void {
 // All admin routes require auth + admin
 adminRoutes.use(authMiddleware, adminGuard);
 
+/**
+ * @openapi
+ * /admin/users:
+ *   post:
+ *     summary: Create a user account (admin only)
+ *     description: >
+ *       Public self-registration is closed after the first/founder account,
+ *       so every subsequent account must be created here by an admin.
+ *     tags: [Admin]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email: { type: string, format: email }
+ *               password: { type: string, minLength: 6 }
+ *     responses:
+ *       201:
+ *         description: Created
+ *       400:
+ *         description: Missing/invalid email or password
+ *       403:
+ *         description: Not an admin
+ *       409:
+ *         description: Email already registered
+ */
 // POST /api/admin/users — admin creates an account directly (public
 // self-registration is closed after the first/founder account).
 adminRoutes.post("/users", (req: AuthRequest, res) => {
@@ -86,6 +115,49 @@ adminRoutes.post("/users", (req: AuthRequest, res) => {
   res.status(201).json({ id, email });
 });
 
+/**
+ * @openapi
+ * /admin/users:
+ *   get:
+ *     summary: List users, paginated/filterable/sortable (admin only)
+ *     tags: [Admin]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema: { type: integer, default: 1 }
+ *       - in: query
+ *         name: perPage
+ *         schema: { type: integer, default: 10, maximum: 100 }
+ *       - in: query
+ *         name: search
+ *         schema: { type: string }
+ *         description: Substring match on email
+ *       - in: query
+ *         name: status
+ *         schema: { type: string, enum: [admin, banned, active] }
+ *       - in: query
+ *         name: sortBy
+ *         schema:
+ *           type: string
+ *           enum: [email, created_at, last_login_at, mission_count]
+ *       - in: query
+ *         name: sortOrder
+ *         schema: { type: string, enum: [asc, desc] }
+ *     responses:
+ *       200:
+ *         description: Paginated user list
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data: { type: array, items: { type: object } }
+ *                 page: { type: integer }
+ *                 perPage: { type: integer }
+ *                 total: { type: integer }
+ *       403:
+ *         description: Not an admin
+ */
 // GET /api/admin/users?page=1&perPage=10&search=&status=&sortBy=created_at&sortOrder=desc
 adminRoutes.get("/users", (req: AuthRequest, res) => {
   const page = Math.max(1, parseInt(req.query.page as string) || 1);

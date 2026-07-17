@@ -184,6 +184,116 @@ export function initDb(): void {
     );
   `);
 
+  // Migration: create password_reset_tokens table. Only the hash of the
+  // reset token is ever stored — the raw token exists solely in the emailed
+  // (or console-logged) link, never at rest, so a DB read can't be turned
+  // into an account takeover.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token_hash TEXT NOT NULL,
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token_hash ON password_reset_tokens(token_hash)`,
+  );
+
+  // Migration: add totp_secret column if missing (for existing DBs) — holds
+  // the pending or confirmed TOTP secret for 2FA.
+  try {
+    database.exec(`ALTER TABLE users ADD COLUMN totp_secret TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Migration: add totp_enabled column if missing (for existing DBs)
+  try {
+    database.exec(
+      `ALTER TABLE users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0`,
+    );
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Migration: add token_version column if missing (for existing DBs) —
+  // embedded in every issued JWT; bumping it (on password change/reset)
+  // invalidates every previously issued token for that account immediately,
+  // without needing a server-side session/token blocklist.
+  try {
+    database.exec(
+      `ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0`,
+    );
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Migration: add folder column if missing (for existing DBs) — free-text,
+  // single-folder-per-mission tag for organizing the mission list (separate
+  // from the client/project field).
+  try {
+    database.exec(`ALTER TABLE missions ADD COLUMN folder TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
+
+  // Migration: create mission_comments table — visitor comments left on a
+  // publicly shared mission. `share_token` is denormalized (copied from
+  // missions.share_token at insert time) so the public GET/POST endpoints can
+  // resolve comments straight from the token without joining through
+  // missions and without ever exposing mission ownership.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS mission_comments (
+      id TEXT PRIMARY KEY,
+      mission_id TEXT NOT NULL,
+      share_token TEXT NOT NULL,
+      author_name TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (mission_id) REFERENCES missions(id)
+    );
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_mission_comments_share_token ON mission_comments(share_token)`,
+  );
+
+  // Migration: create mission_versions table — a full JSON snapshot of a
+  // mission's editable content, captured on every save. Retention is capped
+  // at the most recent 20 rows per mission_id (pruned in the same
+  // transaction as the insert — see missions.ts).
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS mission_versions (
+      id TEXT PRIMARY KEY,
+      mission_id TEXT NOT NULL,
+      snapshot TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (mission_id) REFERENCES missions(id)
+    );
+  `);
+  database.exec(
+    `CREATE INDEX IF NOT EXISTS idx_mission_versions_mission_id ON mission_versions(mission_id, created_at)`,
+  );
+
+  // Migration: create rate_limit_hits table — backs the SQLite-based
+  // express-rate-limit Store (see middleware/sqliteRateLimitStore.ts), which
+  // survives redeploys and Fly.io auto_stop_machines cold starts, unlike the
+  // library's default in-memory Store. `reset_at` is a Unix ms timestamp;
+  // the index keeps the periodic expired-row sweep cheap.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS rate_limit_hits (
+      key TEXT PRIMARY KEY,
+      count INTEGER NOT NULL,
+      reset_at INTEGER NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_rate_limit_hits_reset_at
+      ON rate_limit_hits(reset_at);
+  `);
+
   // Ensure ADMIN_EMAIL user has admin privileges (cloud mode)
   const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
   const adminEmail = process.env.ADMIN_EMAIL || "";

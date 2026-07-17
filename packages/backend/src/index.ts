@@ -4,7 +4,9 @@ import helmet from "helmet";
 import pinoHttp from "pino-http";
 import path from "path";
 import { fileURLToPath } from "url";
+import swaggerUi from "swagger-ui-express";
 import { initDb } from "./models/db.js";
+import { buildOpenApiSpec } from "./lib/openapi.js";
 import { missionRoutes } from "./routes/missions.js";
 import { kmzRoutes } from "./routes/kmz.js";
 import { authRoutes } from "./routes/auth.js";
@@ -29,18 +31,59 @@ const PORT = process.env.PORT || 3001;
 // Trust reverse proxy (e.g. nginx, Docker) so rate limiting uses real client IP
 app.set("trust proxy", 1);
 
-// Security headers. CSP and COEP are disabled because the SPA embeds Mapbox GL
-// (web workers loaded from blob: URLs) and, in cloud mode, Google OAuth — a strict
-// CSP/COEP breaks both. All other baseline headers (nosniff, frameguard, HSTS,
-// referrer-policy, …) are applied. Tightening CSP is tracked as a follow-up.
+// Security headers. CSP is scoped to the hosts the SPA actually talks to,
+// tightened wherever the directive allows it:
+// - Mapbox GL (tiles/styles/geocoding over `connect-src`, its web workers
+//   loaded from blob: URLs over `worker-src`). `img-src` allows `https:`
+//   broadly rather than an exact host list — Mapbox serves raster/vector
+//   tiles and marker imagery from several of its own subdomains that
+//   aren't practical to enumerate exhaustively.
+// - Google Identity Services (cloud mode's "Sign in with Google" button),
+//   which injects its own <script> from accounts.google.com and renders its
+//   button/One Tap prompt in a same-origin-adjacent iframe.
+// - Google Fonts (index.html's Inter stylesheet + font files). `style-src`
+//   still needs 'unsafe-inline' for Tailwind/UI-library inline styles.
+// COEP stays disabled — it's unrelated to CSP and enabling it has previously
+// broken the Mapbox GL / Google OAuth combination in this app.
 app.use(
   helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "https://accounts.google.com"],
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+        imgSrc: ["'self'", "data:", "blob:", "https:"],
+        fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+        connectSrc: [
+          "'self'",
+          "https://api.mapbox.com",
+          "https://events.mapbox.com",
+          "https://*.tiles.mapbox.com",
+          "https://accounts.google.com",
+        ],
+        workerSrc: ["'self'", "blob:"],
+        frameSrc: ["'self'", "https://accounts.google.com"],
+        objectSrc: ["'none'"],
+        baseUri: ["'self'"],
+      },
+    },
     crossOriginEmbedderPolicy: false,
     // Allow Google OAuth popups (cloud mode) to message back to the opener.
     crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   }),
 );
+
+// Helmet dropped Permissions-Policy support (no browser standardized it the
+// way Feature-Policy was), so it's set directly here. Disables three
+// sensitive browser APIs the app has no legitimate use for.
+app.use((_req, res, next) => {
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()",
+  );
+  next();
+});
 
 // CORS configuration. The SPA is served same-origin (and dev uses the Vite /api
 // proxy), so cross-origin access is only needed for split deployments. When
@@ -92,6 +135,18 @@ app.use("/api/dji-cloud", djiCloudRoutes);
 app.use("/api", healthRoutes);
 app.use("/api", sharedRoutes);
 
+// API docs (Swagger UI + raw spec) — non-production only. The generated
+// spec reflects the full internal API shape, so it stays off in production
+// by default rather than being exposed publicly; enable it deliberately
+// (e.g. behind an admin check) if a deployment needs it there.
+if (process.env.NODE_ENV !== "production") {
+  const openApiSpec = buildOpenApiSpec();
+  app.get("/api/docs.json", (_req, res) => {
+    res.json(openApiSpec);
+  });
+  app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openApiSpec));
+}
+
 // Public config (exposes non-secret settings to the frontend)
 app.get("/api/config", (_req, res) => {
   const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
@@ -102,6 +157,20 @@ app.get("/api/config", (_req, res) => {
     djiCloudEnabled: isDjiCloudConfigured(),
     defaultMapView: resolveDefaultMapView(),
   });
+});
+
+// Embed widget page (public, read-only mission preview meant to be placed
+// in an <iframe> on a third-party site). Helmet's frameguard defaults to
+// `SAMEORIGIN`, which would block exactly that use case, so this route
+// explicitly removes the header before falling through to the same SPA
+// `index.html` the client-side router uses to render EmbedMissionPage.
+// NOTE for reviewers: if a future security-hardening pass adds a stricter
+// global frame-ancestors/X-Frame-Options policy, this route needs to stay
+// as (or become) the one deliberate exception — everything else should
+// keep the strict default.
+app.get("/embed/:token", (_req, res) => {
+  res.removeHeader("X-Frame-Options");
+  res.sendFile(path.join(frontendDist, "index.html"));
 });
 
 // SPA fallback (Express 5 syntax)

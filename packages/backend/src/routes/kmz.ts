@@ -24,6 +24,37 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
 });
 
+/**
+ * @openapi
+ * /kmz/generate:
+ *   post:
+ *     summary: Generate a DJI-compatible KMZ file from mission data
+ *     description: Auth is optional. Rate-limited (strictLimiter — expensive to generate).
+ *     tags: [KMZ]
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [config, waypoints]
+ *             properties:
+ *               name: { type: string }
+ *               config: { type: object }
+ *               waypoints:
+ *                 type: array
+ *                 minItems: 2
+ *                 items: { type: object }
+ *               pois: { type: array, items: { type: object } }
+ *     responses:
+ *       200:
+ *         description: The generated .kmz file
+ *         content:
+ *           application/vnd.google-earth.kmz: {}
+ *       400:
+ *         description: Missing config/waypoints or invalid mission geometry
+ */
 // Generate and download KMZ from mission data (POST body)
 kmzRoutes.post(
   "/generate",
@@ -169,6 +200,46 @@ kmzRoutes.get(
   },
 );
 
+/**
+ * @openapi
+ * /kmz/import:
+ *   post:
+ *     summary: Import a DJI KMZ file and parse it back into mission data
+ *     description: >
+ *       Auth is optional. Pass `?save=true` to also persist the parsed
+ *       mission for the authenticated user.
+ *     tags: [KMZ]
+ *     security: []
+ *     parameters:
+ *       - in: query
+ *         name: save
+ *         schema: { type: string, enum: ["true", "false"] }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required: [file]
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: Parsed mission data
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id: { type: string, nullable: true }
+ *                 config: { type: object }
+ *                 waypoints: { type: array, items: { type: object } }
+ *                 pois: { type: array, items: { type: object } }
+ *       400:
+ *         description: No file uploaded, or invalid KMZ content
+ */
 // Import KMZ file
 kmzRoutes.post(
   "/import",

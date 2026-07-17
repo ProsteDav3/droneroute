@@ -26,6 +26,11 @@ export function ElevationGraph() {
   const [containerWidth, setContainerWidth] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
+  // Height while a drag is in progress, shown locally without touching the
+  // store — only committed via updateWaypoint on pointer-up. Committing on
+  // every pointermove instead would push one undo-history entry per pixel
+  // of drag (zundo has no way to know a chain of moves is a single gesture).
+  const [dragHeight, setDragHeight] = useState<number | null>(null);
   const pointerStart = useRef<{
     x: number;
     y: number;
@@ -69,8 +74,12 @@ export function ElevationGraph() {
   const plotW = svgWidth - PAD_LEFT - PAD_RIGHT;
   const plotH = GRAPH_HEIGHT - PAD_TOP - PAD_BOTTOM;
 
-  // Compute Y scale
-  const heights = waypoints.map((wp) => wp.height);
+  // Compute Y scale — folds in the in-progress dragHeight (not yet committed
+  // to the store) so the axis keeps rescaling live while dragging past the
+  // current range, same as before this became a local-state drag.
+  const heights = waypoints.map((wp) =>
+    draggingIndex === wp.index && dragHeight !== null ? dragHeight : wp.height,
+  );
   const rawMin = Math.min(...heights);
   const rawMax = Math.max(...heights);
   const spread = rawMax - rawMin;
@@ -138,10 +147,9 @@ export function ElevationGraph() {
 
       const rect = svg.getBoundingClientRect();
       const py = e.clientY - rect.top;
-      const newHeight = fromY(py);
-      updateWaypoint(draggingIndex, { height: newHeight });
+      setDragHeight(fromY(py));
     },
-    [draggingIndex, fromY, updateWaypoint],
+    [draggingIndex, fromY],
   );
 
   const handlePointerUp = useCallback(
@@ -156,19 +164,26 @@ export function ElevationGraph() {
           mode = "range";
         }
         selectWaypoint(pointerStart.current.index, mode);
+      } else if (draggingIndex !== null && dragHeight !== null) {
+        updateWaypoint(draggingIndex, { height: dragHeight });
       }
       setDraggingIndex(null);
+      setDragHeight(null);
       pointerStart.current = null;
       didDrag.current = false;
     },
-    [draggingIndex, selectWaypoint],
+    [draggingIndex, dragHeight, selectWaypoint, updateWaypoint],
   );
 
   const handlePointerLeave = useCallback(() => {
+    if (draggingIndex !== null && dragHeight !== null) {
+      updateWaypoint(draggingIndex, { height: dragHeight });
+    }
     setDraggingIndex(null);
+    setDragHeight(null);
     pointerStart.current = null;
     didDrag.current = false;
-  }, []);
+  }, [draggingIndex, dragHeight, updateWaypoint]);
 
   if (waypoints.length === 0) {
     return (
@@ -196,13 +211,18 @@ export function ElevationGraph() {
     );
   }
 
+  // While dragging, show the pending height locally instead of the store's
+  // (not-yet-committed) value — see the dragHeight state above.
+  const displayHeight = (wp: (typeof waypoints)[number]) =>
+    draggingIndex === wp.index && dragHeight !== null ? dragHeight : wp.height;
+
   // Compute edge-to-edge line segments between circles
   const edgeSegments: { x1: number; y1: number; x2: number; y2: number }[] = [];
   for (let i = 0; i < waypoints.length - 1; i++) {
     const ax = toX(i);
-    const ay = toY(waypoints[i].height);
+    const ay = toY(displayHeight(waypoints[i]));
     const bx = toX(i + 1);
-    const by = toY(waypoints[i + 1].height);
+    const by = toY(displayHeight(waypoints[i + 1]));
     const dx = bx - ax;
     const dy = by - ay;
     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -316,7 +336,7 @@ export function ElevationGraph() {
             {/* Nodes */}
             {waypoints.map((wp, i) => {
               const cx = toX(i);
-              const cy = toY(wp.height);
+              const cy = toY(displayHeight(wp));
               const isSelected = selectedIndices.has(wp.index);
               const isDragging = draggingIndex === wp.index;
               const r = isDragging ? CIRCLE_RADIUS_ACTIVE : CIRCLE_RADIUS;
@@ -393,7 +413,7 @@ export function ElevationGraph() {
                       fontVariantNumeric: "tabular-nums",
                     }}
                   >
-                    {wp.height}m
+                    {displayHeight(wp)}m
                   </text>
                 </g>
               );

@@ -23,13 +23,13 @@ beforeAll(() => {
   db.prepare(
     "INSERT INTO users (id, email, password_hash, email_verified, is_admin) VALUES (?, ?, ?, 1, 1)",
   ).run(adminId, "admin@test.dev", hashPassword("secret123"));
-  adminToken = generateToken(adminId, true);
+  adminToken = generateToken(adminId, true, 0);
 
   regularId = uuidv4();
   db.prepare(
     "INSERT INTO users (id, email, password_hash, email_verified) VALUES (?, ?, ?, 1)",
   ).run(regularId, "regular@test.dev", hashPassword("secret123"));
-  regularToken = generateToken(regularId, false);
+  regularToken = generateToken(regularId, false, 0);
 });
 
 describe("admin guard — reachable in self-hosted mode", () => {

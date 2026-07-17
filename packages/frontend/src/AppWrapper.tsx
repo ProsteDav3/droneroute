@@ -1,10 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import App from "./App";
 import { useConfigStore } from "@/store/configStore";
 import { useAuthStore } from "@/store/authStore";
 import { VerificationGate } from "@/components/auth/VerificationGate";
-import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
+
+// Lazy: only a visitor who followed a password-reset link ever needs this
+// page's code.
+const ResetPasswordPage = lazy(() =>
+  import("@/pages/ResetPasswordPage").then((m) => ({
+    default: m.ResetPasswordPage,
+  })),
+);
 
 /**
  * Password-reset links (`/reset-password?token=...`) must be reachable by a
@@ -31,7 +38,11 @@ export function AppWrapper() {
 
   const resetPasswordToken = resolveResetPasswordToken();
   if (resetPasswordToken) {
-    return <ResetPasswordPage token={resetPasswordToken} />;
+    return (
+      <Suspense fallback={null}>
+        <ResetPasswordPage token={resetPasswordToken} />
+      </Suspense>
+    );
   }
 
   const showVerificationGate = !selfHosted && token && needsVerification;

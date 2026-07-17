@@ -24,6 +24,7 @@
     "@sentry/react": "^10.66.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "hls.js": "^1.6.16",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^1.17.0",

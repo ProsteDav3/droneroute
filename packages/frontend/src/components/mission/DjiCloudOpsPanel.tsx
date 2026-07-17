@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, Plane, AlertTriangle } from "lucide-react";
 import { useConfigStore } from "@/store/configStore";
 import { useDjiCloudOpsStore } from "@/store/djiCloudOpsStore";
+import { DjiMediaPanel } from "./DjiMediaPanel";
+import { DjiLiveVideoPanel } from "./DjiLiveVideoPanel";
 
 const LS_KEY = "djiCloudOpsPanelOpen";
 
@@ -32,6 +34,8 @@ export function DjiCloudOpsPanel() {
     loading,
     error,
     fetchDevicesAndHms,
+    focusedDeviceSn,
+    setFocusedDeviceSn,
   } = useDjiCloudOpsStore();
   const [expanded, setExpanded] = useState(
     () => localStorage.getItem(LS_KEY) !== "false",
@@ -75,11 +79,39 @@ export function DjiCloudOpsPanel() {
               Žádné zařízení není ve workspace připojeno
             </p>
           )}
+          {devices.length > 1 && (
+            <p className="text-[10px] text-muted-foreground">
+              Více zařízení svázáno — klikněte na jedno pro sledování v průběhu
+              mise a telemetrii.
+            </p>
+          )}
           {devices.map((device) => {
             const battery = telemetry[device.device_sn]?.batteryPercent;
             const lastSeen = formatLastSeen(device.login_time);
+            const isFocused = focusedDeviceSn === device.device_sn;
             return (
-              <div key={device.device_sn} className="text-[11px]">
+              <button
+                key={device.device_sn}
+                type="button"
+                onClick={() =>
+                  setFocusedDeviceSn(isFocused ? null : device.device_sn)
+                }
+                disabled={devices.length < 2}
+                className={`w-full text-left text-[11px] rounded px-1 py-0.5 -mx-1 transition-colors ${
+                  devices.length < 2
+                    ? ""
+                    : isFocused
+                      ? "bg-[#00c2ff]/10 ring-1 ring-[#00c2ff]/40"
+                      : "hover:bg-muted"
+                }`}
+                title={
+                  devices.length < 2
+                    ? undefined
+                    : isFocused
+                      ? "Sledováno — kliknutím zrušíte"
+                      : "Kliknutím sledovat toto zařízení"
+                }
+              >
                 <div className="flex items-center gap-2">
                   <span
                     className={`h-2 w-2 rounded-full shrink-0 ${
@@ -104,7 +136,7 @@ export function DjiCloudOpsPanel() {
                       .join(" · ")}
                   </p>
                 )}
-              </div>
+              </button>
             );
           })}
           {hmsMessages.length > 0 && (
@@ -120,6 +152,8 @@ export function DjiCloudOpsPanel() {
               ))}
             </div>
           )}
+          <DjiMediaPanel />
+          <DjiLiveVideoPanel />
         </div>
       )}
     </div>

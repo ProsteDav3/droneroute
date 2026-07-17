@@ -39,6 +39,33 @@ export interface DjiWaylineSummary {
   update_time?: number;
 }
 
+export interface DjiMediaFile {
+  file_id: string;
+  file_name: string;
+  create_time: number;
+}
+
+export interface DjiLiveVideo {
+  id: string;
+  index: string;
+  type: string;
+}
+
+export interface DjiLiveCapableCamera {
+  id: string;
+  device_sn: string;
+  name: string;
+  index: string;
+  type: string;
+  videos_list: DjiLiveVideo[];
+}
+
+export interface DjiLiveCapacityDevice {
+  sn: string;
+  name: string;
+  cameras_list: DjiLiveCapableCamera[];
+}
+
 interface DjiCloudOpsState {
   devices: DjiDeviceSummary[];
   hmsMessages: DjiHmsMessage[];
@@ -49,6 +76,27 @@ interface DjiCloudOpsState {
   deletingWaylineId: string | null;
   loading: boolean;
   error: string | null;
+  /** Which bound device's telemetry to focus on (Mission Progress panel,
+   * map highlight) when more than one is bound/online — `null` means "first
+   * online device", matching the app's original single-device behavior. */
+  focusedDeviceSn: string | null;
+  setFocusedDeviceSn: (sn: string | null) => void;
+  media: DjiMediaFile[];
+  mediaTotal: number;
+  mediaLoading: boolean;
+  mediaError: string | null;
+  fetchMedia: () => Promise<void>;
+  getMediaDownloadUrl: (fileId: string) => Promise<string>;
+  liveCapacity: DjiLiveCapacityDevice[];
+  liveCapacityLoading: boolean;
+  liveCapacityError: string | null;
+  fetchLiveCapacity: () => Promise<void>;
+  activeLiveVideoId: string | null;
+  activeLiveHlsUrl: string | null;
+  liveStarting: boolean;
+  liveError: string | null;
+  startLive: (videoId: string) => Promise<void>;
+  stopLive: () => Promise<void>;
   fetchDevicesAndHms: () => Promise<void>;
   fetchWaylines: () => Promise<void>;
   deleteWaylineFromLibrary: (id: string) => Promise<void>;
@@ -70,21 +118,107 @@ export const useDjiCloudOpsStore = create<DjiCloudOpsState>((set, get) => ({
   loading: false,
   error: null,
 
-  fetchDevicesAndHms: async () => {
-    set({ loading: true, error: null });
+  focusedDeviceSn: null,
+  setFocusedDeviceSn: (sn) => set({ focusedDeviceSn: sn }),
+
+  media: [],
+  mediaTotal: 0,
+  mediaLoading: false,
+  mediaError: null,
+
+  fetchMedia: async () => {
+    set({ mediaLoading: true, mediaError: null });
     try {
-      const [devicesRes, hmsRes] = await Promise.all([
-        api.get<{ devices: DjiDeviceSummary[] }>("/dji-cloud/devices"),
-        api.get<{ messages: DjiHmsMessage[] }>("/dji-cloud/hms"),
-      ]);
+      const res = await api.get<{ list: DjiMediaFile[]; total: number }>(
+        "/dji-cloud/media?page=1&pageSize=20",
+      );
+      set({ media: res.list, mediaTotal: res.total, mediaLoading: false });
+    } catch (err: any) {
+      set({ mediaError: err.message, mediaLoading: false });
+    }
+  },
+
+  getMediaDownloadUrl: async (fileId: string) => {
+    const res = await api.get<{ url: string }>(
+      `/dji-cloud/media/${encodeURIComponent(fileId)}/url`,
+    );
+    return res.url;
+  },
+
+  liveCapacity: [],
+  liveCapacityLoading: false,
+  liveCapacityError: null,
+
+  fetchLiveCapacity: async () => {
+    set({ liveCapacityLoading: true, liveCapacityError: null });
+    try {
+      const res = await api.get<{ devices: DjiLiveCapacityDevice[] }>(
+        "/dji-cloud/live/capacity",
+      );
+      set({ liveCapacity: res.devices, liveCapacityLoading: false });
+    } catch (err: any) {
+      set({ liveCapacityError: err.message, liveCapacityLoading: false });
+    }
+  },
+
+  activeLiveVideoId: null,
+  activeLiveHlsUrl: null,
+  liveStarting: false,
+  liveError: null,
+
+  startLive: async (videoId: string) => {
+    set({ liveStarting: true, liveError: null });
+    try {
+      const res = await api.post<{ hlsUrl: string | null }>(
+        "/dji-cloud/live/start",
+        { videoId },
+      );
       set({
-        devices: devicesRes.devices,
-        hmsMessages: hmsRes.messages,
-        loading: false,
+        activeLiveVideoId: videoId,
+        activeLiveHlsUrl: res.hlsUrl,
+        liveStarting: false,
       });
     } catch (err: any) {
-      set({ error: err.message, loading: false });
+      set({ liveError: err.message, liveStarting: false });
     }
+  },
+
+  stopLive: async () => {
+    const videoId = get().activeLiveVideoId;
+    if (!videoId) return;
+    try {
+      await api.post("/dji-cloud/live/stop", { videoId });
+    } catch (err: any) {
+      set({ liveError: err.message });
+    } finally {
+      set({ activeLiveVideoId: null, activeLiveHlsUrl: null });
+    }
+  },
+
+  fetchDevicesAndHms: async () => {
+    set({ loading: true, error: null });
+    // Settled independently, not Promise.all: the platform's HMS endpoint
+    // (at least DJI's own reference implementation) errors out when no
+    // device has ever reported a warning yet, which is the common case for
+    // a freshly bound workspace — that shouldn't take the device list down
+    // with it. A devices-fetch failure is still the one that surfaces as
+    // this panel's blocking error; a HMS-only failure just means an empty
+    // warnings list.
+    const [devicesResult, hmsResult] = await Promise.allSettled([
+      api.get<{ devices: DjiDeviceSummary[] }>("/dji-cloud/devices"),
+      api.get<{ messages: DjiHmsMessage[] }>("/dji-cloud/hms"),
+    ]);
+    set({
+      devices:
+        devicesResult.status === "fulfilled" ? devicesResult.value.devices : [],
+      hmsMessages:
+        hmsResult.status === "fulfilled" ? hmsResult.value.messages : [],
+      error:
+        devicesResult.status === "rejected"
+          ? (devicesResult.reason as Error).message
+          : null,
+      loading: false,
+    });
   },
 
   fetchWaylines: async () => {

@@ -440,6 +440,188 @@ export class PartialSegmentUploadError extends Error {
   }
 }
 
+export interface DjiMediaFile {
+  file_id: string;
+  file_name: string;
+  create_time: number;
+  tiny_fingerprint?: string;
+  metadata?: {
+    shoot_time?: string;
+    drone_model_key?: string;
+    payload_model_key?: string;
+    gps_longitude?: number;
+    gps_latitude?: number;
+  };
+}
+
+/**
+ * Lists media files (photos/videos) the aircraft/RC has already uploaded
+ * into the workspace's own object storage — `GET
+ * media/api/v1/files/{workspace_id}/files`. This is a read of state the
+ * platform already has; SkyRoute never receives or stores the files
+ * itself, it just surfaces what's there so a pilot doesn't have to open
+ * the platform's own console separately after a flight.
+ */
+export async function listMediaFiles(
+  page = 1,
+  pageSize = 20,
+): Promise<{ list: DjiMediaFile[]; total: number }> {
+  const cfg = readConfig();
+  if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
+  const { token, workspaceId } = await login(cfg);
+  const data = await authedGet<{
+    list: DjiMediaFile[];
+    pagination: { total: number };
+  }>(
+    cfg,
+    token,
+    `/media/api/v1/files/${workspaceId}/files?page=${page}&page_size=${pageSize}`,
+  );
+  return { list: data.list, total: data.pagination?.total ?? data.list.length };
+}
+
+/**
+ * Resolves a media file's actual download URL. The platform's own endpoint
+ * (`GET media/api/v1/files/{workspace_id}/file/{file_id}/url`) responds
+ * with an HTTP redirect rather than a JSON body — fetched here with
+ * redirects disabled so the `Location` header (the real, presigned object
+ * URL) can be handed back to the frontend to link to directly instead of
+ * proxying the file's bytes through this server.
+ */
+export async function getMediaFileDownloadUrl(fileId: string): Promise<string> {
+  const cfg = readConfig();
+  if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
+  const { token, workspaceId } = await login(cfg);
+  const res = await fetch(
+    `${cfg.url}/media/api/v1/files/${workspaceId}/file/${encodeURIComponent(fileId)}/url`,
+    { headers: { "x-auth-token": token }, redirect: "manual" },
+  );
+  const location = res.headers.get("location");
+  if (!location) {
+    throw new Error("DJI Cloud nevrátil URL pro stažení souboru");
+  }
+  return location;
+}
+
+/** One selectable video feed (a specific lens on a specific camera) — `id`
+ * is the exact `video_id` string `startLiveStream`/`stopLiveStream` expect,
+ * already formatted as `{droneSn}/{payloadIndex}/{videoType}-0` by the
+ * platform. */
+export interface DjiLiveVideo {
+  id: string;
+  index: string;
+  type: string;
+}
+
+export interface DjiLiveCapableCamera {
+  id: string;
+  device_sn: string;
+  name: string;
+  index: string;
+  type: string;
+  videos_list: DjiLiveVideo[];
+}
+
+export interface DjiLiveCapacityDevice {
+  sn: string;
+  name: string;
+  cameras_list: DjiLiveCapableCamera[];
+}
+
+/**
+ * Lists which of the workspace's devices can currently push a live video
+ * feed, and the exact `video_id` values `startLiveStream` needs — the
+ * platform derives this from which devices are online, so it's empty
+ * whenever nothing is connected. `GET manage/api/v1/live/capacity`.
+ */
+export async function listLiveCapacity(): Promise<DjiLiveCapacityDevice[]> {
+  const cfg = readConfig();
+  if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
+  const { token, workspaceId } = await login(cfg);
+  return authedGet<DjiLiveCapacityDevice[]>(
+    cfg,
+    token,
+    `/manage/api/v1/live/capacity?workspace_id=${workspaceId}`,
+  );
+}
+
+async function authedPost(
+  cfg: DjiCloudConfig,
+  token: string,
+  path: string,
+  body: unknown,
+): Promise<void> {
+  const res = await fetch(`${cfg.url}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-auth-token": token },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`DJI Cloud požadavek selhal (HTTP ${res.status})`);
+  }
+  const responseBody = (await res.json()) as DjiApiResponse<unknown>;
+  if (responseBody.code !== 0) {
+    throw new Error(`DJI Cloud požadavek selhal: ${responseBody.message}`);
+  }
+}
+
+/**
+ * Builds the browser-playable HLS URL for a stream, IF the deployment has
+ * `DJI_CLOUD_LIVE_HLS_BASE_URL` configured — pointing at an RTMP-in/HLS-out
+ * relay (this project's own hetzner-ml test stack runs MediaMTX for this;
+ * see its docker-compose notes) that the aircraft's RTMP push lands on.
+ * Optional and separate from the three required DJI_CLOUD_* vars: starting
+ * a live feed still works without it (the aircraft still gets commanded to
+ * push video), there's just no URL here for the frontend to play — a
+ * self-hosted deployment without the same relay add-on degrades to "the
+ * feed exists somewhere" rather than crashing.
+ *
+ * The path segment (`{droneSn}-{payloadIndex}`) must exactly match how the
+ * DJI Cloud platform itself builds the RTMP push URL server-side
+ * (`LiveStreamServiceImpl`: `rtmpUrl + droneSn + "-" + payloadIndex`) — the
+ * aircraft is pushing to that path on the relay, so this has to construct
+ * the identical stream key or it'd be watching an unrelated (nonexistent)
+ * stream.
+ */
+function buildHlsUrl(videoId: string): string | null {
+  const base = process.env.DJI_CLOUD_LIVE_HLS_BASE_URL?.replace(/\/+$/, "");
+  if (!base) return null;
+  const [droneSn, payloadIndex] = videoId.split("/");
+  if (!droneSn || !payloadIndex) return null;
+  return `${base}/${droneSn}-${payloadIndex}/index.m3u8`;
+}
+
+/**
+ * Starts pushing a live feed from the given camera to this server's own
+ * relay (see docker-compose's `livestream.url.rtmp` config on the DJI
+ * Cloud platform side — the aircraft/RC pushes RTMP to that fixed URL, not
+ * one supplied per-call). `videoId` is one of the `video_index` values
+ * from `listLiveCapacity`. `POST manage/api/v1/live/streams/start`.
+ */
+export async function startLiveStream(
+  videoId: string,
+): Promise<{ hlsUrl: string | null }> {
+  const cfg = readConfig();
+  if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
+  const { token } = await login(cfg);
+  await authedPost(cfg, token, "/manage/api/v1/live/streams/start", {
+    video_id: videoId,
+    url_type: 1, // RTMP (UrlTypeEnum: 0=Agora, 1=RTMP, 2=RTSP, 3=GB28181, 4=WHIP) — see the note above about the relay's fixed push URL
+    video_quality: 0, // VideoQualityEnum.AUTO
+  });
+  return { hlsUrl: buildHlsUrl(videoId) };
+}
+
+/** Stops a live feed previously started with `startLiveStream`. `POST manage/api/v1/live/streams/stop`. */
+export async function stopLiveStream(videoId: string): Promise<void> {
+  const cfg = readConfig();
+  if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
+  const { token } = await login(cfg);
+  await authedPost(cfg, token, "/manage/api/v1/live/streams/stop", {
+    video_id: videoId,
+  });
+}
+
 /**
  * Uploads several segment KMZs into the workspace under a single login.
  * Segments are uploaded sequentially (the platform's object storage

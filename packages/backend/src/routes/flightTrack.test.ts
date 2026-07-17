@@ -255,6 +255,48 @@ describe("POST /api/dji-cloud/flight-track/stop", () => {
       .set("Authorization", `Bearer ${ownerToken}`);
     expect(pointsRes.body.points).toHaveLength(0);
   });
+
+  it("rejects stopping a recording started by another user (IDOR guard)", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(loginOk()));
+    await request(app)
+      .post("/api/dji-cloud/flight-track/start")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ deviceSn: "SN-idor", missionId });
+
+    const stopRes = await request(app)
+      .post("/api/dji-cloud/flight-track/stop")
+      .set("Authorization", `Bearer ${otherToken}`)
+      .send({ deviceSn: "SN-idor" });
+    expect(stopRes.status).toBe(403);
+
+    // Still recording — the other user's stop attempt must not have gone
+    // through despite the 403.
+    handleMessage(
+      "thing/product/SN-idor/osd",
+      Buffer.from(
+        JSON.stringify({ data: { latitude: 2, longitude: 2, height: 2 } }),
+      ),
+    );
+    const sessions = await request(app)
+      .get(`/api/dji-cloud/flight-track/sessions?missionId=${missionId}`)
+      .set("Authorization", `Bearer ${ownerToken}`);
+    const session = sessions.body.sessions.find(
+      (s: { deviceSn: string }) => s.deviceSn === "SN-idor",
+    );
+    expect(session.endedAt).toBeNull();
+    const pointsRes = await request(app)
+      .get(`/api/dji-cloud/flight-track/sessions/${session.id}/points`)
+      .set("Authorization", `Bearer ${ownerToken}`);
+    expect(pointsRes.body.points.length).toBeGreaterThan(0);
+  });
+
+  it("no-ops with success when nothing is recording for the device", async () => {
+    const res = await request(app)
+      .post("/api/dji-cloud/flight-track/stop")
+      .set("Authorization", `Bearer ${ownerToken}`)
+      .send({ deviceSn: "SN-never-started" });
+    expect(res.status).toBe(200);
+  });
 });
 
 describe("GET /api/dji-cloud/flight-track/sessions", () => {

@@ -29,6 +29,7 @@ import { ObstaclePolygon } from "./ObstaclePolygon";
 import { BuildingDrawHandler } from "./BuildingDrawHandler";
 import { BuildingPolygon } from "./BuildingPolygon";
 import { AirspaceOverlay } from "./AirspaceOverlay";
+import { CustomLayersOverlay } from "./CustomLayersOverlay";
 import { CameraFrustum } from "./CameraFrustum";
 import { DjiTelemetryMarkers } from "./DjiTelemetryMarkers";
 import { useFlightSimulationStore } from "@/store/flightSimulationStore";
@@ -739,6 +740,7 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
         <ObstacleDrawHandler />
         <BuildingDrawHandler />
         <MeasureToolHandler />
+        <CustomLayersOverlay />
         <AirspaceOverlay />
         {obstacles.map((obstacle) => (
           <ObstaclePolygon key={obstacle.id} obstacle={obstacle} />

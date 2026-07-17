@@ -162,8 +162,13 @@ export default function App() {
   // Hides the sidebar for a fullscreen map view — Tab toggles it (see the
   // keyboard shortcut handler below). Deliberately local component state,
   // not persisted preferences or mission-store: purely a transient view
-  // toggle for the current session.
-  const [panelsHidden, setPanelsHidden] = useState(false);
+  // toggle for the current session. Defaults to hidden on narrow viewports
+  // (the sidebar renders as a full overlay drawer below the `md` breakpoint,
+  // see the sidebar's className below) so a phone-sized screen opens
+  // straight into the map instead of the drawer covering it.
+  const [panelsHidden, setPanelsHidden] = useState(
+    () => window.matchMedia("(max-width: 767px)").matches,
+  );
 
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -901,9 +906,19 @@ export default function App() {
 
   return (
     <div className="flex h-dvh w-screen overflow-hidden bg-background">
-      {/* Sidebar */}
+      {/* Sidebar — a fixed full-height overlay drawer below the `md`
+          breakpoint (with a backdrop that closes it on tap), and a normal
+          in-flow panel at `md` and above, matching desktop's existing
+          layout exactly. */}
       {!panelsHidden && (
-        <div className="w-88 flex flex-col border-r border-border bg-card shrink-0 tabular-nums">
+        <div
+          className="fixed inset-0 z-[1500] bg-black/50 md:hidden"
+          onClick={() => setPanelsHidden(true)}
+          aria-hidden="true"
+        />
+      )}
+      {!panelsHidden && (
+        <div className="fixed inset-y-0 left-0 z-[1501] w-[85vw] max-w-88 shadow-2xl md:static md:z-auto md:w-88 md:max-w-none md:shadow-none flex flex-col border-r border-border bg-card shrink-0 tabular-nums">
           {/* Header */}
           <div className="p-3 border-b border-border">
             <div className="flex items-center justify-between mb-2">

@@ -17,6 +17,7 @@ An interactive map where you plan flights and see everything at a glance.
 - View an elevation graph below the waypoint list that shows altitude changes across the flight, with the real ground elevation along the path overlaid as a shaded terrain profile.
 - See live previews when configuring templates before placing them.
 - Hide the sidebar for a fullscreen map view — click the collapse icon next to the SkyRoute logo, or press **Tab** (only while no input/button is focused, so it doesn't interfere with normal keyboard navigation). A small button in the map's top-left corner brings the sidebar back.
+- On a phone or narrow tablet screen (below ~768px wide), the app opens straight into the fullscreen map instead of the sidebar, and the sidebar becomes a slide-over drawer with a tap-to-dismiss backdrop rather than sharing space with the map — the same collapse button and Tab shortcut open and close it.
 
 ## 3D mode
 

@@ -388,6 +388,23 @@ export function initDb(): void {
       ON flight_track_points(session_id, recorded_at);
   `);
 
+  // Migration: create dji_cloud_accounts table — lets an individual user
+  // link their own DJI Cloud platform web account instead of every upload
+  // being attributed to the one shared DJI_CLOUD_USERNAME service account
+  // (see services/djiCloud.ts's resolveConfig). The password is stored
+  // encrypted (lib/encryption.ts), not hashed — the DJI Cloud login
+  // endpoint needs the raw password on every call, so it must be
+  // recoverable, unlike a SkyRoute account password.
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS dji_cloud_accounts (
+      user_id TEXT PRIMARY KEY,
+      dji_username TEXT NOT NULL,
+      dji_password_encrypted TEXT NOT NULL,
+      linked_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+  `);
+
   // Ensure ADMIN_EMAIL user has admin privileges (cloud mode)
   const selfHosted = (process.env.SELF_HOSTED ?? "true") === "true";
   const adminEmail = process.env.ADMIN_EMAIL || "";

@@ -14,6 +14,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useConfigStore } from "@/store/configStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { useAirspaceStore, AIRSPACE_PROVIDERS } from "@/store/airspaceStore";
+import { DjiCloudAccountLink } from "./DjiCloudAccountLink";
 import { api } from "@/lib/api";
 import { X, KeyRound, ShieldCheck, ShieldOff } from "lucide-react";
 import {
@@ -585,6 +586,7 @@ export function AccountModal({ onClose }: AccountModalProps) {
                   )}
                 </div>
               )}
+              <DjiCloudAccountLink />
             </div>
           </TabsContent>
 

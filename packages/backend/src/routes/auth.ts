@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router } from "express";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "../models/db.js";
 import {
@@ -21,19 +21,22 @@ import {
 } from "../services/emailService.js";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { authLimiter } from "../middleware/rateLimit.js";
+import { logger } from "../lib/logger.js";
 
 export const authRoutes = Router();
 
 const isSelfHosted = () => (process.env.SELF_HOSTED ?? "true") === "true";
 
 /**
- * Base URL to build the password-reset link against. `APP_URL` lets an
- * operator pin this explicitly (e.g. behind a reverse proxy that rewrites
- * the Host header); otherwise it's derived from the incoming request, which
- * is safe here since the SPA is always served same-origin with the API.
+ * Base URL to build the password-reset link against. Deliberately does NOT
+ * fall back to the incoming request's `Host` header — that header is
+ * attacker-controlled (there's no reverse-proxy validation pinning it), so
+ * trusting it here would let an attacker "poison" a reset link into
+ * pointing at a phishing host. `APP_URL` must be set for password reset to
+ * work; `null` means "not configured", handled by the caller.
  */
-function resolveAppUrl(req: Request): string {
-  return process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+function resolveAppUrl(): string | null {
+  return process.env.APP_URL || null;
 }
 
 // Registration is a one-time bootstrap: the first account ever created
@@ -562,29 +565,37 @@ authRoutes.post("/forgot-password", authLimiter, (req, res) => {
   }
 
   if (isRealRecipient) {
-    const resetUrl = `${resolveAppUrl(req)}/reset-password?token=${rawToken}`;
+    const appUrl = resolveAppUrl();
 
-    // No email transport configured yet is a normal, expected state for a
-    // fresh self-hosted install (see services/emailService.ts) — the
-    // request still "succeeds" from the caller's perspective, it just
-    // falls back to an operator manually relaying the link instead of
-    // silently pretending an email went out. Same honest-degradation
-    // pattern as the DJI Cloud bridge when its env vars are unset.
-    //
-    // Deliberately not awaited: blocking the response on an SMTP round
-    // trip would make latency depend on account existence again, exactly
-    // the side-channel the generic response above is meant to close.
-    if (isEmailConfigured()) {
-      sendPasswordResetEmail(user.email, resetUrl).catch((err) => {
-        console.error("[password-reset] SMTP delivery failed:", err);
-        console.error(
-          `[password-reset] manual relay needed — send this link to ${user.email}: ${resetUrl}`,
-        );
-      });
-    } else {
-      console.error(
-        `[password-reset] SMTP not configured — manually relay this link to ${user.email}: ${resetUrl}`,
+    if (!appUrl) {
+      logger.error(
+        "[password-reset] APP_URL is not configured — cannot build a reset link. Set APP_URL in the environment.",
       );
+    } else {
+      const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
+
+      // No email transport configured yet is a normal, expected state for a
+      // fresh self-hosted install (see services/emailService.ts) — the
+      // request still "succeeds" from the caller's perspective, it just
+      // falls back to an operator manually relaying the link instead of
+      // silently pretending an email went out. Same honest-degradation
+      // pattern as the DJI Cloud bridge when its env vars are unset.
+      //
+      // Deliberately not awaited: blocking the response on an SMTP round
+      // trip would make latency depend on account existence again, exactly
+      // the side-channel the generic response above is meant to close.
+      if (isEmailConfigured()) {
+        sendPasswordResetEmail(user.email, resetUrl).catch((err) => {
+          logger.error({ err }, "[password-reset] SMTP delivery failed");
+          logger.error(
+            `[password-reset] manual relay needed — send this link to ${user.email}: ${resetUrl}`,
+          );
+        });
+      } else {
+        logger.error(
+          `[password-reset] SMTP not configured — manually relay this link to ${user.email}: ${resetUrl}`,
+        );
+      }
     }
   }
 

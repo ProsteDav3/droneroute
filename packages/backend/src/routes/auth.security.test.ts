@@ -1,11 +1,20 @@
 import express from "express";
 import request from "supertest";
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, vi } from "vitest";
 import { v4 as uuidv4 } from "uuid";
 import { authenticator } from "otplib";
 import { initDb, getDb } from "../models/db.js";
 import { hashPassword, hashResetToken } from "../services/authService.js";
-import { authRoutes } from "./auth.js";
+
+const sendPasswordResetEmailMock = vi.fn().mockResolvedValue(undefined);
+
+vi.mock("../services/emailService.js", () => ({
+  isEmailConfigured: () => true,
+  sendPasswordResetEmail: (...args: unknown[]) =>
+    sendPasswordResetEmailMock(...args),
+}));
+
+const { authRoutes } = await import("./auth.js");
 
 const app = express();
 app.use(express.json());
@@ -82,6 +91,52 @@ describe("POST /api/auth/forgot-password", () => {
         .get() as any
     ).count;
     expect(after).toBe(before + 1);
+  });
+
+  it("builds the reset link from APP_URL, never from a spoofed Host header", async () => {
+    const originalAppUrl = process.env.APP_URL;
+    process.env.APP_URL = "https://skyroute.skydata.cz";
+    sendPasswordResetEmailMock.mockClear();
+
+    try {
+      await request(app)
+        .post("/api/auth/forgot-password")
+        .set("Host", "attacker.example")
+        .send({ email: "forgot@test.dev" });
+
+      // The reset email is sent fire-and-forget (not awaited by the
+      // handler) — give the microtask queue a tick to run it.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(sendPasswordResetEmailMock).toHaveBeenCalledTimes(1);
+      const [, resetUrl] = sendPasswordResetEmailMock.mock.calls[0];
+      expect(resetUrl).toMatch(/^https:\/\/skyroute\.skydata\.cz\//);
+      expect(resetUrl).not.toContain("attacker.example");
+    } finally {
+      process.env.APP_URL = originalAppUrl;
+    }
+  });
+
+  it("does not attempt to send a reset email when APP_URL isn't configured", async () => {
+    const originalAppUrl = process.env.APP_URL;
+    delete process.env.APP_URL;
+    sendPasswordResetEmailMock.mockClear();
+
+    try {
+      const res = await request(app)
+        .post("/api/auth/forgot-password")
+        .set("Host", "attacker.example")
+        .send({ email: "forgot@test.dev" });
+
+      await new Promise((resolve) => setImmediate(resolve));
+
+      // Still returns the generic success response — no account enumeration
+      // signal — it just silently skips the (unbuildable) email.
+      expect(res.status).toBe(200);
+      expect(sendPasswordResetEmailMock).not.toHaveBeenCalled();
+    } finally {
+      process.env.APP_URL = originalAppUrl;
+    }
   });
 });
 

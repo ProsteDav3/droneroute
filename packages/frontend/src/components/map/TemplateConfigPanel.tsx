@@ -1081,6 +1081,25 @@ export function TemplateConfigPanel({
               Obrátit směr
             </label>
           </div>
+          <div className="col-span-2 flex items-end pb-1">
+            <label
+              className="flex items-center gap-1.5 text-xs cursor-pointer"
+              title="Nalétá druhý průlet otočený o 90° oproti prvnímu — doporučeno pro 3D rekonstrukci (fotogrammetrické mesh modely), kde jednosměrná mřížka málo pokrývá svislé plochy jako stěny a hrany střech."
+            >
+              <input
+                type="checkbox"
+                checked={gridParams.crosshatch ?? false}
+                onChange={(e) =>
+                  onGridChange({
+                    ...gridParams,
+                    crosshatch: e.target.checked,
+                  })
+                }
+                className="rounded"
+              />
+              Crosshatch (dvojitá mřížka pro 3D rekonstrukci)
+            </label>
+          </div>
         </div>
       )}
 

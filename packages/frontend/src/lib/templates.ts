@@ -152,6 +152,12 @@ export interface GridParams {
   rotationDeg: number; // rotation of the grid in degrees (0-360)
   reverse: boolean; // fly the grid in reverse order
   captureMode?: CaptureMode;
+  /** Flies a second pass rotated 90° from the first ("crosshatch" or
+   * "double grid") — recommended for 3D reconstruction (photogrammetry
+   * meshes), where a single-direction grid alone tends to leave vertical
+   * surfaces (walls, roof edges) poorly reconstructed. Unset/false means
+   * the original single-pass behavior. */
+  crosshatch?: boolean;
 }
 
 export interface FacadeParams {
@@ -270,6 +276,7 @@ export const DEFAULT_GRID_PARAMS: Omit<GridParams, "corner1" | "corner2"> = {
   rotationDeg: 0,
   reverse: false,
   captureMode: "photo",
+  crosshatch: false,
 };
 
 export const DEFAULT_FACADE_PARAMS: Omit<FacadeParams, "point1" | "point2"> = {
@@ -790,19 +797,16 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
   return { waypoints, pois };
 }
 
-export function generateGrid(params: GridParams): TemplateResult {
-  const {
-    corner1,
-    corner2,
-    altitude,
-    spacingM,
-    photoSpacingM,
-    addPhotos,
-    rotationDeg,
-    reverse,
-    captureMode,
-  } = params;
-  const mode = captureMode ?? (addPhotos ? "photo" : "none");
+/** One flight-line pass over the grid's bounding box at a given rotation —
+ * factored out of `generateGrid` so a "crosshatch" survey can call it twice
+ * (0° and 90°) and concatenate the results, without duplicating the
+ * bounding-box/rotation/spacing math. */
+function generateGridPass(
+  params: GridParams,
+  rotationDeg: number,
+  mode: CaptureMode | "none",
+): TemplateResult["waypoints"] {
+  const { corner1, corner2, altitude, spacingM, photoSpacingM } = params;
   const safePhotoSpacingM = Math.max(photoSpacingM ?? spacingM, 0.1);
   const [lat1, lng1] = corner1;
   const [lat2, lng2] = corner2;
@@ -909,6 +913,24 @@ export function generateGrid(params: GridParams): TemplateResult {
         actions: mode === "photo" ? [{ ...takePhotoAction, actionId: 0 }] : [],
       });
     }
+  }
+
+  return waypoints;
+}
+
+export function generateGrid(params: GridParams): TemplateResult {
+  const { addPhotos, rotationDeg, reverse, captureMode, crosshatch } = params;
+  const mode = captureMode ?? (addPhotos ? "photo" : "none");
+
+  let waypoints = generateGridPass(params, rotationDeg, mode);
+  if (crosshatch) {
+    // Second pass at 90° to the first — the combined coverage from two
+    // perpendicular directions is what makes crosshatch surveys better for
+    // 3D reconstruction than a single-direction grid.
+    waypoints = [
+      ...waypoints,
+      ...generateGridPass(params, rotationDeg + 90, mode),
+    ];
   }
 
   if (reverse) {

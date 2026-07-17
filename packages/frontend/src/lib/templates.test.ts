@@ -851,6 +851,58 @@ describe("capture mode (photo/video)", () => {
     );
   });
 
+  it("generateGrid: crosshatch flies a second pass at 90° and roughly doubles the waypoint count", () => {
+    const baseParams = {
+      ...DEFAULT_GRID_PARAMS,
+      corner1: CENTER,
+      corner2: destinationPoint(CENTER[0], CENTER[1], 200, 45),
+      spacingM: 100,
+      photoSpacingM: 20,
+      rotationDeg: 0,
+    } satisfies GridParams;
+
+    const singlePass = generateGrid(baseParams);
+    const crosshatched = generateGrid({ ...baseParams, crosshatch: true });
+
+    // Roughly double — the 90°-rotated second pass over the same area can
+    // have a slightly different line count for a non-square bounding box,
+    // so this checks "about 2x", not an exact multiple.
+    const ratio = crosshatched.waypoints.length / singlePass.waypoints.length;
+    expect(ratio).toBeGreaterThan(1.5);
+    expect(ratio).toBeLessThan(2.5);
+  });
+
+  it("generateGrid: crosshatch's second pass is genuinely rotated 90° from the first, not a duplicate", () => {
+    const params = {
+      ...DEFAULT_GRID_PARAMS,
+      corner1: CENTER,
+      corner2: destinationPoint(CENTER[0], CENTER[1], 200, 45),
+      spacingM: 100,
+      photoSpacingM: 200,
+      rotationDeg: 0,
+      crosshatch: true,
+    } satisfies GridParams;
+
+    const result = generateGrid(params);
+    const withoutCrosshatch = generateGrid({ ...params, crosshatch: false });
+
+    // The first N waypoints (single-pass count) should match the
+    // non-crosshatch run exactly — crosshatch appends, it doesn't alter
+    // the first pass.
+    const firstPassCount = withoutCrosshatch.waypoints.length;
+    expect(result.waypoints.slice(0, firstPassCount)).toEqual(
+      withoutCrosshatch.waypoints,
+    );
+    // The appended second pass must differ in actual position from the
+    // first (proving it's a real 90°-rotated pass, not a re-run of the
+    // same rotation).
+    const secondPass = result.waypoints.slice(firstPassCount);
+    expect(secondPass.length).toBeGreaterThan(0);
+    expect(secondPass).not.toEqual(
+      withoutCrosshatch.waypoints.slice(0, secondPass.length),
+    );
+  });
+
   it("generateGrid: video mode puts startRecord/stopRecord only on the first/last waypoint, after the reverse step", () => {
     const result = generateGrid({
       ...DEFAULT_GRID_PARAMS,

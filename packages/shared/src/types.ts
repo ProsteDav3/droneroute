@@ -481,6 +481,11 @@ export interface VisualizationPreferences {
    * or empty means none, matching every mission's behavior before this
    * field existed. */
   customLayers?: CustomMapLayer[];
+  /** UI color theme — "dark" (default) matches every mission's behavior
+   * before this field existed. Only affects the app chrome (sidebar,
+   * dialogs, panels); Mapbox's own control chrome (geocoder, popups) stays
+   * dark regardless, since it isn't meaningfully themeable. */
+  colorTheme?: "dark" | "light";
 }
 
 export type UnitSystem = "metric" | "imperial";

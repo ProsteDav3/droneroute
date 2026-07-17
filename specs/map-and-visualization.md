@@ -63,6 +63,7 @@ The map is the central workspace. Everything you do — placing waypoints, POIs,
 ## Good to know
 
 - The default view is **satellite** imagery in **2D** mode. Users can change these defaults in the **Visualization** tab of the settings dialog — the preferred view mode and map style are applied when the app loads.
+- The app defaults to a **dark** color theme. Switch to **light** in the same Visualization tab under "Barevný motiv" — this re-themes the sidebar, dialogs, and panels. The map's own imagery and Mapbox's built-in controls (search box, building/airspace popups) intentionally stay dark in both modes, since they aren't meaningfully themeable and the map content dominates either way.
 - The map opens centered on Barcelona by default. Self-hosted instances can change the starting location by setting `DEFAULT_MAP_VIEW` in their environment (or `docker-compose.yml`), formatted as `lat,lng` or `lat,lng,zoom`, so the map opens on their local area. Invalid or out-of-range values fall back to the built-in default.
 - You can click waypoints and POIs directly on the map to select and edit them.
 - The geocoding search box collapses to an icon when not in use to save space.

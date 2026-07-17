@@ -169,6 +169,110 @@ export function estimateFlightStats(
   return { distanceM, timeS };
 }
 
+/** Seconds of `hover` action time configured at a single waypoint (0 if none). */
+export function hoverTimeS(wp: FlightStatsWaypoint): number {
+  let total = 0;
+  for (const action of wp.actions ?? []) {
+    if (action.actionType === "hover") {
+      const params = action.params as Record<string, unknown>;
+      const raw = params.hoverTime ?? params["wpml:hoverTime"];
+      const value = typeof raw === "string" ? parseFloat(raw) : raw;
+      total += typeof value === "number" && !isNaN(value) ? value : 0;
+    }
+  }
+  return total;
+}
+
+/**
+ * Cumulative estimated flight time (seconds from launch) at which the
+ * aircraft reaches each waypoint — same index order as the input array,
+ * `arrivalTimes[0]` is always 0 (already there at launch).
+ *
+ * Reuses the same physical assumptions as `estimateFlightStats` (segment
+ * cruise time, hover actions, accel/decel ramps, stop-and-turn overhead),
+ * but attributes each time cost to *when along the path* it's actually
+ * incurred rather than summing everything into one total:
+ * - A segment's travel time lands on the waypoint at its far end.
+ * - Hover time and turn overhead "at" a waypoint delay everything *after*
+ *   it, not the arrival at that waypoint itself.
+ * - The start-of-flight accel ramp delays reaching waypoint 1 onward; the
+ *   end-of-flight decel ramp only affects reaching the final waypoint.
+ *
+ * `arrivalTimes[last]` is "time to physically reach the final waypoint" —
+ * it deliberately excludes hovering *at* that final waypoint (nothing
+ * comes after it to be delayed by that hover), unlike every other
+ * waypoint's hover, which delays reaching the *next* one. So
+ * `arrivalTimes[last] + hoverTimeS(waypoints[last])` equals
+ * `estimateFlightStats(waypoints, globalSpeedMps).timeS` exactly —
+ * verified by a cross-check test rather than sharing implementation,
+ * since the two were written independently and agreement between them is
+ * itself useful evidence neither has a stray double-count or omission.
+ */
+export function estimateWaypointArrivalTimes(
+  waypoints: FlightStatsWaypoint[],
+  globalSpeedMps: number,
+): number[] {
+  if (waypoints.length === 0) return [];
+  const arrivalTimes = [0];
+
+  for (let i = 1; i < waypoints.length; i++) {
+    const prev = waypoints[i - 1];
+    const curr = waypoints[i];
+    const segDist = haversine(
+      prev.latitude,
+      prev.longitude,
+      curr.latitude,
+      curr.longitude,
+    );
+    const speed = effectiveSpeed(curr, globalSpeedMps);
+    let delta = segDist / speed;
+
+    delta += hoverTimeS(prev);
+
+    // Turn overhead incurred while passing through `prev` — only defined
+    // for an interior waypoint (has both an incoming and outgoing leg).
+    if (i - 1 >= 1 && i - 1 <= waypoints.length - 2) {
+      const beforePrev = waypoints[i - 2];
+      const incomingBearing = bearing(
+        beforePrev.latitude,
+        beforePrev.longitude,
+        prev.latitude,
+        prev.longitude,
+      );
+      const outgoingBearing = bearing(
+        prev.latitude,
+        prev.longitude,
+        curr.latitude,
+        curr.longitude,
+      );
+      const turnAngle = angleBetweenBearings(incomingBearing, outgoingBearing);
+      const prevSpeed = effectiveSpeed(prev, globalSpeedMps);
+
+      if (prev.turnMode && STOP_TURN_MODES.includes(prev.turnMode)) {
+        delta += (2 * prevSpeed) / ASSUMED_ACCEL_MPS2 + STOP_TURN_STABILIZE_S;
+      } else if (
+        turnAngle > SHARP_TURN_ANGLE_DEG &&
+        (prev.turnDampingDist ?? 0) < SHARP_TURN_DAMPING_THRESHOLD_M
+      ) {
+        delta += (turnAngle / 180) * (prevSpeed / ASSUMED_ACCEL_MPS2);
+      }
+    }
+
+    if (i === 1) {
+      delta += effectiveSpeed(curr, globalSpeedMps) / ASSUMED_ACCEL_MPS2;
+    }
+    if (i === waypoints.length - 1) {
+      delta += effectiveSpeed(curr, globalSpeedMps) / ASSUMED_ACCEL_MPS2;
+    }
+
+    arrivalTimes.push(arrivalTimes[i - 1] + delta);
+  }
+
+  // The final waypoint's own hover time is deliberately excluded — see
+  // the doc comment above on how this relates to `estimateFlightStats`.
+  return arrivalTimes;
+}
+
 export interface CaptureActionCounts {
   photoCount: number;
   videoCount: number;

@@ -6,6 +6,7 @@ import {
   Settings,
   ArrowUp,
   Gauge,
+  Clock,
   CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,10 @@ import { useConfigStore } from "@/store/configStore";
 import { useDjiCloudOpsStore } from "@/store/djiCloudOpsStore";
 import { formatHeight, formatSpeed } from "@/lib/units";
 import { computeMissionProgress } from "@/lib/missionProgress";
+import {
+  estimateWaypointArrivalTimes,
+  formatFlightDuration,
+} from "@/lib/flightStats";
 import { WaypointEditorInline } from "./WaypointEditor";
 
 export function WaypointList() {
@@ -27,8 +32,17 @@ export function WaypointList() {
     removeWaypoint,
     reorderWaypoints,
     updateWaypoint,
+    config,
   } = useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
+
+  // Estimated time-from-launch at which the aircraft reaches each waypoint
+  // — shown as a small badge next to height/speed so a long or complex
+  // mission's pacing is visible at a glance without opening the PDF report.
+  const arrivalTimes = useMemo(
+    () => estimateWaypointArrivalTimes(waypoints, config.autoFlightSpeed),
+    [waypoints, config.autoFlightSpeed],
+  );
   const djiCloudEnabled = useConfigStore((s) => s.djiCloudEnabled);
   const telemetry = useDjiCloudOpsStore((s) => s.telemetry);
 
@@ -223,6 +237,15 @@ export function WaypointList() {
                     <Gauge className="h-2.5 w-2.5" />
                     {formatSpeed(wp.speed, unitSystem)}
                   </span>
+                  {i > 0 && (
+                    <span
+                      className="flex items-center gap-0.5"
+                      title="Odhadovaný čas doletu od startu"
+                    >
+                      <Clock className="h-2.5 w-2.5" />
+                      {formatFlightDuration(arrivalTimes[i] ?? 0)}
+                    </span>
+                  )}
                 </div>
               </div>
               {wp.actions.length > 0 && (

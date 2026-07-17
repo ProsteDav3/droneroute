@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   estimateFlightStats,
+  estimateWaypointArrivalTimes,
+  hoverTimeS,
   formatFlightDuration,
   countCaptureActions,
   computeSpeedForDuration,
@@ -165,6 +167,73 @@ describe("estimateFlightStats", () => {
     const dist = haversine(50, 14, 50.001, 14);
     // Cruise leg uses the waypoint's own speed (2 m/s), not the global 10.
     expect(timeS).toBeGreaterThan(dist / 10);
+  });
+});
+
+describe("estimateWaypointArrivalTimes", () => {
+  it("returns an empty array for no waypoints, and [0] for a single one", () => {
+    expect(estimateWaypointArrivalTimes([], 5)).toEqual([]);
+    expect(estimateWaypointArrivalTimes([wp(50, 14)], 5)).toEqual([0]);
+  });
+
+  it("returns one entry per waypoint, strictly increasing", () => {
+    const waypoints = [wp(50, 14), wp(50.001, 14), wp(50.002, 14)];
+    const arrivalTimes = estimateWaypointArrivalTimes(waypoints, 5);
+
+    expect(arrivalTimes).toHaveLength(3);
+    expect(arrivalTimes[0]).toBe(0);
+    expect(arrivalTimes[1]).toBeGreaterThan(arrivalTimes[0]);
+    expect(arrivalTimes[2]).toBeGreaterThan(arrivalTimes[1]);
+  });
+
+  it("delays every waypoint after a hover, but not the hovering waypoint itself", () => {
+    const withoutHover = estimateWaypointArrivalTimes(
+      [wp(50, 14), wp(50.001, 14), wp(50.002, 14)],
+      5,
+    );
+    const withHover = estimateWaypointArrivalTimes(
+      [
+        wp(50, 14),
+        {
+          ...wp(50.001, 14),
+          actions: [{ actionType: "hover", params: { hoverTime: 8 } }],
+        },
+        wp(50.002, 14),
+      ],
+      5,
+    );
+
+    // Reaching the hovering waypoint itself is unaffected...
+    expect(withHover[1]).toBeCloseTo(withoutHover[1], 5);
+    // ...but reaching the next one is delayed by exactly the hover time.
+    expect(withHover[2]).toBeCloseTo(withoutHover[2] + 8, 5);
+  });
+
+  it("agrees with estimateFlightStats's total once the final waypoint's own hover is added back", () => {
+    const waypoints = [
+      wp(50, 14),
+      {
+        ...wp(50.0005, 14.0003, {
+          useGlobalSpeed: false,
+          speed: 4,
+          turnMode: "toPointAndStopWithDiscontinuityCurvature" as const,
+        }),
+        actions: [{ actionType: "hover", params: { hoverTime: 3 } }],
+      },
+      wp(50.001, 14),
+      {
+        ...wp(50.0015, 14.0002),
+        actions: [{ actionType: "hover", params: { hoverTime: 5 } }],
+      },
+    ];
+
+    const arrivalTimes = estimateWaypointArrivalTimes(waypoints, 6);
+    const { timeS } = estimateFlightStats(waypoints, 6);
+    const lastWaypointHover = hoverTimeS(waypoints[waypoints.length - 1]);
+
+    expect(
+      arrivalTimes[arrivalTimes.length - 1] + lastWaypointHover,
+    ).toBeCloseTo(timeS, 5);
   });
 });
 

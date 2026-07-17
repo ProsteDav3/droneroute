@@ -456,6 +456,18 @@ export interface AuditLogEntry {
 
 // ── User Preferences ────────────────────────────────────
 
+/** A user-added raster tile overlay (WMS or XYZ/TMS tile URL template) —
+ * e.g. a national cadastre or zoning-plan layer not built into the app. */
+export interface CustomMapLayer {
+  id: string;
+  name: string;
+  /** Tile URL template with {z}/{x}/{y} placeholders (XYZ), or a WMS
+   * GetMap request URL with {bbox-epsg-3857}/{width}/{height} placeholders
+   * — both are valid Mapbox GL raster source tile URL formats. */
+  urlTemplate: string;
+  visible: boolean;
+}
+
 export interface VisualizationPreferences {
   viewMode: "2d" | "3d";
   mapStyle: "satellite" | "street";
@@ -465,6 +477,10 @@ export interface VisualizationPreferences {
    * regardless of this setting, since that's a safety signal, not a style
    * choice. */
   routeColorMode?: "flat" | "height" | "speed";
+  /** User-added WMS/XYZ tile layers (cadastre, zoning plans, etc.) — unset
+   * or empty means none, matching every mission's behavior before this
+   * field existed. */
+  customLayers?: CustomMapLayer[];
 }
 
 export type UnitSystem = "metric" | "imperial";

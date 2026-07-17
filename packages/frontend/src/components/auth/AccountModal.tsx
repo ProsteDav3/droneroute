@@ -110,6 +110,44 @@ export function AccountModal({ onClose }: AccountModalProps) {
   );
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [prefsSaved, setPrefsSaved] = useState(false);
+  const [newLayerName, setNewLayerName] = useState("");
+  const [newLayerUrl, setNewLayerUrl] = useState("");
+
+  const handleAddCustomLayer = () => {
+    const name = newLayerName.trim();
+    const urlTemplate = newLayerUrl.trim();
+    if (!name || !urlTemplate) return;
+    setVizPrefs((prev: VisualizationPreferences) => ({
+      ...prev,
+      customLayers: [
+        ...(prev.customLayers ?? []),
+        {
+          id: crypto.randomUUID(),
+          name,
+          urlTemplate,
+          visible: true,
+        },
+      ],
+    }));
+    setNewLayerName("");
+    setNewLayerUrl("");
+  };
+
+  const handleRemoveCustomLayer = (id: string) => {
+    setVizPrefs((prev: VisualizationPreferences) => ({
+      ...prev,
+      customLayers: (prev.customLayers ?? []).filter((l) => l.id !== id),
+    }));
+  };
+
+  const handleToggleCustomLayer = (id: string, visible: boolean) => {
+    setVizPrefs((prev: VisualizationPreferences) => ({
+      ...prev,
+      customLayers: (prev.customLayers ?? []).map((l) =>
+        l.id === id ? { ...l, visible } : l,
+      ),
+    }));
+  };
 
   // Sync local state when preferences load
   useEffect(() => {
@@ -618,6 +656,74 @@ export function AccountModal({ onClose }: AccountModalProps) {
                       </div>
                     </label>
                   ))}
+                </div>
+              </div>
+
+              {/* Custom WMS/XYZ layers */}
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground mb-2 block">
+                  Vlastní vrstvy (WMS/XYZ)
+                </Label>
+                <p className="text-[10px] text-muted-foreground mb-2">
+                  Přidejte dlaždicovou vrstvu (katastr, územní plán...) podle
+                  URL šablony s {"{z}"}/{"{x}"}/{"{y}"}.
+                </p>
+
+                {(vizPrefs.customLayers ?? []).length > 0 && (
+                  <div className="space-y-1.5 mb-2">
+                    {(vizPrefs.customLayers ?? []).map((layer) => (
+                      <div
+                        key={layer.id}
+                        className="flex items-center gap-2 text-xs bg-muted/30 rounded px-2 py-1.5"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={layer.visible}
+                          onChange={(e) =>
+                            handleToggleCustomLayer(layer.id, e.target.checked)
+                          }
+                          className="h-3.5 w-3.5 rounded border-border accent-primary shrink-0"
+                        />
+                        <span
+                          className="flex-1 truncate"
+                          title={layer.urlTemplate}
+                        >
+                          {layer.name}
+                        </span>
+                        <button
+                          onClick={() => handleRemoveCustomLayer(layer.id)}
+                          className="text-muted-foreground hover:text-destructive shrink-0"
+                          title="Odebrat vrstvu"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-col gap-1.5">
+                  <Input
+                    value={newLayerName}
+                    onChange={(e) => setNewLayerName(e.target.value)}
+                    placeholder="Název vrstvy"
+                    className="h-7 text-xs"
+                  />
+                  <Input
+                    value={newLayerUrl}
+                    onChange={(e) => setNewLayerUrl(e.target.value)}
+                    placeholder="https://.../{z}/{x}/{y}.png"
+                    className="h-7 text-xs font-mono"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={handleAddCustomLayer}
+                    disabled={!newLayerName.trim() || !newLayerUrl.trim()}
+                  >
+                    Přidat vrstvu
+                  </Button>
                 </div>
               </div>
 

@@ -85,6 +85,12 @@ You can overlay airspace restriction zones on the map to check for drone no-fly 
 - A more detailed warning also lists which specific zone the route crosses and its altitude limit, e.g. "Trasa letu protíná zónu Řízený vzdušný prostor (limit 120 m AGL)".
 - Zones update automatically as you pan the map — data is fetched for the current viewport with caching to avoid redundant requests.
 
+## Custom map layers (WMS/XYZ)
+
+- In the **Visualization** tab of the settings dialog, under **Vlastní vrstvy (WMS/XYZ)**, add any raster tile layer by name and URL template (e.g. a national cadastre or zoning-plan layer, using `{z}`/`{x}`/`{y}` placeholders) — useful for region-specific data the app doesn't ship built in.
+- Each added layer has its own visibility checkbox and can be removed individually.
+- Layers render on the map in the order they were added, below waypoints/POIs/obstacles but above the base map style.
+
 ## NOTAM (Notice to Airmen)
 
 - When your mission has waypoints, a "Zobrazit NOTAM pro tuto oblast" link appears next to the airspace warnings.

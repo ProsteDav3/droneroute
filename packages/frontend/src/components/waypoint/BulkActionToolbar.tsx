@@ -6,6 +6,7 @@ import {
   Gauge,
   SlidersHorizontal,
   Pencil,
+  ClipboardPaste,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -22,6 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useMissionStore } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
+import { useActionClipboardStore } from "@/store/actionClipboardStore";
 import {
   heightLabel,
   speedLabel,
@@ -59,11 +61,13 @@ export function BulkActionToolbar() {
     clearWaypointSelection,
     removeSelectedWaypoints,
     updateSelectedWaypoints,
+    pasteActionsToSelected,
     setWaypointHeights,
     templateGroups,
     setEditingTemplateGroupId,
   } = useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
+  const clipboardActions = useActionClipboardStore((s) => s.actions);
 
   const [showEditor, setShowEditor] = useState(false);
   const [targetDurationInput, setTargetDurationInput] = useState("");
@@ -235,6 +239,20 @@ export function BulkActionToolbar() {
                 ))}
               </SelectContent>
             </Select>
+          )}
+
+          {/* Paste actions copied from a single waypoint's editor onto the whole selection */}
+          {clipboardActions && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => pasteActionsToSelected(clipboardActions)}
+              className="h-7 text-xs gap-1.5 px-2"
+              title={`Vložit zkopírované akce (${clipboardActions.length}) všem vybraným bodům — nahradí jejich stávající akce`}
+            >
+              <ClipboardPaste className="h-3 w-3" />
+              Vložit akce
+            </Button>
           )}
 
           {/* Toggle bulk editor */}

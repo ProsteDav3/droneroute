@@ -42,6 +42,8 @@ At each waypoint, you can tell the drone to:
 - **Zoom** to a specific focal length.
 - **Focus** on a specific point or set to infinite focus.
 
+Copy a waypoint's actions and paste them onto another one instead of rebuilding the same sequence by hand: the copy/paste icons next to the "Akce" heading in a waypoint's editor copy its actions to a clipboard and paste them (replacing whatever was there) onto the currently open waypoint. With multiple waypoints selected, a "Vložit akce" button appears in the bulk-edit toolbar to paste the same copied actions onto every selected waypoint at once.
+
 ## Good to know
 
 - The flight path is drawn on the map as an animated dashed line. The animation speed reflects the drone's configured speed at each segment.

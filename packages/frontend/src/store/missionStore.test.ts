@@ -670,6 +670,56 @@ describe("missionStore — setWaypointHeights", () => {
   });
 });
 
+describe("missionStore — pasteActionsToSelected", () => {
+  beforeEach(() => {
+    useMissionStore.getState().clearMission();
+  });
+
+  it("replaces every selected waypoint's actions with an independent clone of the given list", () => {
+    useMissionStore
+      .getState()
+      .appendWaypoints([
+        baseWaypoint(50, 14),
+        baseWaypoint(50.001, 14),
+        baseWaypoint(50.002, 14),
+      ]);
+    useMissionStore.getState().selectWaypoint(0);
+    useMissionStore.getState().selectWaypoint(2, "toggle");
+
+    const clipboard = [
+      { actionId: 5, actionType: "hover" as const, params: { hoverTime: 3 } },
+    ];
+    useMissionStore.getState().pasteActionsToSelected(clipboard);
+
+    const { waypoints } = useMissionStore.getState();
+    expect(waypoints[0].actions).toEqual([
+      { actionId: 0, actionType: "hover", params: { hoverTime: 3 } },
+    ]);
+    expect(waypoints[1].actions).toEqual([]); // not selected — untouched
+    expect(waypoints[2].actions).toEqual([
+      { actionId: 0, actionType: "hover", params: { hoverTime: 3 } },
+    ]);
+
+    // Each waypoint gets its own array/object instances, not a shared
+    // reference — mutating one must never affect the other.
+    expect(waypoints[0].actions).not.toBe(waypoints[2].actions);
+  });
+
+  it("marks the mission dirty", () => {
+    useMissionStore.getState().appendWaypoints([baseWaypoint(50, 14)]);
+    useMissionStore.getState().selectWaypoint(0);
+    useMissionStore.setState({ dirty: false });
+
+    useMissionStore
+      .getState()
+      .pasteActionsToSelected([
+        { actionId: 0, actionType: "hover", params: { hoverTime: 1 } },
+      ]);
+
+    expect(useMissionStore.getState().dirty).toBe(true);
+  });
+});
+
 describe("missionStore — reverseWaypoints", () => {
   beforeEach(() => {
     useMissionStore.getState().clearMission();

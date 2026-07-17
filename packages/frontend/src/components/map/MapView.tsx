@@ -36,6 +36,8 @@ import {
   frameToWaypoint,
   FRAMES_PER_SEGMENT,
 } from "@/lib/flightSimulation";
+import { MeasureToolHandler } from "./MeasureToolHandler";
+import { useMeasureStore } from "@/store/measureStore";
 import { Triangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -631,12 +633,14 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
     ],
   );
 
+  const isMeasuring = useMeasureStore((s) => s.isActive);
   const cursor =
     templateMode ||
     isDrawingObstacle ||
     isDrawingBuilding ||
     isAddingWaypoint ||
-    isAddingPoi
+    isAddingPoi ||
+    isMeasuring
       ? "crosshair"
       : "grab";
 
@@ -697,6 +701,7 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
         <TurbineDrawHandler />
         <ObstacleDrawHandler />
         <BuildingDrawHandler />
+        <MeasureToolHandler />
         <AirspaceOverlay />
         {obstacles.map((obstacle) => (
           <ObstaclePolygon key={obstacle.id} obstacle={obstacle} />

@@ -3,6 +3,7 @@ import {
   getAirspaceWarnings,
   formatAirspaceWarningMessage,
   getHomeDistanceWarning,
+  computeMeasureStats,
 } from "./geo";
 
 // A simple square zone around [50, 14] .. [50.1, 14.1] (lat, lng).
@@ -169,5 +170,46 @@ describe("getHomeDistanceWarning", () => {
     ];
     expect(getHomeDistanceWarning(waypoints, 50)).not.toBeNull();
     expect(getHomeDistanceWarning(waypoints, 200)).toBeNull();
+  });
+});
+
+describe("computeMeasureStats", () => {
+  it("returns zero distance and null area for a single point", () => {
+    const stats = computeMeasureStats([[50, 14]]);
+    expect(stats.totalDistanceM).toBe(0);
+    expect(stats.areaM2).toBeNull();
+  });
+
+  it("sums leg distances for a two-point path, with no area", () => {
+    const stats = computeMeasureStats([
+      [50, 14],
+      [50.001, 14],
+    ]);
+    expect(stats.totalDistanceM).toBeGreaterThan(100);
+    expect(stats.totalDistanceM).toBeLessThan(120);
+    expect(stats.areaM2).toBeNull();
+  });
+
+  it("reports the enclosed area once there are 3+ points", () => {
+    const stats = computeMeasureStats([
+      [50, 14],
+      [50, 14.01],
+      [50.01, 14.01],
+    ]);
+    expect(stats.areaM2).not.toBeNull();
+    expect(stats.areaM2!).toBeGreaterThan(0);
+  });
+
+  it("accumulates distance across multiple legs, not just point-to-point", () => {
+    const twoLeg = computeMeasureStats([
+      [50, 14],
+      [50.001, 14],
+      [50.001, 14.001],
+    ]);
+    const directPoints = computeMeasureStats([
+      [50, 14],
+      [50.001, 14.001],
+    ]);
+    expect(twoLeg.totalDistanceM).toBeGreaterThan(directPoints.totalDistanceM);
   });
 });

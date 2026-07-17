@@ -224,6 +224,36 @@ export function polygonArea(vertices: [number, number][]): number {
   return Math.abs(area / 2);
 }
 
+export interface MeasureStats {
+  /** Total length of the drawn path (sum of each leg's great-circle distance). */
+  totalDistanceM: number;
+  /** Enclosed area, only once there are enough points to form a shape (3+). */
+  areaM2: number | null;
+}
+
+/**
+ * Running stats for the standalone measure tool (see `store/measureStore.ts`)
+ * — cumulative path length for any number of points, plus the enclosed area
+ * once there are enough points to trace a shape. Unlike `polygonArea`, which
+ * assumes its input is already a closed ring, this treats `points` as an
+ * open path being drawn and reports the area it *would* enclose if closed —
+ * matching how a ruler tool visually previews "close the shape" before the
+ * user has clicked back on the start point.
+ */
+export function computeMeasureStats(points: [number, number][]): MeasureStats {
+  let totalDistanceM = 0;
+  for (let i = 1; i < points.length; i++) {
+    totalDistanceM += haversineDistance(
+      points[i - 1][0],
+      points[i - 1][1],
+      points[i][0],
+      points[i][1],
+    );
+  }
+  const areaM2 = points.length >= 3 ? polygonArea(points) : null;
+  return { totalDistanceM, areaM2 };
+}
+
 /**
  * Format an area value as a human-readable string.
  */

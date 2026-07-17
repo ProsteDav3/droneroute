@@ -17,6 +17,7 @@ Quick reference for all available keyboard shortcuts.
 | **T**                                           | Open the turbine blade inspection template       |
 | **B**                                           | Enter obstacle drawing mode                      |
 | **H**                                           | Enter building drawing mode                      |
+| **M**                                           | Toggle the measure tool                          |
 | **A**                                           | Toggle airspace restriction zones overlay        |
 | **Escape**                                      | Cancel the current action or deselect everything |
 | **Delete** / **Backspace**                      | Remove the selected waypoint, POI, or obstacle   |

@@ -70,25 +70,25 @@ function SceneSetup({ is3D, mapStyle }: { is3D: boolean; mapStyle: string }) {
       if (!m.isStyleLoaded()) return;
       if (m.getLayer("3d-buildings")) return;
 
-      // Ensure we have a source with building data.
-      // The "composite" source in satellite styles may not include the
-      // building source-layer, so add a dedicated vector tile source.
-      let buildingSource = "composite";
-      const style = m.getStyle();
-      const compositeSource = style?.sources?.["composite"] as any;
-      const hasBuildingInComposite = compositeSource?.url?.includes(
-        "mapbox.mapbox-streets",
-      );
-      if (!hasBuildingInComposite) {
-        if (!m.getSource("mapbox-streets")) {
-          m.addSource("mapbox-streets", {
-            type: "vector",
-            url: "mapbox://mapbox.mapbox-streets-v8",
-          });
-        }
-        buildingSource = "mapbox-streets";
+      // Always use a dedicated vector source for the building data instead
+      // of trying to detect whether the style's own "composite" source
+      // happens to include it. That detection was a URL substring guess
+      // (`compositeSource.url.includes("mapbox.mapbox-streets")`), and
+      // guessing wrong meant addLayer below threw synchronously — Mapbox
+      // validates a source-layer against an already-loaded source
+      // eagerly, so a bad guess against "composite" (loaded as part of
+      // the base style) failed immediately, the layer never got added,
+      // and getLayer("3d-buildings") above meant every later retry
+      // short-circuited before trying again. mapbox-streets-v8 always has
+      // a "building" source-layer, so there's nothing left to guess.
+      if (!m.getSource("mapbox-streets")) {
+        m.addSource("mapbox-streets", {
+          type: "vector",
+          url: "mapbox://mapbox.mapbox-streets-v8",
+        });
       }
 
+      const style = m.getStyle();
       const layers = style?.layers;
       let labelLayerId: string | undefined;
       if (layers) {
@@ -103,33 +103,41 @@ function SceneSetup({ is3D, mapStyle }: { is3D: boolean; mapStyle: string }) {
         }
       }
 
-      m.addLayer(
-        {
-          id: "3d-buildings",
-          source: buildingSource,
-          "source-layer": "building",
-          filter: ["has", "height"],
-          type: "fill-extrusion",
-          minzoom: 14,
-          paint: {
-            "fill-extrusion-color": "#aaa",
-            "fill-extrusion-height": [
-              "coalesce",
-              ["get", "height"],
-              ["get", "render_height"],
-              5,
-            ],
-            "fill-extrusion-base": [
-              "coalesce",
-              ["get", "min_height"],
-              ["get", "render_min_height"],
-              0,
-            ],
-            "fill-extrusion-opacity": 0.5,
+      try {
+        m.addLayer(
+          {
+            id: "3d-buildings",
+            source: "mapbox-streets",
+            "source-layer": "building",
+            filter: ["has", "height"],
+            type: "fill-extrusion",
+            minzoom: 14,
+            paint: {
+              "fill-extrusion-color": "#aaa",
+              "fill-extrusion-height": [
+                "coalesce",
+                ["get", "height"],
+                ["get", "render_height"],
+                5,
+              ],
+              "fill-extrusion-base": [
+                "coalesce",
+                ["get", "min_height"],
+                ["get", "render_min_height"],
+                0,
+              ],
+              "fill-extrusion-opacity": 0.5,
+            },
           },
-        },
-        labelLayerId,
-      );
+          labelLayerId,
+        );
+      } catch (err) {
+        // A freshly-added source can occasionally not be ready yet on the
+        // very first styledata tick — the next styledata/style.load event
+        // retries (getLayer guard above only skips once it actually
+        // exists), so this is a log for visibility, not a dead end.
+        console.error("Failed to add 3d-buildings layer, will retry", err);
+      }
     };
 
     const m = map.getMap();

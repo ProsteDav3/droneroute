@@ -85,6 +85,7 @@ import { LoginGate } from "@/components/auth/LoginGate";
 import { AccountModal } from "@/components/auth/AccountModal";
 import { AboutDialog } from "@/components/AboutDialog";
 import { WelcomeDialog } from "@/components/WelcomeDialog";
+import { OnboardingTour } from "@/components/OnboardingTour";
 import { useMissionStore, clearMissionDraft } from "@/store/missionStore";
 import { useMeasureStore } from "@/store/measureStore";
 import { useAuthStore } from "@/store/authStore";
@@ -992,7 +993,10 @@ export default function App() {
           </div>
 
           {/* Toolbar */}
-          <div className="flex gap-1 p-2 border-b border-border">
+          <div
+            data-tour="save-toolbar"
+            className="flex gap-1 p-2 border-b border-border"
+          >
             <Button
               variant="outline"
               size="sm"
@@ -1163,7 +1167,7 @@ export default function App() {
           </div>
 
           {/* Scrollable content */}
-          <div className="flex-1 overflow-y-auto">
+          <div data-tour="sidebar-sections" className="flex-1 overflow-y-auto">
             {/* Waypoints section — brand cyan accent */}
             <div className="border-l-2 border-[#00c2ff]/70 bg-[#00c2ff]/[0.03]">
               <button
@@ -1488,7 +1492,7 @@ export default function App() {
           </div>
         </div>
       )}
-      <div className="flex-1 relative">
+      <div data-tour="map-area" className="flex-1 relative">
         {panelsHidden && (
           <Button
             variant="secondary"
@@ -1516,6 +1520,7 @@ export default function App() {
       )}
       {showAbout && <AboutDialog onClose={() => setShowAbout(false)} />}
       <WelcomeDialog />
+      <OnboardingTour />
     </div>
   );
 }

@@ -1,5 +1,13 @@
 import { useEffect } from "react";
-import { X, BookOpen, ShieldCheck, TriangleAlert, Globe } from "lucide-react";
+import {
+  X,
+  BookOpen,
+  ShieldCheck,
+  TriangleAlert,
+  Globe,
+  Compass,
+} from "lucide-react";
+import { useOnboardingStore } from "@/store/onboardingStore";
 
 interface AboutDialogProps {
   onClose: () => void;
@@ -31,6 +39,8 @@ const SHORTCUTS: { key: string; description: string }[] = [
 ];
 
 export function AboutDialog({ onClose }: AboutDialogProps) {
+  const startTour = useOnboardingStore((s) => s.start);
+
   // Close on Escape key — use capture phase so this fires before global shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -123,6 +133,16 @@ export function AboutDialog({ onClose }: AboutDialogProps) {
 
           {/* Links */}
           <div className="flex flex-col gap-2 pt-1">
+            <button
+              onClick={() => {
+                onClose();
+                startTour();
+              }}
+              className="flex items-center gap-2.5 text-sm text-muted-foreground hover:text-foreground transition-colors text-left"
+            >
+              <Compass className="h-4 w-4 shrink-0" />
+              Spustit prohlídku aplikace
+            </button>
             <a
               href="https://www.skydata.cz"
               target="_blank"

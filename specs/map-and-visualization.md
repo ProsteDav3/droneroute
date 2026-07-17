@@ -71,6 +71,7 @@ The map is the central workspace. Everything you do — placing waypoints, POIs,
 - The same address-or-coordinates search also appears inline in the orbit template panel and in the waypoint/POI settings — entering a location there both flies the map there and moves the orbit center, waypoint, or POI to that exact spot.
 - A Mapbox access token is required. Self-hosted instances must set `MAPBOX_TOKEN` in their `.env` file.
 - SkyRoute is installable as an app (Chrome/Edge: the install icon in the address bar; mobile: "Add to home screen") and its interface loads even without a network connection. A banner appears whenever the connection drops, since saving, loading missions, weather, and airspace data all still need to be online — only the app's own screens work offline, not your mission data.
+- First-time visitors see a welcome dialog with the option to start a short guided tour that spotlights the map, its toolbar, the sidebar, and the save/export buttons in turn. Skipping or finishing it only asks once — replay it anytime from the help dialog's "Spustit prohlídku aplikace" link (the CircleHelp icon next to the SkyRoute logo).
 
 ## Airspace restriction zones
 

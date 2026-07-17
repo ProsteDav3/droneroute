@@ -155,7 +155,10 @@ export function MapToolbar() {
     !templateMode;
 
   return (
-    <div className="absolute top-4 right-4 z-10 flex flex-col gap-2 min-w-[130px]">
+    <div
+      data-tour="map-toolbar"
+      className="absolute top-4 right-4 z-10 flex flex-col gap-2 min-w-[130px]"
+    >
       <Button
         variant={isAddingWaypoint ? "default" : "outline"}
         size="sm"

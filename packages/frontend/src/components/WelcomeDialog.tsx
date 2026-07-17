@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useOnboardingStore } from "@/store/onboardingStore";
 
 const STORAGE_KEY = "droneroute_welcome_dismissed";
 
 export function WelcomeDialog() {
   const [visible, setVisible] = useState(false);
+  const startTour = useOnboardingStore((s) => s.start);
 
   useEffect(() => {
     if (!localStorage.getItem(STORAGE_KEY)) {
@@ -107,9 +109,22 @@ export function WelcomeDialog() {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4">
-          <Button onClick={dismiss} className="w-full h-9 text-sm">
-            Začít
+        <div className="px-5 py-4 flex gap-2">
+          <Button
+            variant="outline"
+            onClick={dismiss}
+            className="flex-1 h-9 text-sm"
+          >
+            Přeskočit
+          </Button>
+          <Button
+            onClick={() => {
+              dismiss();
+              startTour();
+            }}
+            className="flex-1 h-9 text-sm"
+          >
+            Spustit prohlídku
           </Button>
         </div>
       </div>

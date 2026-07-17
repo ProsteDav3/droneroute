@@ -443,6 +443,26 @@ async function findExistingWaylineByName(
  * resort so the upload doesn't fail outright. Returns the wayline name it
  * was actually stored under.
  */
+/**
+ * DJI Cloud rejects wayline names containing `< > : " / | ? * . _ \` (its own
+ * validation regex is `^[^<>:"/|?*._\\]+$` — note that includes underscore
+ * and dot, not just filesystem-unsafe characters). A name that slips past
+ * upload with one of these characters still gets stored, but then breaks
+ * the *whole workspace's* wayline-library listing the next time anything
+ * tries to read it back (Pilot 2's Cloud tab and our own `listWaylines`
+ * both fail outright on the first offending entry) — so this has to reject
+ * the same characters DJI does, not just filesystem-unsafe ones.
+ */
+function sanitizeWaylineName(name: string): string {
+  return (
+    name
+      .replace(/[<>:"/\\|?*._]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 80) || "mission"
+  );
+}
+
 async function uploadOne(
   cfg: DjiCloudConfig,
   token: string,
@@ -450,8 +470,7 @@ async function uploadOne(
   name: string,
   kmz: Buffer,
 ): Promise<string> {
-  const baseName =
-    name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80) || "mission";
+  const baseName = sanitizeWaylineName(name);
 
   const first = await uploadFile(
     cfg,

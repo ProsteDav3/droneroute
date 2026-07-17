@@ -3,13 +3,18 @@ import { AlertTriangle, X, ExternalLink } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMissionStore } from "@/store/missionStore";
 import { useAirspaceStore } from "@/store/airspaceStore";
-import { getAirspaceWarnings, formatAirspaceWarningMessage } from "@/lib/geo";
+import {
+  getAirspaceWarnings,
+  formatAirspaceWarningMessage,
+  getHomeDistanceWarning,
+} from "@/lib/geo";
 import { computeBoundingBox } from "@/lib/missionBounds";
 import { api } from "@/lib/api";
 import {
   buildFlightPathSamples,
   queryElevationProfileWithRetry,
   findTerrainCollisions,
+  findMaxAltitudeViolations,
 } from "@/lib/terrain";
 
 export interface Warning {
@@ -28,6 +33,9 @@ interface WarningsPanelProps {
  * a debounced background query, not a live-dragged UI. */
 const TERRAIN_CHECK_SAMPLES_PER_SEGMENT = 6;
 const TERRAIN_CHECK_DEBOUNCE_MS = 600;
+
+/** EU Open category max altitude above ground level, meters. */
+const MAX_ALTITUDE_AGL_M = 120;
 
 interface NotamLink {
   url: string;
@@ -133,9 +141,12 @@ export function WarningsPanel({ warnings, mapRef }: WarningsPanelProps) {
     };
   }, [waypoints]);
 
-  // Terrain collision check — real ground elevation (from the map's DEM
-  // terrain, see lib/terrain.ts) vs. planned flight altitude along the
-  // path. Debounced since it fires a batch of terrain queries per change.
+  // Terrain collision + max-altitude checks — real ground elevation (from
+  // the map's DEM terrain, see lib/terrain.ts) vs. planned flight altitude
+  // along the path. Debounced since it fires a batch of terrain queries per
+  // change. Two separate elevation queries: the collision check needs
+  // sub-sampled points along each leg (a hill can rise mid-segment), while
+  // the altitude check only needs one point per waypoint.
   const [terrainWarnings, setTerrainWarnings] = useState<Warning[]>([]);
   const terrainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
@@ -153,23 +164,40 @@ export function WarningsPanel({ warnings, mapRef }: WarningsPanelProps) {
         waypoints,
         TERRAIN_CHECK_SAMPLES_PER_SEGMENT,
       );
-      queryElevationProfileWithRetry(
-        map,
-        samples.map((s) => ({ lat: s.lat, lng: s.lng })),
-      ).then((elevations) => {
+      Promise.all([
+        queryElevationProfileWithRetry(
+          map,
+          samples.map((s) => ({ lat: s.lat, lng: s.lng })),
+        ),
+        queryElevationProfileWithRetry(
+          map,
+          waypoints.map((wp) => ({ lat: wp.latitude, lng: wp.longitude })),
+        ),
+      ]).then(([segmentElevations, waypointElevations]) => {
         if (cancelled) return;
         const collisions = findTerrainCollisions(
           samples,
-          elevations,
+          segmentElevations,
           heightMode,
         );
-        setTerrainWarnings(
-          collisions.map((c) => ({
+        const altitudeViolations = findMaxAltitudeViolations(
+          waypoints,
+          waypointElevations,
+          heightMode,
+          MAX_ALTITUDE_AGL_M,
+        );
+        setTerrainWarnings([
+          ...collisions.map((c) => ({
             id: `terrain-${c.afterWaypointIndex}`,
             type: "terrain" as const,
             message: `Trasa letu je nad terénem příliš nízko za bodem WP${c.afterWaypointIndex + 1} — chybí až ${Math.round(c.shortfallM)} m výškové rezervy`,
           })),
-        );
+          ...altitudeViolations.map((v) => ({
+            id: `max-altitude-${v.waypointIndex}`,
+            type: "terrain" as const,
+            message: `Bod WP${v.waypointIndex + 1} je ${Math.round(v.excessM)} m nad limitem ${MAX_ALTITUDE_AGL_M} m AGL (kategorie Open)`,
+          })),
+        ]);
       });
     }, TERRAIN_CHECK_DEBOUNCE_MS);
 
@@ -200,14 +228,36 @@ export function WarningsPanel({ warnings, mapRef }: WarningsPanelProps) {
     };
   }, [missionId]);
 
+  // Home-distance check — pure geometry, no terrain query needed. See
+  // getHomeDistanceWarning's doc comment: DEFAULT_MAX_HOME_DISTANCE_M is a
+  // general heads-up threshold, not a certified per-aircraft C2 range.
+  const homeDistanceWarnings = useMemo((): Warning[] => {
+    const w = getHomeDistanceWarning(waypoints);
+    if (!w) return [];
+    return [
+      {
+        id: "home-distance",
+        type: "airspace" as const,
+        message: `Bod WP${w.waypointIndex + 1} je ${(w.distanceM / 1000).toFixed(1)} km od vzletového bodu — ověřte dosah spojení s dronem`,
+      },
+    ];
+  }, [waypoints]);
+
   const allWarnings = useMemo(
     () => [
       ...warnings,
       ...zoneConflictWarnings,
       ...permitWarnings,
       ...terrainWarnings,
+      ...homeDistanceWarnings,
     ],
-    [warnings, zoneConflictWarnings, permitWarnings, terrainWarnings],
+    [
+      warnings,
+      zoneConflictWarnings,
+      permitWarnings,
+      terrainWarnings,
+      homeDistanceWarnings,
+    ],
   );
 
   const visible = allWarnings.filter((w) => !dismissed.has(w.id));

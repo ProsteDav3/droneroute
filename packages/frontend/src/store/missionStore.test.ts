@@ -630,6 +630,46 @@ describe("missionStore — updateAllWaypoints", () => {
   });
 });
 
+describe("missionStore — setWaypointHeights", () => {
+  beforeEach(() => {
+    useMissionStore.getState().clearMission();
+  });
+
+  it("sets each waypoint's height individually from the given index map", () => {
+    useMissionStore.getState().appendWaypoints([
+      { ...baseWaypoint(50, 14), height: 30 },
+      { ...baseWaypoint(50.001, 14), height: 30 },
+      { ...baseWaypoint(50.002, 14), height: 30 },
+    ]);
+
+    useMissionStore.getState().setWaypointHeights({ 0: 45, 2: 60 });
+
+    const { waypoints } = useMissionStore.getState();
+    expect(waypoints[0].height).toBe(45);
+    expect(waypoints[1].height).toBe(30); // untouched — not in the map
+    expect(waypoints[2].height).toBe(60);
+  });
+
+  it("marks the mission dirty", () => {
+    useMissionStore.getState().appendWaypoints([baseWaypoint(50, 14)]);
+    useMissionStore.setState({ dirty: false });
+
+    useMissionStore.getState().setWaypointHeights({ 0: 50 });
+
+    expect(useMissionStore.getState().dirty).toBe(true);
+  });
+
+  it("is a no-op when the map is empty", () => {
+    useMissionStore
+      .getState()
+      .appendWaypoints([{ ...baseWaypoint(50, 14), height: 30 }]);
+
+    useMissionStore.getState().setWaypointHeights({});
+
+    expect(useMissionStore.getState().waypoints[0].height).toBe(30);
+  });
+});
+
 describe("missionStore — undo/redo history", () => {
   beforeEach(() => {
     useMissionStore.getState().clearMission();

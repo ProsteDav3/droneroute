@@ -5,6 +5,7 @@ import {
   queryElevationProfileWithRetry,
   buildFlightPathSamples,
   findTerrainCollisions,
+  computeTerrainFollowingHeights,
   MIN_TERRAIN_CLEARANCE_M,
 } from "./terrain";
 
@@ -217,5 +218,60 @@ describe("findTerrainCollisions", () => {
       "relativeToStartPoint",
     );
     expect(warnings).toEqual([]);
+  });
+});
+
+describe("computeTerrainFollowingHeights", () => {
+  it("is a no-op for aboveGroundLevel mode (the drone already does this live)", () => {
+    const heights = computeTerrainFollowingHeights(
+      [0, 1, 2],
+      [100, 120, 90],
+      30,
+      "aboveGroundLevel",
+    );
+    expect(heights).toEqual({});
+  });
+
+  it("computes relative-to-launch heights that track rising/falling terrain", () => {
+    // Launch ground 100m; terrain rises to 120m then drops to 90m. A
+    // constant 30m AGL means: WP0 height 30 (100+30-100), WP1 height 50
+    // (120+30-100), WP2 height 20 (90+30-100).
+    const heights = computeTerrainFollowingHeights(
+      [0, 1, 2],
+      [100, 120, 90],
+      30,
+      "relativeToStartPoint",
+    );
+    expect(heights).toEqual({ 0: 30, 1: 50, 2: 20 });
+  });
+
+  it("computes EGM96 (absolute) heights directly as ground + target AGL", () => {
+    const heights = computeTerrainFollowingHeights(
+      [0, 1],
+      [300, 320],
+      30,
+      "EGM96",
+    );
+    expect(heights).toEqual({ 0: 330, 1: 350 });
+  });
+
+  it("omits waypoints with unknown ground elevation rather than guessing", () => {
+    const heights = computeTerrainFollowingHeights(
+      [0, 1, 2],
+      [100, null, 90],
+      30,
+      "relativeToStartPoint",
+    );
+    expect(heights).toEqual({ 0: 30, 2: 20 });
+  });
+
+  it("returns nothing when the launch point's own ground elevation is unknown", () => {
+    const heights = computeTerrainFollowingHeights(
+      [0, 1],
+      [null, 120],
+      30,
+      "relativeToStartPoint",
+    );
+    expect(heights).toEqual({});
   });
 });

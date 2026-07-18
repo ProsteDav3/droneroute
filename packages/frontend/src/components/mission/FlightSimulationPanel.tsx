@@ -161,10 +161,10 @@ export function FlightSimulationPanel() {
         className="text-xs bg-transparent border border-border rounded px-1 py-0.5"
         title="Rychlost přehrávání"
       >
-        <option value={5}>0.5x</option>
-        <option value={10}>1x</option>
-        <option value={20}>2x</option>
-        <option value={40}>4x</option>
+        <option value={2.5}>0.5x</option>
+        <option value={5}>1x</option>
+        <option value={10}>2x</option>
+        <option value={20}>4x</option>
       </select>
 
       <Button

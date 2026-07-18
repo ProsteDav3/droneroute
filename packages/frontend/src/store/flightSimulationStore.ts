@@ -30,7 +30,13 @@ export const useFlightSimulationStore = create<FlightSimulationState>(
     isPlaying: false,
     frameIndex: 0,
     frameCount: 0,
-    speed: 10,
+    // Halved from the original 10: at 24 frames/leg, 10 frames/sec covered
+    // an entire waypoint-to-waypoint leg in ~2.4s regardless of its real
+    // distance, which read as reasonable in the old choppy top-down replay
+    // but felt disorienting fast once the 3D flythrough camera became
+    // smooth and continuous — smooth first-person motion reads as faster
+    // than the same nominal pace rendered in discrete jumps did.
+    speed: 5,
     cameraMode: "top",
 
     start: (frameCount) =>

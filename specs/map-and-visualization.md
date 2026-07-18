@@ -47,7 +47,7 @@ When you switch to 3D:
 ## Flight simulation
 
 - Click the **"Simulace letu"** button (bottom-right of the map, above the locate-me control, appears once your mission has 2+ waypoints) to start an animated flythrough of the flight path.
-- A scrubber bar lets you play/pause, jump to any point in the flight, and change playback speed (0.5x–4x).
+- A scrubber bar lets you play/pause, jump to any point in the flight, and change playback speed (0.5x–4x) — **1x plays back at the drone's actual real-world flight time**, using the same distance/speed/hover/turn-overhead estimate the PDF report and flight-time readout use, so a fast short leg and a slow long one take exactly the amount of real time the drone itself would, and the total playback length always matches the mission's own estimated flight duration (shown next to the scrubber) rather than an arbitrary fixed pace.
 - In top-down ("Shora") mode, a camera frustum follows the simulated drone position, showing exactly what the camera would see — including gimbal pitch — at every point along the path, not just at each waypoint.
 - On legs where a waypoint's heading is set to **point toward a POI**, the simulated camera keeps tracking that POI continuously through the leg rather than snapping between fixed angles.
 - The readout shows which leg of the mission ("WP X / Y") the simulation is currently flying.

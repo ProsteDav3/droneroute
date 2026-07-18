@@ -10,58 +10,64 @@ export type SimulationCameraMode = "top" | "flythrough";
 interface FlightSimulationState {
   isActive: boolean;
   isPlaying: boolean;
-  frameIndex: number;
-  frameCount: number;
-  /** Frames advanced per second while playing. */
+  /** Elapsed real flight time, seconds — the single source of truth for
+   * playback position. A frame index (for the scrubber, or "which frame is
+   * the top-down dot at") is derived by whichever component has the actual
+   * frame list, via `findFrameBracket` in lib/flightSimulation.ts, not
+   * stored here — frames are spaced evenly by distance within a leg, not by
+   * time, so there's no fixed frames-per-second rate to track a raw index
+   * against. */
+  playheadS: number;
+  /** Total real flight duration for the current mission, seconds — the
+   * drone's own actual estimated flight time, not an arbitrary playback
+   * length, so `1x` plays back exactly as fast as the mission would really
+   * fly. */
+  durationS: number;
+  /** Playback speed multiplier: 1 plays at the drone's real-world pace, 2
+   * twice as fast, 0.5 half as fast. */
   speed: number;
   cameraMode: SimulationCameraMode;
-  start: (frameCount: number) => void;
+  start: (durationS: number) => void;
   stop: () => void;
   togglePlay: () => void;
-  setFrameIndex: (index: number) => void;
+  setPlayheadS: (playheadS: number) => void;
   setSpeed: (speed: number) => void;
   setCameraMode: (mode: SimulationCameraMode) => void;
-  advanceFrame: () => void;
+  advancePlayhead: (deltaS: number) => void;
 }
 
 export const useFlightSimulationStore = create<FlightSimulationState>(
   (set, get) => ({
     isActive: false,
     isPlaying: false,
-    frameIndex: 0,
-    frameCount: 0,
-    // Halved from the original 10: at 24 frames/leg, 10 frames/sec covered
-    // an entire waypoint-to-waypoint leg in ~2.4s regardless of its real
-    // distance, which read as reasonable in the old choppy top-down replay
-    // but felt disorienting fast once the 3D flythrough camera became
-    // smooth and continuous — smooth first-person motion reads as faster
-    // than the same nominal pace rendered in discrete jumps did.
-    speed: 5,
+    playheadS: 0,
+    durationS: 0,
+    speed: 1,
     cameraMode: "top",
 
-    start: (frameCount) =>
+    start: (durationS) =>
       set({
         isActive: true,
-        isPlaying: frameCount > 1,
-        frameIndex: 0,
-        frameCount,
+        isPlaying: durationS > 0,
+        playheadS: 0,
+        durationS,
       }),
 
     stop: () =>
-      set({ isActive: false, isPlaying: false, frameIndex: 0, frameCount: 0 }),
+      set({ isActive: false, isPlaying: false, playheadS: 0, durationS: 0 }),
 
     togglePlay: () =>
       set((state) => {
-        if (!state.isPlaying && state.frameIndex >= state.frameCount - 1) {
+        if (!state.isPlaying && state.playheadS >= state.durationS) {
           // Replay from the start when toggling play after reaching the end.
-          return { isPlaying: true, frameIndex: 0 };
+          return { isPlaying: true, playheadS: 0 };
         }
         return { isPlaying: !state.isPlaying };
       }),
 
-    setFrameIndex: (index) =>
+    setPlayheadS: (playheadS) =>
       set((state) => ({
-        frameIndex: Math.max(0, Math.min(index, state.frameCount - 1)),
+        playheadS: Math.max(0, Math.min(playheadS, state.durationS)),
         isPlaying: false,
       })),
 
@@ -69,13 +75,13 @@ export const useFlightSimulationStore = create<FlightSimulationState>(
 
     setCameraMode: (cameraMode) => set({ cameraMode }),
 
-    advanceFrame: () => {
-      const { frameIndex, frameCount } = get();
-      const next = frameIndex + 1;
-      if (next >= frameCount) {
-        set({ frameIndex: frameCount - 1, isPlaying: false });
+    advancePlayhead: (deltaS) => {
+      const { playheadS, durationS } = get();
+      const next = playheadS + deltaS;
+      if (next >= durationS) {
+        set({ playheadS: durationS, isPlaying: false });
       } else {
-        set({ frameIndex: next });
+        set({ playheadS: next });
       }
     },
   }),

@@ -38,6 +38,7 @@ import {
   buildSimulationFrames,
   frameToWaypoint,
   interpolateHeading,
+  findFrameBracket,
   FRAMES_PER_SEGMENT,
   type SimulationFrame,
 } from "@/lib/flightSimulation";
@@ -258,17 +259,19 @@ function lerpFrame(
  * oriented by the drone's heading and gimbal pitch, instead of the default
  * fixed overhead view with just a moving dot.
  *
- * Runs its own real-time clock rather than snapping to whatever frame the
- * store's `frameIndex` happens to be on: `FlightSimulationPanel`'s own rAF
- * loop only advances that integer a handful of times a second, and both
- * teleporting the camera to each new value *and* easing/smoothing toward it
- * are wrong — the former is visibly choppy, the latter makes the camera
- * lag behind where the drone actually is. Instead, every real animation
- * frame (~60fps) this recomputes the *exact* fractional position along the
- * route for however many simulated seconds have elapsed since playback
- * last started/resumed/was scrubbed, by interpolating between the two
- * bracketing frames — always exactly on the route, never behind it, and
- * updated far more often than the store ticks for smooth motion.
+ * Runs its own real-time clock rather than snapping to whatever position the
+ * store's `playheadS` happens to be at: `FlightSimulationPanel`'s own rAF
+ * loop only advances that a handful of times a second, and both teleporting
+ * the camera to each new value *and* easing/smoothing toward it are wrong —
+ * the former is visibly choppy, the latter makes the camera lag behind
+ * where the drone actually is. Instead, every real animation frame (~60fps)
+ * this recomputes the *exact* fractional position along the route for
+ * however many simulated flight-seconds have elapsed since playback last
+ * started/resumed/was scrubbed, by interpolating between the two bracketing
+ * frames — always exactly on the route, never behind it, and updated far
+ * more often than the store ticks for smooth motion. `speed` is a
+ * real-time multiplier (1x plays back exactly as fast as the drone would
+ * actually fly the mission), not an arbitrary frame rate.
  *
  * Forces the map into 3D for the duration — pitch is clamped to 0 in 2D
  * mode, per SceneSetup above — and restores the original camera view and
@@ -286,16 +289,24 @@ function FlightSimulationCamera({
   const cameraMode = useFlightSimulationStore((s) => s.cameraMode);
   const isPlaying = useFlightSimulationStore((s) => s.isPlaying);
   const speed = useFlightSimulationStore((s) => s.speed);
-  const frameIndex = useFlightSimulationStore((s) => s.frameIndex);
+  const playheadS = useFlightSimulationStore((s) => s.playheadS);
   const waypoints = useMissionStore((s) => s.waypoints);
   const pois = useMissionStore((s) => s.pois);
+  const autoFlightSpeed = useMissionStore((s) => s.config.autoFlightSpeed);
 
   const flying = simulationActive && cameraMode === "flythrough";
 
   const frames = useMemo(
     () =>
-      flying ? buildSimulationFrames(waypoints, pois, FRAMES_PER_SEGMENT) : [],
-    [flying, waypoints, pois],
+      flying
+        ? buildSimulationFrames(
+            waypoints,
+            pois,
+            FRAMES_PER_SEGMENT,
+            autoFlightSpeed,
+          )
+        : [],
+    [flying, waypoints, pois, autoFlightSpeed],
   );
 
   const originalViewRef = useRef<{
@@ -376,40 +387,40 @@ function FlightSimulationCamera({
     };
   }, [flying, map, frames]);
 
-  // Anchors the continuous clock: a (real time, fractional frame index) pair
+  // Anchors the continuous clock: a (real time, simulated flight-time) pair
   // captured whenever playback starts/resumes, or the pilot scrubs while
   // paused — everything after that is derived purely from elapsed real time,
   // never from the store's own coarser tick.
-  const anchorRef = useRef({ wallStartMs: 0, frameStart: 0 });
+  const anchorRef = useRef({ wallStartMs: 0, playheadStartS: 0 });
   const wasPlayingRef = useRef(isPlaying);
-  const lastFrameIndexRef = useRef(frameIndex);
+  const lastPlayheadSRef = useRef(playheadS);
   useEffect(() => {
     const justStartedPlaying = isPlaying && !wasPlayingRef.current;
     const scrubbedWhilePaused =
-      !isPlaying && frameIndex !== lastFrameIndexRef.current;
+      !isPlaying && playheadS !== lastPlayheadSRef.current;
     if (justStartedPlaying || scrubbedWhilePaused) {
       anchorRef.current = {
         wallStartMs: performance.now(),
-        frameStart: frameIndex,
+        playheadStartS: playheadS,
       };
     }
     wasPlayingRef.current = isPlaying;
-    lastFrameIndexRef.current = frameIndex;
-  }, [isPlaying, frameIndex]);
+    lastPlayheadSRef.current = playheadS;
+  }, [isPlaying, playheadS]);
 
-  // isPlaying/speed/frameIndex are read fresh inside the rAF loop via refs
+  // isPlaying/speed/playheadS are read fresh inside the rAF loop via refs
   // rather than being effect dependencies — the loop below starts once when
   // flythrough begins and keeps running uninterrupted for its whole
   // duration; restarting it on every store tick (10-40x/sec) would
   // reintroduce the exact choppiness this whole design avoids.
   const isPlayingRef = useRef(isPlaying);
   const speedRef = useRef(speed);
-  const frameIndexRef = useRef(frameIndex);
+  const playheadSRef = useRef(playheadS);
   useEffect(() => {
     isPlayingRef.current = isPlaying;
     speedRef.current = speed;
-    frameIndexRef.current = frameIndex;
-  }, [isPlaying, speed, frameIndex]);
+    playheadSRef.current = playheadS;
+  }, [isPlaying, speed, playheadS]);
 
   const rafIdRef = useRef<number | null>(null);
   // Reused across every tick instead of `new FreeCameraOptions()` each
@@ -428,15 +439,12 @@ function FlightSimulationCamera({
     const camera = cameraRef.current;
 
     const tick = () => {
-      const continuous = isPlayingRef.current
-        ? anchorRef.current.frameStart +
+      const continuousS = isPlayingRef.current
+        ? anchorRef.current.playheadStartS +
           ((performance.now() - anchorRef.current.wallStartMs) / 1000) *
             speedRef.current
-        : frameIndexRef.current;
-      const clamped = Math.max(0, Math.min(continuous, frames.length - 1));
-      const lower = Math.floor(clamped);
-      const upper = Math.min(lower + 1, frames.length - 1);
-      const t = clamped - lower;
+        : playheadSRef.current;
+      const { lower, upper, t } = findFrameBracket(frames, continuousS);
       const pos = lerpFrame(frames[lower], frames[upper], t);
 
       const groundLower = groundElevationsRef.current[lower] ?? 0;
@@ -991,22 +999,38 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
   const addPoi = useMissionStore((s) => s.addPoi);
   const addObstacle = useMissionStore((s) => s.addObstacle);
   const addBuilding = useMissionStore((s) => s.addBuilding);
+  const config = useMissionStore((s) => s.config);
   const simulationActive = useFlightSimulationStore((s) => s.isActive);
   const simulationCameraMode = useFlightSimulationStore((s) => s.cameraMode);
   const flythroughActive =
     simulationActive && simulationCameraMode === "flythrough";
-  const simulationFrameIndex = useFlightSimulationStore((s) => s.frameIndex);
+  const simulationPlayheadS = useFlightSimulationStore((s) => s.playheadS);
   const simulationFrames = useMemo(
     () =>
       simulationActive
-        ? buildSimulationFrames(waypoints, pois, FRAMES_PER_SEGMENT)
+        ? buildSimulationFrames(
+            waypoints,
+            pois,
+            FRAMES_PER_SEGMENT,
+            config.autoFlightSpeed,
+          )
         : [],
-    [simulationActive, waypoints, pois],
+    [simulationActive, waypoints, pois, config.autoFlightSpeed],
   );
   const simulationFrame = simulationActive
-    ? simulationFrames[
-        Math.min(simulationFrameIndex, simulationFrames.length - 1)
-      ]
+    ? (() => {
+        if (simulationFrames.length === 0) return undefined;
+        // Nearest frame by time, rounding at the midpoint — "top" mode's
+        // marker/frustum don't need the same sub-frame interpolation
+        // precision the FPV camera does, so just picking the closer of the
+        // two bracketing frames avoids needing to synthesize a full
+        // SimulationFrame from a lerp result.
+        const { lower, upper, t } = findFrameBracket(
+          simulationFrames,
+          simulationPlayheadS,
+        );
+        return simulationFrames[t < 0.5 ? lower : upper];
+      })()
     : undefined;
   const vizPrefs = usePreferencesStore((s) => s.preferences?.visualization);
   const [mapStyle, setMapStyle] = useState(

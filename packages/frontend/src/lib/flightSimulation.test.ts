@@ -121,6 +121,47 @@ describe("buildSimulationFrames", () => {
     expect(new Set(headings.map((h) => Math.round(h))).size).toBeGreaterThan(1);
   });
 
+  it("dynamically tilts the gimbal to keep a towardPOI leg's target centered, not just interpolating the endpoint waypoints' static pitch", () => {
+    // A tall building's POI, orbited closely — the drone climbs from below
+    // the POI's height to above it over the leg, so a real "keep it
+    // centered" pitch swings from tilted-up to tilted-down, which a naive
+    // linear interpolation between two *unrelated* static waypoint angles
+    // would not reproduce.
+    const poi: PointOfInterest = {
+      id: "poi-1",
+      name: "Building",
+      latitude: 50,
+      longitude: 14.0005,
+      height: 15,
+    };
+    const from = baseWaypoint({
+      index: 0,
+      latitude: 50,
+      longitude: 14,
+      height: 5,
+      headingMode: "towardPOI",
+      poiId: "poi-1",
+      gimbalPitchAngle: 0,
+    });
+    const to = baseWaypoint({
+      index: 1,
+      latitude: 50,
+      longitude: 14,
+      height: 25,
+      headingMode: "towardPOI",
+      poiId: "poi-1",
+      gimbalPitchAngle: 0,
+    });
+    const frames = buildSimulationFrames([from, to], [poi], 5, SPEED_MPS);
+    // Below the POI's height (5m vs 15m): tilt up (positive pitch).
+    expect(frames[0].gimbalPitchAngle).toBeGreaterThan(0);
+    // Above the POI's height (25m vs 15m): tilt down (negative pitch).
+    expect(frames[frames.length - 1].gimbalPitchAngle).toBeLessThan(0);
+    // Every frame's pitch must differ from the naive 0->0 static
+    // interpolation (which would be a flat 0 the entire leg).
+    expect(frames.some((f) => Math.abs(f.gimbalPitchAngle) > 1)).toBe(true);
+  });
+
   it("gives each frame a real-flight-time timeS matching estimateWaypointArrivalTimes, non-decreasing across the mission", () => {
     const wps = [
       baseWaypoint({ index: 0, latitude: 50, longitude: 14 }),

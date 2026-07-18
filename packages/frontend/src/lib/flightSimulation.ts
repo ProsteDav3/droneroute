@@ -1,6 +1,23 @@
 import type { Waypoint, PointOfInterest } from "@droneroute/shared";
 import { bearingTo, resolveHeading } from "@/components/map/CameraFrustum";
-import { estimateWaypointArrivalTimes } from "@/lib/flightStats";
+import { estimateWaypointArrivalTimes, haversine } from "@/lib/flightStats";
+
+/** Gimbal pitch (DJI convention: 0° = level, -90° = straight down) needed to
+ * keep a point at `toHeight` centered in frame from `fromHeight`, at the
+ * given great-circle distance — the vertical counterpart to `bearingTo`'s
+ * horizontal aim. */
+function pitchTo(
+  fromLat: number,
+  fromLng: number,
+  fromHeight: number,
+  toLat: number,
+  toLng: number,
+  toHeight: number,
+): number {
+  const horizontalDistM = haversine(fromLat, fromLng, toLat, toLng);
+  const verticalDeltaM = toHeight - fromHeight;
+  return (Math.atan2(verticalDeltaM, horizontalDistM) * 180) / Math.PI;
+}
 
 /** Frames generated per waypoint-to-waypoint leg — shared by the panel that
  * builds the frame sequence and the map layer that renders the current
@@ -69,13 +86,16 @@ export function interpolateHeading(
  * between each pair of consecutive waypoints — the same "fly a straight 3D
  * line leg to leg" model used elsewhere (see lib/terrain.ts).
  *
- * Heading is handled specially rather than naively interpolated as a raw
- * number: when the leg's starting waypoint targets a POI
- * (`headingMode: "towardPOI"`), each interpolated frame recomputes its own
- * bearing to that POI (so the simulated camera keeps tracking the target
- * throughout the leg, not just snapping to face it at each waypoint).
- * Every other heading mode falls back to shortest-path interpolation
- * between the two waypoints' resolved headings.
+ * Heading AND gimbal pitch are both handled specially rather than naively
+ * interpolated as raw numbers: when the leg's starting waypoint targets a
+ * POI (`headingMode: "towardPOI"`), each interpolated frame recomputes its
+ * own bearing *and* tilt to that POI (so the simulated camera keeps the
+ * target centered in frame throughout the leg — including keeping a whole
+ * building in view during an orbit — instead of drifting off it between
+ * waypoints, which linearly interpolating a static per-waypoint gimbal
+ * angle would do). Every other heading mode falls back to shortest-path
+ * heading interpolation and linear gimbal-pitch interpolation between the
+ * two waypoints' own values.
  *
  * Each frame's `timeS` comes from `estimateWaypointArrivalTimes` — the same
  * real-world-speed estimate the PDF report and flight-stats readout use —
@@ -133,18 +153,28 @@ export function buildSimulationFrames(
       const t = j / (count - 1);
       const latitude = from.latitude + (to.latitude - from.latitude) * t;
       const longitude = from.longitude + (to.longitude - from.longitude) * t;
+      const height = from.height + (to.height - from.height) * t;
       const heading = poi
         ? bearingTo(latitude, longitude, poi.latitude, poi.longitude)
         : interpolateHeading(fromHeading, toHeading, t);
+      const gimbalPitchAngle = poi
+        ? pitchTo(
+            latitude,
+            longitude,
+            height,
+            poi.latitude,
+            poi.longitude,
+            poi.height,
+          )
+        : from.gimbalPitchAngle +
+          (to.gimbalPitchAngle - from.gimbalPitchAngle) * t;
 
       frames.push({
         latitude,
         longitude,
-        height: from.height + (to.height - from.height) * t,
+        height,
         headingAngle: heading,
-        gimbalPitchAngle:
-          from.gimbalPitchAngle +
-          (to.gimbalPitchAngle - from.gimbalPitchAngle) * t,
+        gimbalPitchAngle,
         afterWaypointIndex: i,
         timeS: legStartS + t * legDurationS,
       });

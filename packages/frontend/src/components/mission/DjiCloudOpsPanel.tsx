@@ -1,5 +1,12 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Plane, AlertTriangle } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Plane,
+  Gamepad2,
+  Box,
+  AlertTriangle,
+} from "lucide-react";
 import { useConfigStore } from "@/store/configStore";
 import {
   useDjiCloudOpsStore,
@@ -20,6 +27,21 @@ const LS_KEY = "djiCloudOpsPanelOpen";
  * omitting the field — treat that the same as not having a value at all. */
 function realValue(value: string | undefined | null): string | undefined {
   return value && value !== "undefined" ? value : undefined;
+}
+
+/** A workspace normally has both an aircraft and its remote controller (or
+ * dock) bound, and they used to share the exact same plane icon in this
+ * list — reading like two separate drones. Domain 0 is an aircraft; the
+ * rest (2 = RC, 3 = dock) are ground-side gateway devices with their own,
+ * visually distinct icon. */
+function DeviceIcon({ domain }: { domain: number | undefined }) {
+  if (domain === 2) {
+    return <Gamepad2 className="h-3 w-3 text-muted-foreground shrink-0" />;
+  }
+  if (domain === 3) {
+    return <Box className="h-3 w-3 text-muted-foreground shrink-0" />;
+  }
+  return <Plane className="h-3 w-3 text-muted-foreground shrink-0" />;
 }
 
 /** Short "před Xh/Xd" relative-time label from an ISO or DJI-formatted
@@ -209,6 +231,18 @@ export function DjiCloudOpsPanel() {
 
   if (!djiCloudEnabled) return null;
 
+  // HMS history keeps every warning any device ever reported, with no way
+  // to tell "still happening" from "resolved" — showing one for a device
+  // that isn't even connected right now is actively misleading (it reads
+  // as a live problem with equipment that's simply off), so only surface
+  // warnings for a device that's currently online.
+  const onlineDeviceSns = new Set(
+    devices.filter((d) => d.status).map((d) => d.device_sn),
+  );
+  const currentHmsMessages = hmsMessages.filter((msg) =>
+    onlineDeviceSns.has(msg.sn),
+  );
+
   const toggleExpanded = () => {
     setExpanded((prev) => {
       const next = !prev;
@@ -299,7 +333,7 @@ export function DjiCloudOpsPanel() {
                       }`}
                       title={device.status ? "Online" : "Offline"}
                     />
-                    <Plane className="h-3 w-3 text-muted-foreground shrink-0" />
+                    <DeviceIcon domain={device.domain} />
                     <span className="truncate">
                       {realValue(device.nickname) ??
                         realValue(device.device_name) ??
@@ -328,9 +362,9 @@ export function DjiCloudOpsPanel() {
               </div>
             );
           })}
-          {hmsMessages.length > 0 && (
+          {currentHmsMessages.length > 0 && (
             <div className="pt-1 space-y-1 border-t border-border/50">
-              {dedupeConsecutiveHms(hmsMessages)
+              {dedupeConsecutiveHms(currentHmsMessages)
                 .slice(0, 5)
                 .map((msg, i) => {
                   const relativeTime = formatRelativeTime(msg.create_time);

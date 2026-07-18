@@ -1,0 +1,3 @@
+### Changed
+
+- Flight simulation playback now matches the drone's actual real-world flight time instead of an arbitrary fixed pace — every leg used to take the same ~2.4s in the animation regardless of its real distance or configured speed, which made a mission with tightly-spaced waypoints (e.g. an orbit or facade scan) play back wildly faster than one with long legs, and neither matched how fast the drone would really fly. "1x" now plays back at real speed (using the same distance/speed/hover/turn-overhead estimate the PDF report and flight-time readout already use), 2x/4x/0.5x scale from that, and the scrubber shows elapsed vs. total flight time instead of an abstract frame count.

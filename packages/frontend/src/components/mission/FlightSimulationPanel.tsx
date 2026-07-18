@@ -4,8 +4,10 @@ import { useMissionStore } from "@/store/missionStore";
 import { useFlightSimulationStore } from "@/store/flightSimulationStore";
 import {
   buildSimulationFrames,
+  findFrameBracket,
   FRAMES_PER_SEGMENT,
 } from "@/lib/flightSimulation";
+import { formatFlightDuration } from "@/lib/flightStats";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -14,30 +16,37 @@ import { Button } from "@/components/ui/button";
  * launch button until the user starts a simulation; expands into a
  * scrubber + play/pause once active. The actual camera frustum for the
  * current frame is rendered by `MapView` (see `frameToWaypoint`), driven
- * off the same `frameIndex` this panel writes to `useFlightSimulationStore`.
+ * off the same `playheadS` this panel writes to `useFlightSimulationStore`.
  */
 export function FlightSimulationPanel() {
   const waypoints = useMissionStore((s) => s.waypoints);
   const pois = useMissionStore((s) => s.pois);
+  const config = useMissionStore((s) => s.config);
   const templateMode = useMissionStore((s) => s.templateMode);
   const editingTemplateGroupId = useMissionStore(
     (s) => s.editingTemplateGroupId,
   );
-  const { isActive, isPlaying, frameIndex, frameCount, speed, cameraMode } =
+  const { isActive, isPlaying, playheadS, durationS, speed, cameraMode } =
     useFlightSimulationStore();
   const {
     start,
     stop,
     togglePlay,
-    setFrameIndex,
+    setPlayheadS,
     setSpeed,
     setCameraMode,
-    advanceFrame,
+    advancePlayhead,
   } = useFlightSimulationStore.getState();
 
   const frames = useMemo(
-    () => buildSimulationFrames(waypoints, pois, FRAMES_PER_SEGMENT),
-    [waypoints, pois],
+    () =>
+      buildSimulationFrames(
+        waypoints,
+        pois,
+        FRAMES_PER_SEGMENT,
+        config.autoFlightSpeed,
+      ),
+    [waypoints, pois, config.autoFlightSpeed],
   );
 
   const rafRef = useRef<number | null>(null);
@@ -52,17 +61,20 @@ export function FlightSimulationPanel() {
       const last = lastTickRef.current;
       lastTickRef.current = now;
       const elapsedS = last === null ? 0 : (now - last) / 1000;
-      // Advance roughly `speed` frames/sec regardless of the display's
-      // actual frame rate, so playback speed doesn't depend on refresh rate.
-      const framesToAdvance = Math.max(1, Math.round(elapsedS * speed));
-      for (let i = 0; i < framesToAdvance; i++) advanceFrame();
+      // `speed` is a real-time multiplier (1 = as fast as the drone would
+      // actually fly), not a frames/sec rate — advancing continuously in
+      // simulated seconds rather than in frame-count steps means the
+      // camera glides exactly as fast as the mission's own real distances
+      // and configured speeds dictate, not at a fixed pace unrelated to
+      // either.
+      advancePlayhead(elapsedS * speed);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
-  }, [isPlaying, speed, advanceFrame]);
+  }, [isPlaying, speed, advancePlayhead]);
 
   if (waypoints.length < 2) return null;
 
@@ -75,13 +87,14 @@ export function FlightSimulationPanel() {
   if (templateMode || editingTemplateGroupId) return null;
 
   if (!isActive) {
+    const totalDurationS = frames.length ? frames[frames.length - 1].timeS : 0;
     return (
       <div className="absolute bottom-16 right-4 z-10">
         <Button
           variant="secondary"
           size="sm"
           className="gap-1.5 bg-background/95 shadow-lg"
-          onClick={() => start(frames.length)}
+          onClick={() => start(totalDurationS)}
           title="Spustit animovaný přelet trasy s náhledem záběru kamery"
         >
           <Clapperboard className="h-3.5 w-3.5" />
@@ -91,7 +104,8 @@ export function FlightSimulationPanel() {
     );
   }
 
-  const currentFrame = frames[Math.min(frameIndex, frames.length - 1)];
+  const { lower } = findFrameBracket(frames, playheadS);
+  const currentFrame = frames[lower];
   const legLabel = currentFrame
     ? `${currentFrame.afterWaypointIndex + 1} / ${waypoints.length}`
     : "";
@@ -115,15 +129,20 @@ export function FlightSimulationPanel() {
       <input
         type="range"
         min={0}
-        max={Math.max(0, frameCount - 1)}
-        value={frameIndex}
-        onChange={(e) => setFrameIndex(Number(e.target.value))}
+        max={Math.max(0, durationS)}
+        step={0.01}
+        value={playheadS}
+        onChange={(e) => setPlayheadS(Number(e.target.value))}
         className="w-48 accent-[#00c2ff]"
         title="Posun v simulaci"
       />
 
       <span className="text-xs text-muted-foreground tabular-nums w-14 text-center">
         WP {legLabel}
+      </span>
+
+      <span className="text-xs text-muted-foreground tabular-nums">
+        {formatFlightDuration(playheadS)} / {formatFlightDuration(durationS)}
       </span>
 
       <div className="flex items-center rounded-md border border-border overflow-hidden">
@@ -159,12 +178,12 @@ export function FlightSimulationPanel() {
         value={speed}
         onChange={(e) => setSpeed(Number(e.target.value))}
         className="text-xs bg-transparent border border-border rounded px-1 py-0.5"
-        title="Rychlost přehrávání"
+        title="Rychlost přehrávání (1x = skutečná rychlost letu)"
       >
-        <option value={2.5}>0.5x</option>
-        <option value={5}>1x</option>
-        <option value={10}>2x</option>
-        <option value={20}>4x</option>
+        <option value={0.5}>0.5x</option>
+        <option value={1}>1x</option>
+        <option value={2}>2x</option>
+        <option value={4}>4x</option>
       </select>
 
       <Button

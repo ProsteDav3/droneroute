@@ -80,6 +80,80 @@ export function interpolateHeading(
   return (fromDeg + delta * t + 360) % 360;
 }
 
+/** Smallest signed difference between two angles in degrees, in [-180, 180]. */
+function angleDiffDeg(aDeg: number, bDeg: number): number {
+  return ((aDeg - bDeg + 540) % 360) - 180;
+}
+
+/** Finds a POI that plausibly explains BOTH endpoints' own heading/pitch —
+ * used for legs that don't use `headingMode: "towardPOI"` at all.
+ *
+ * Templates like Orbit already aim every individual waypoint at their
+ * subject correctly: each waypoint's `headingAngle`/`gimbalPitchAngle` is
+ * precomputed once, per-waypoint, toward the target (see
+ * `generateOrbit`/`computeGimbalPitch` in lib/templates.ts) — but they save
+ * that as `headingMode: "fixed"` with the numbers baked in, not as
+ * `headingMode: "towardPOI"` with a live `poiId` reference (changing that
+ * would change what gets written to the real WPML flight file, a much
+ * bigger and riskier change than fixing the *simulation's* playback). That
+ * meant this simulation had no way to know two "fixed" waypoints were
+ * aiming at the same nearby subject, so it fell back to plain linear
+ * interpolation of the two static angles — which, for anything on a curved
+ * path around a close target (an orbit), drifts off the subject mid-leg
+ * even though both endpoints individually frame it correctly.
+ *
+ * This recovers that intent without needing template changes: if some real
+ * POI in the mission would produce (via `bearingTo`/`pitchTo`) close to the
+ * same heading and pitch this waypoint was actually given, at both ends of
+ * the leg, it's almost certainly what the waypoints were aimed at. */
+function findImpliedPoi(
+  from: Waypoint,
+  to: Waypoint,
+  pois: PointOfInterest[],
+): PointOfInterest | undefined {
+  const HEADING_TOLERANCE_DEG = 20;
+  const PITCH_TOLERANCE_DEG = 15;
+
+  return pois.find((poi) => {
+    const fromHeading = bearingTo(
+      from.latitude,
+      from.longitude,
+      poi.latitude,
+      poi.longitude,
+    );
+    const fromPitch = pitchTo(
+      from.latitude,
+      from.longitude,
+      from.height,
+      poi.latitude,
+      poi.longitude,
+      poi.height,
+    );
+    const toHeading = bearingTo(
+      to.latitude,
+      to.longitude,
+      poi.latitude,
+      poi.longitude,
+    );
+    const toPitch = pitchTo(
+      to.latitude,
+      to.longitude,
+      to.height,
+      poi.latitude,
+      poi.longitude,
+      poi.height,
+    );
+    return (
+      Math.abs(angleDiffDeg(from.headingAngle ?? 0, fromHeading)) <=
+        HEADING_TOLERANCE_DEG &&
+      Math.abs(from.gimbalPitchAngle - fromPitch) <= PITCH_TOLERANCE_DEG &&
+      Math.abs(angleDiffDeg(to.headingAngle ?? 0, toHeading)) <=
+        HEADING_TOLERANCE_DEG &&
+      Math.abs(to.gimbalPitchAngle - toPitch) <= PITCH_TOLERANCE_DEG
+    );
+  });
+}
+
 /**
  * Builds an animation-ready sequence of camera frames along the mission's
  * flight path, interpolating position, height, gimbal pitch, and heading
@@ -88,14 +162,17 @@ export function interpolateHeading(
  *
  * Heading AND gimbal pitch are both handled specially rather than naively
  * interpolated as raw numbers: when the leg's starting waypoint targets a
- * POI (`headingMode: "towardPOI"`), each interpolated frame recomputes its
- * own bearing *and* tilt to that POI (so the simulated camera keeps the
- * target centered in frame throughout the leg — including keeping a whole
- * building in view during an orbit — instead of drifting off it between
- * waypoints, which linearly interpolating a static per-waypoint gimbal
- * angle would do). Every other heading mode falls back to shortest-path
- * heading interpolation and linear gimbal-pitch interpolation between the
- * two waypoints' own values.
+ * POI (`headingMode: "towardPOI"`), or — see `findImpliedPoi` — when a
+ * `headingMode: "fixed"` leg's own precomputed static angles at both
+ * endpoints line up with some real POI (the case for templates like Orbit,
+ * which aim every waypoint correctly but bake the result into "fixed"
+ * rather than a live POI reference), each interpolated frame recomputes
+ * its own bearing *and* tilt to that POI. That keeps the target centered
+ * in frame throughout the leg — including keeping a whole building in
+ * view during an orbit — instead of drifting off it between waypoints,
+ * which linearly interpolating the two static angles would do. Every
+ * other leg falls back to shortest-path heading interpolation and linear
+ * gimbal-pitch interpolation between the two waypoints' own values.
  *
  * Each frame's `timeS` comes from `estimateWaypointArrivalTimes` — the same
  * real-world-speed estimate the PDF report and flight-stats readout use —
@@ -141,7 +218,7 @@ export function buildSimulationFrames(
     const poi =
       from.headingMode === "towardPOI" && from.poiId
         ? pois.find((p) => p.id === from.poiId)
-        : undefined;
+        : findImpliedPoi(from, to, pois);
     const legStartS = arrivalTimesS[i];
     const legDurationS = arrivalTimesS[i + 1] - legStartS;
 

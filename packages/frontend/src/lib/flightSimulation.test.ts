@@ -5,8 +5,25 @@ import {
   findFrameBracket,
   type SimulationFrame,
 } from "./flightSimulation";
-import { estimateWaypointArrivalTimes } from "@/lib/flightStats";
+import { estimateWaypointArrivalTimes, haversine } from "@/lib/flightStats";
+import { bearingTo } from "@/components/map/CameraFrustum";
 import type { Waypoint, PointOfInterest } from "@droneroute/shared";
+
+/** Mirrors flightSimulation.ts's own (unexported) pitchTo — used only to
+ * construct realistic test fixtures whose static per-waypoint angles
+ * already exactly frame a POI, the way lib/templates.ts's Orbit generator
+ * precomputes them. */
+function testPitchTo(
+  fromLat: number,
+  fromLng: number,
+  fromHeight: number,
+  toLat: number,
+  toLng: number,
+  toHeight: number,
+): number {
+  const horizontalDistM = haversine(fromLat, fromLng, toLat, toLng);
+  return (Math.atan2(toHeight - fromHeight, horizontalDistM) * 180) / Math.PI;
+}
 
 const SPEED_MPS = 5;
 
@@ -160,6 +177,122 @@ describe("buildSimulationFrames", () => {
     // Every frame's pitch must differ from the naive 0->0 static
     // interpolation (which would be a flat 0 the entire leg).
     expect(frames.some((f) => Math.abs(f.gimbalPitchAngle) > 1)).toBe(true);
+  });
+
+  it("dynamically tracks a POI on a headingMode:'fixed' orbit leg whose two waypoints' own static angles were both precomputed to frame it (the Orbit template's own pattern)", () => {
+    // Two points on a circle around the POI, each already carrying the
+    // exact heading/pitch the Orbit template itself would have baked in —
+    // this is deliberately NOT headingMode:"towardPOI", matching how
+    // lib/templates.ts's generateOrbit() actually emits waypoints.
+    const poi: PointOfInterest = {
+      id: "poi-1",
+      name: "Building",
+      latitude: 50,
+      longitude: 14,
+      height: 15,
+    };
+    const fromPos = { latitude: 50.0006, longitude: 14, height: 20 };
+    const toPos = { latitude: 50, longitude: 14.0006, height: 20 };
+    const from = baseWaypoint({
+      index: 0,
+      ...fromPos,
+      headingMode: "fixed",
+      headingAngle: bearingTo(
+        fromPos.latitude,
+        fromPos.longitude,
+        poi.latitude,
+        poi.longitude,
+      ),
+      gimbalPitchAngle: testPitchTo(
+        fromPos.latitude,
+        fromPos.longitude,
+        fromPos.height,
+        poi.latitude,
+        poi.longitude,
+        poi.height,
+      ),
+    });
+    const to = baseWaypoint({
+      index: 1,
+      ...toPos,
+      headingMode: "fixed",
+      headingAngle: bearingTo(
+        toPos.latitude,
+        toPos.longitude,
+        poi.latitude,
+        poi.longitude,
+      ),
+      gimbalPitchAngle: testPitchTo(
+        toPos.latitude,
+        toPos.longitude,
+        toPos.height,
+        poi.latitude,
+        poi.longitude,
+        poi.height,
+      ),
+    });
+    const frames = buildSimulationFrames([from, to], [poi], 9, SPEED_MPS);
+
+    // The midpoint frame's own (lat, lng) sits away from the circle (a
+    // naive straight-line chord cuts inside the arc), but its heading and
+    // pitch should still point AT the POI from wherever it actually is —
+    // not at the naive angular average of the two endpoints' values, which
+    // would be off-target for a >90° arc like this one.
+    const mid = frames[Math.floor(frames.length / 2)];
+    const expectedHeading = bearingTo(
+      mid.latitude,
+      mid.longitude,
+      poi.latitude,
+      poi.longitude,
+    );
+    const expectedPitch = testPitchTo(
+      mid.latitude,
+      mid.longitude,
+      mid.height,
+      poi.latitude,
+      poi.longitude,
+      poi.height,
+    );
+    expect(mid.headingAngle).toBeCloseTo(expectedHeading, 3);
+    expect(mid.gimbalPitchAngle).toBeCloseTo(expectedPitch, 3);
+  });
+
+  it("does NOT dynamically track a POI when the two waypoints' angles don't actually match it (an unrelated survey leg)", () => {
+    // A POI exists in the mission, but this leg's own static angles point
+    // somewhere else entirely (e.g. a nadir mapping grid) — the heuristic
+    // must not spuriously "discover" the POI just because one exists.
+    const poi: PointOfInterest = {
+      id: "poi-1",
+      name: "Unrelated",
+      latitude: 51,
+      longitude: 15,
+      height: 0,
+    };
+    const from = baseWaypoint({
+      index: 0,
+      latitude: 50,
+      longitude: 14,
+      height: 30,
+      headingMode: "fixed",
+      headingAngle: 90,
+      gimbalPitchAngle: -90,
+    });
+    const to = baseWaypoint({
+      index: 1,
+      latitude: 50,
+      longitude: 14.001,
+      height: 30,
+      headingMode: "fixed",
+      headingAngle: 90,
+      gimbalPitchAngle: -90,
+    });
+    const frames = buildSimulationFrames([from, to], [poi], 3, SPEED_MPS);
+    // Static nadir angles unchanged by position -> plain linear
+    // interpolation keeps every frame at -90, not tracking the far-away POI.
+    for (const frame of frames) {
+      expect(frame.gimbalPitchAngle).toBeCloseTo(-90, 3);
+      expect(frame.headingAngle).toBeCloseTo(90, 3);
+    }
   });
 
   it("gives each frame a real-flight-time timeS matching estimateWaypointArrivalTimes, non-decreasing across the mission", () => {

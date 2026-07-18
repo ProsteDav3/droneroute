@@ -48,10 +48,10 @@ When you switch to 3D:
 
 - Click the **"Simulace letu"** button (bottom-right of the map, above the locate-me control, appears once your mission has 2+ waypoints) to start an animated flythrough of the flight path.
 - A scrubber bar lets you play/pause, jump to any point in the flight, and change playback speed (0.5x–4x).
-- A camera frustum follows the simulated drone position, showing exactly what the camera would see — including gimbal pitch — at every point along the path, not just at each waypoint.
+- In top-down ("Shora") mode, a camera frustum follows the simulated drone position, showing exactly what the camera would see — including gimbal pitch — at every point along the path, not just at each waypoint.
 - On legs where a waypoint's heading is set to **point toward a POI**, the simulated camera keeps tracking that POI continuously through the leg rather than snapping between fixed angles.
 - The readout shows which leg of the mission ("WP X / Y") the simulation is currently flying.
-- A **"Shora" / "3D let"** toggle switches the simulation view between the original fixed top-down overview and a real first-person flythrough — the camera sits exactly at the drone's own position, altitude, heading, and gimbal pitch, updated continuously in real time so it's always precisely where the drone is along the route, never trailing behind it. Switching to 3D let temporarily forces the map into 3D mode (restored to its prior 2D/3D state and original view when the simulation ends).
+- A **"Shora" / "3D let"** toggle switches the simulation view between the original fixed top-down overview and a real first-person flythrough — the camera sits exactly at the drone's own position, altitude, heading, and gimbal pitch, updated continuously in real time so it's always precisely where the drone is along the route, never trailing behind it. Switching to 3D let temporarily forces the map into 3D mode (restored to its prior 2D/3D state and original view when the simulation ends). While flying in this mode, waypoint/POI markers and the camera frustum are hidden — the camera itself already is that viewpoint, so they'd just be redundant clutter (and fewer markers to keep repositioning every frame keeps the flight itself smoother).
 
 ## Measure tool
 

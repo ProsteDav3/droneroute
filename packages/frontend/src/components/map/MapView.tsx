@@ -376,6 +376,11 @@ function FlightSimulationCamera({
   }, [isPlaying, speed, frameIndex]);
 
   const rafIdRef = useRef<number | null>(null);
+  // Reused across every tick instead of `new FreeCameraOptions()` each
+  // time — 60 allocations/sec of camera + coordinate objects is avoidable
+  // GC pressure competing with the same frame budget the render itself
+  // needs.
+  const cameraRef = useRef(new mapboxgl.FreeCameraOptions());
 
   useEffect(() => {
     // Waits for groundReady so the very first rendered frame already has
@@ -384,6 +389,7 @@ function FlightSimulationCamera({
     // briefly underground" glitch this whole effect exists to avoid.
     if (!flying || !map || frames.length === 0 || !groundReady) return;
     const m = map.getMap();
+    const camera = cameraRef.current;
 
     const tick = () => {
       const continuous = isPlayingRef.current
@@ -401,7 +407,6 @@ function FlightSimulationCamera({
       const groundUpper = groundElevationsRef.current[upper] ?? groundLower;
       const ground = groundLower + (groundUpper - groundLower) * t;
 
-      const camera = new mapboxgl.FreeCameraOptions();
       camera.position = mapboxgl.MercatorCoordinate.fromLngLat(
         { lng: pos.lng, lat: pos.lat },
         ground + pos.height,
@@ -934,6 +939,9 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
   const addObstacle = useMissionStore((s) => s.addObstacle);
   const addBuilding = useMissionStore((s) => s.addBuilding);
   const simulationActive = useFlightSimulationStore((s) => s.isActive);
+  const simulationCameraMode = useFlightSimulationStore((s) => s.cameraMode);
+  const flythroughActive =
+    simulationActive && simulationCameraMode === "flythrough";
   const simulationFrameIndex = useFlightSimulationStore((s) => s.frameIndex);
   const simulationFrames = useMemo(
     () =>
@@ -1145,56 +1153,65 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
         {buildings.map((building) => (
           <BuildingPolygon key={building.id} building={building} is3D={is3D} />
         ))}
-        {waypoints.map((wp) => (
-          <WaypointMarker key={wp.index} waypoint={wp} is3D={is3D} />
-        ))}
-        {simulationFrame ? (
-          <>
-            <CameraFrustum
-              waypoint={frameToWaypoint(simulationFrame)}
-              pois={pois}
-              is3D={is3D}
-            />
-            <Source
-              id="flight-simulation-drone"
-              type="geojson"
-              data={{
-                type: "Feature",
-                properties: {},
-                geometry: {
-                  type: "Point",
-                  coordinates: [
-                    simulationFrame.longitude,
-                    simulationFrame.latitude,
-                  ],
-                },
-              }}
-            >
-              <Layer
-                id="flight-simulation-drone-layer"
-                type="circle"
-                paint={{
-                  "circle-radius": 6,
-                  "circle-color": "#00c2ff",
-                  "circle-stroke-width": 2,
-                  "circle-stroke-color": "#ffffff",
-                }}
+        {/* Waypoint/POI markers, the camera frustum, and the "you are
+         * here" drone dot are all planning UI for looking AT the route
+         * from outside it — during a first-person flythrough the camera
+         * itself already IS that viewpoint, so they'd just be redundant
+         * clutter in frame. Hiding them also drops however many per-item
+         * DOM markers the mission has from Mapbox's per-frame marker
+         * repositioning work, which was adding up on top of everything
+         * else competing for the same 60fps budget during playback. */}
+        {!flythroughActive &&
+          waypoints.map((wp) => (
+            <WaypointMarker key={wp.index} waypoint={wp} is3D={is3D} />
+          ))}
+        {!flythroughActive &&
+          (simulationFrame ? (
+            <>
+              <CameraFrustum
+                waypoint={frameToWaypoint(simulationFrame)}
+                pois={pois}
+                is3D={is3D}
               />
-            </Source>
-          </>
-        ) : (
-          selectedWaypointIndices.size === 1 &&
-          (() => {
-            const idx = [...selectedWaypointIndices][0];
-            const wp = waypoints.find((w) => w.index === idx);
-            return wp ? (
-              <CameraFrustum waypoint={wp} pois={pois} is3D={is3D} />
-            ) : null;
-          })()
-        )}
-        {pois.map((poi) => (
-          <PoiMarker key={poi.id} poi={poi} is3D={is3D} />
-        ))}
+              <Source
+                id="flight-simulation-drone"
+                type="geojson"
+                data={{
+                  type: "Feature",
+                  properties: {},
+                  geometry: {
+                    type: "Point",
+                    coordinates: [
+                      simulationFrame.longitude,
+                      simulationFrame.latitude,
+                    ],
+                  },
+                }}
+              >
+                <Layer
+                  id="flight-simulation-drone-layer"
+                  type="circle"
+                  paint={{
+                    "circle-radius": 6,
+                    "circle-color": "#00c2ff",
+                    "circle-stroke-width": 2,
+                    "circle-stroke-color": "#ffffff",
+                  }}
+                />
+              </Source>
+            </>
+          ) : (
+            selectedWaypointIndices.size === 1 &&
+            (() => {
+              const idx = [...selectedWaypointIndices][0];
+              const wp = waypoints.find((w) => w.index === idx);
+              return wp ? (
+                <CameraFrustum waypoint={wp} pois={pois} is3D={is3D} />
+              ) : null;
+            })()
+          ))}
+        {!flythroughActive &&
+          pois.map((poi) => <PoiMarker key={poi.id} poi={poi} is3D={is3D} />)}
 
         <DjiTelemetryMarkers />
 

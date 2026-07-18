@@ -1,0 +1,5 @@
+### Fixed
+
+- The 3D flythrough camera flew near the ground instead of at the drone's actual altitude, and looked choppy doing it. Starting a flythrough forces 3D on, which can be the very first moment the terrain data needed to convert the drone's height into a real-world camera position becomes available — querying it immediately routinely got nothing back, and the fallback (0) put the camera underground almost anywhere above true sea level, rendering as a smeared, near-ground view that also read as stutter. The elevation lookup now retries until real terrain data is ready, and the camera doesn't start moving until it has it.
+- The remote controller/dock shared the exact same aircraft icon as the aircraft itself in the DJI Cloud device list, reading as two separate drones. It now gets a distinct icon.
+- HMS warnings could show for a device that isn't currently connected at all, reading as an active problem with equipment that's simply off. Warnings are now only shown while their device is online.

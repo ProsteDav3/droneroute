@@ -41,7 +41,10 @@ import {
   FRAMES_PER_SEGMENT,
   type SimulationFrame,
 } from "@/lib/flightSimulation";
-import { queryElevationProfile, fillMissingElevations } from "@/lib/terrain";
+import {
+  queryElevationProfileWithRetry,
+  fillMissingElevations,
+} from "@/lib/terrain";
 import { MeasureToolHandler } from "./MeasureToolHandler";
 import { useMeasureStore } from "@/store/measureStore";
 import { Triangle, Building2 } from "lucide-react";
@@ -302,17 +305,39 @@ function FlightSimulationCamera({
   // (which Mapbox already treats as height-above-terrain for us) — without
   // adding ground elevation back in, the camera would sit underground
   // anywhere terrain sits above sea level.
+  //
+  // A flythrough forces 3D on right as it starts, which can be the very
+  // first moment terrain exaggeration (and DEM tiles for this exact area)
+  // become active — querying immediately then routinely got back nothing
+  // (null) for every frame, which fillMissingElevations falls back to 0
+  // for. A ground elevation of 0 anywhere above true sea level (which is
+  // most places) put the camera underground, rendering as a smeared,
+  // near-ground, seemingly "stuck at street level" view that also read as
+  // choppy since the scene was mostly solid terrain a few centimeters from
+  // the lens. Retrying gives the DEM tiles a moment to load first.
   const groundElevationsRef = useRef<number[]>([]);
+  const [groundReady, setGroundReady] = useState(false);
   useEffect(() => {
     if (!flying || !map || frames.length === 0) {
       groundElevationsRef.current = [];
+      setGroundReady(false);
       return;
     }
-    const raw = queryElevationProfile(
+    let cancelled = false;
+    setGroundReady(false);
+    void queryElevationProfileWithRetry(
       map.getMap(),
       frames.map((f) => ({ lat: f.latitude, lng: f.longitude })),
-    );
-    groundElevationsRef.current = fillMissingElevations(raw);
+      10,
+      300,
+    ).then((raw) => {
+      if (cancelled) return;
+      groundElevationsRef.current = fillMissingElevations(raw);
+      setGroundReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [flying, map, frames]);
 
   // Anchors the continuous clock: a (real time, fractional frame index) pair
@@ -353,7 +378,11 @@ function FlightSimulationCamera({
   const rafIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!flying || !map || frames.length === 0) return;
+    // Waits for groundReady so the very first rendered frame already has
+    // real ground elevation — starting immediately with the zeroed
+    // fallback (then correcting a moment later) is exactly the "camera
+    // briefly underground" glitch this whole effect exists to avoid.
+    if (!flying || !map || frames.length === 0 || !groundReady) return;
     const m = map.getMap();
 
     const tick = () => {
@@ -390,7 +419,7 @@ function FlightSimulationCamera({
       if (rafIdRef.current !== null) cancelAnimationFrame(rafIdRef.current);
       rafIdRef.current = null;
     };
-  }, [flying, map, frames]);
+  }, [flying, map, frames, groundReady]);
 
   return null;
 }

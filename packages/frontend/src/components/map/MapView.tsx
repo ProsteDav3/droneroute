@@ -64,8 +64,23 @@ interface BuildingPopupData {
 }
 
 /** Sets up 3D buildings layer and syncs 2D/3D pitch/rotation. */
-function SceneSetup({ is3D, mapStyle }: { is3D: boolean; mapStyle: string }) {
+function SceneSetup({
+  is3D,
+  mapStyle,
+  flythroughActive,
+}: {
+  is3D: boolean;
+  mapStyle: string;
+  flythroughActive: boolean;
+}) {
   const { current: map } = useMap();
+  // Read fresh inside `setup` (which only depends on [map, mapStyle], so it
+  // doesn't restart every time flythroughActive flips) so a layer created
+  // while a flythrough is already underway starts hidden immediately
+  // instead of flashing visible until the separate toggle effect below
+  // happens to run again.
+  const flythroughActiveRef = useRef(flythroughActive);
+  flythroughActiveRef.current = flythroughActive;
 
   // Buildings layer (re-added on style changes)
   useEffect(() => {
@@ -118,6 +133,9 @@ function SceneSetup({ is3D, mapStyle }: { is3D: boolean; mapStyle: string }) {
             filter: ["has", "height"],
             type: "fill-extrusion",
             minzoom: 14,
+            layout: {
+              visibility: flythroughActiveRef.current ? "none" : "visible",
+            },
             paint: {
               "fill-extrusion-color": "#aaa",
               "fill-extrusion-height": [
@@ -176,6 +194,24 @@ function SceneSetup({ is3D, mapStyle }: { is3D: boolean; mapStyle: string }) {
       }, 600);
     }
   }, [map, is3D]);
+
+  // Hides the citywide OSM 3D-buildings layer for the duration of a
+  // flythrough. It can easily be the single heaviest thing on screen in a
+  // dense area (hundreds of extruded polygons the mission has nothing to
+  // do with), and a real onboard camera obviously still shows real
+  // buildings anyway — this only hides SkyRoute's own decorative citywide
+  // extrusion, not the actual satellite/terrain imagery underneath, nor
+  // any building the mission itself cares about (BuildingPolygon stays).
+  useEffect(() => {
+    if (!map) return;
+    const m = map.getMap();
+    if (!m.getLayer("3d-buildings")) return;
+    m.setLayoutProperty(
+      "3d-buildings",
+      "visibility",
+      flythroughActive ? "none" : "visible",
+    );
+  }, [map, flythroughActive]);
 
   return null;
 }
@@ -646,7 +682,13 @@ function FitBoundsOnLoad() {
 }
 
 /** GeoJSON source + layer for the flight path polyline segments (3D with altitude) */
-function FlightPath({ is3D }: { is3D: boolean }) {
+function FlightPath({
+  is3D,
+  flythroughActive,
+}: {
+  is3D: boolean;
+  flythroughActive: boolean;
+}) {
   const waypoints = useMissionStore((s) => s.waypoints);
   const obstacles = useMissionStore((s) => s.obstacles);
   const config = useMissionStore((s) => s.config);
@@ -758,8 +800,11 @@ function FlightPath({ is3D }: { is3D: boolean }) {
 
   return (
     <>
-      {/* Ground shadow line (3D only) */}
-      {is3D && groundPathGeojson && (
+      {/* Ground shadow line (3D only) — skipped during the flythrough:
+       * a real onboard camera wouldn't render a shadow of its own path, and
+       * one less per-vertex line-z-offset expression to evaluate every
+       * animation frame while flying. */}
+      {is3D && !flythroughActive && groundPathGeojson && (
         <Source id="flight-path-ground" type="geojson" data={groundPathGeojson}>
           <Layer
             id="flight-path-ground-line"
@@ -811,8 +856,10 @@ function FlightPath({ is3D }: { is3D: boolean }) {
         />
       </Source>
 
-      {/* Vertical dashed lines from ground to waypoint altitude (3D only) */}
-      {is3D && polesGeojson && (
+      {/* Vertical dashed lines from ground to waypoint altitude (3D only,
+       * skipped during the flythrough for the same reason as the ground
+       * shadow above). */}
+      {is3D && !flythroughActive && polesGeojson && (
         <Source
           id="wp-poles"
           type="geojson"
@@ -849,7 +896,13 @@ function FlightPath({ is3D }: { is3D: boolean }) {
 }
 
 /** Dotted lines from waypoints to their referenced POI */
-function PoiPointingLines({ is3D }: { is3D: boolean }) {
+function PoiPointingLines({
+  is3D,
+  flythroughActive,
+}: {
+  is3D: boolean;
+  flythroughActive: boolean;
+}) {
   const waypoints = useMissionStore((s) => s.waypoints);
   const pois = useMissionStore((s) => s.pois);
 
@@ -882,7 +935,7 @@ function PoiPointingLines({ is3D }: { is3D: boolean }) {
     return { type: "FeatureCollection" as const, features };
   }, [waypoints, pois]);
 
-  if (geojson.features.length === 0) return null;
+  if (geojson.features.length === 0 || flythroughActive) return null;
 
   return (
     <Source id="poi-pointing-lines" type="geojson" data={geojson} lineMetrics>
@@ -1132,10 +1185,14 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
         <GeocoderControl />
         <GeolocateControl />
         <FlyToTargetHandler />
-        <SceneSetup is3D={is3D} mapStyle={mapStyle} />
+        <SceneSetup
+          is3D={is3D}
+          mapStyle={mapStyle}
+          flythroughActive={flythroughActive}
+        />
         <FlightSimulationCamera is3D={is3D} setIs3D={setIs3D} />
-        <FlightPath is3D={is3D} />
-        <PoiPointingLines is3D={is3D} />
+        <FlightPath is3D={is3D} flythroughActive={flythroughActive} />
+        <PoiPointingLines is3D={is3D} flythroughActive={flythroughActive} />
         <TemplateDrawHandler />
         <PencilDrawHandler />
         <SolarDrawHandler />

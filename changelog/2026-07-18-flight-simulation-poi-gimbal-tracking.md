@@ -1,0 +1,3 @@
+### Fixed
+
+- On a leg where the camera targets a POI (e.g. orbiting a building), the simulated gimbal pitch was only ever linearly interpolated between the two endpoint waypoints' own static angles — it didn't actually keep tilting toward the POI as the drone's position and height changed mid-leg, the way the camera's left-right aim already did. In practice this meant the simulated view could drift off the target and show mostly sky or ground partway through a leg, cutting off a building that should have stayed centered in frame. The gimbal now tracks the POI's real vertical angle continuously, the same way it already tracked the horizontal one.

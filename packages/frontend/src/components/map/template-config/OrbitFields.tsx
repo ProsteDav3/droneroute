@@ -15,6 +15,7 @@ import {
   computeAltitudeForPitch,
   computeFramedForRadius,
   computeFramedForAltitude,
+  DEFAULT_WIDE_VFOV_DEG,
   type OrbitParams,
 } from "@/lib/templates";
 import type { WideCameraFov } from "@/lib/solarCamera";
@@ -63,14 +64,12 @@ export function OrbitFields({
           onChange={(v) => {
             const radiusM = fromDisplayDistance(v, unitSystem);
             if (orbitParams.altitudeGimbalLinked) {
-              const framed = wideFov
-                ? computeFramedForRadius(
-                    radiusM,
-                    orbitParams.poiHeight,
-                    wideFov.vfovDeg,
-                    orbitParams.altitude,
-                  )
-                : null;
+              const framed = computeFramedForRadius(
+                radiusM,
+                orbitParams.poiHeight,
+                wideFov?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
+                orbitParams.altitude,
+              );
               onOrbitChange(
                 framed
                   ? {
@@ -122,14 +121,12 @@ export function OrbitFields({
           onChange={(v) => {
             const altitude = fromDisplayHeight(v, unitSystem);
             if (orbitParams.altitudeGimbalLinked) {
-              const framed = wideFov
-                ? computeFramedForAltitude(
-                    altitude,
-                    orbitParams.poiHeight,
-                    wideFov.vfovDeg,
-                    orbitParams.radiusM,
-                  )
-                : null;
+              const framed = computeFramedForAltitude(
+                altitude,
+                orbitParams.poiHeight,
+                wideFov?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
+                orbitParams.radiusM,
+              );
               onOrbitChange(
                 framed
                   ? {
@@ -170,14 +167,12 @@ export function OrbitFields({
           onChange={(v) => {
             const poiHeight = fromDisplayHeight(v, unitSystem);
             if (orbitParams.altitudeGimbalLinked) {
-              const framed = wideFov
-                ? computeFramedForRadius(
-                    orbitParams.radiusM,
-                    poiHeight,
-                    wideFov.vfovDeg,
-                    orbitParams.altitude,
-                  )
-                : null;
+              const framed = computeFramedForRadius(
+                orbitParams.radiusM,
+                poiHeight,
+                wideFov?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
+                orbitParams.altitude,
+              );
               onOrbitChange(
                 framed
                   ? {
@@ -271,7 +266,7 @@ export function OrbitFields({
           {orbitParams.altitudeGimbalLinked
             ? wideFov
               ? "Propojeno — úprava radiusu, výšky letu nebo výšky POI přepočítá zbylé hodnoty tak, aby byl celý objekt v záběru vybrané kamery."
-              : "Propojeno s výškou — změna kteréhokoliv přepočítá druhý z radiusu a výšky POI. FOV vybrané kamery není známé, přesné zarovnání na celý objekt není k dispozici."
+              : "Propojeno — úprava radiusu, výšky letu nebo výšky POI přepočítá zbylé hodnoty tak, aby byl celý objekt v záběru. FOV konkrétní kamery není známé (vyberte dron v nastavení mise pro přesnější výpočet), použit typický širokoúhlý objektiv."
             : "Uzamčeno — výška a náklon gimbalu se už vzájemně automaticky neaktualizují."}
         </div>
       </div>

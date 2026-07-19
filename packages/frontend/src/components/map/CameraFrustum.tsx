@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Source, Layer } from "react-map-gl/mapbox";
 import type { Waypoint, PointOfInterest } from "@droneroute/shared";
+import { DEFAULT_WIDE_VFOV_DEG } from "@/lib/templates";
 
 interface CameraFrustumProps {
   waypoint: Waypoint;
@@ -8,9 +9,12 @@ interface CameraFrustumProps {
   is3D: boolean;
 }
 
-/** Default camera FOV — typical DJI wide-angle lens. */
+/** Default camera FOV — typical DJI wide-angle lens. Vertical value shared
+ * with the Orbit template's own whole-object-framing fallback (see
+ * `DEFAULT_WIDE_VFOV_DEG` in lib/templates.ts) so this visualization and
+ * the framing math it's illustrating never drift apart. */
 const H_FOV_DEG = 84;
-const V_FOV_DEG = 63;
+const V_FOV_DEG = DEFAULT_WIDE_VFOV_DEG;
 /** Distance from camera to image plane in meters. */
 const PLANE_DIST = 15;
 

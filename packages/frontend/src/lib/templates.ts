@@ -398,6 +398,18 @@ const FOV_SAFETY_MARGIN = 0.5;
 /** Stay a hair under the true maximum so the solve keeps two distinct (if close) roots instead of sitting exactly on a repeated-root boundary. */
 const MAX_SPAN_SAFETY_FACTOR = 0.98;
 
+/** Vertical FOV (degrees) of a typical DJI wide-angle payload — used as the
+ * whole-object-framing target when the mission's own drone/camera model
+ * isn't known (no `payloadEnumValue` set, or one without FOV data in
+ * `WIDE_CAMERA_FOV`). Without this fallback, `OrbitFields` silently
+ * degraded to aiming at a single point instead of framing the whole target
+ * whenever no specific camera was picked — which read as "the gimbal isn't
+ * framing the whole building" even though the "keep it framed" toggle was
+ * on the whole time; this makes that framing the default regardless of
+ * whether a specific model was ever selected. Matches `CameraFrustum`'s own
+ * default FOV assumption for the same generic-camera case. */
+export const DEFAULT_WIDE_VFOV_DEG = 63;
+
 /** Maximum vertical span (radians) any altitude can achieve for a fixed radiusM — occurs at altitude = poiHeight/2. */
 function maxSpanForRadius(poiHeight: number, radiusM: number): number {
   return 2 * Math.atan(poiHeight / (2 * radiusM));

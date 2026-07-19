@@ -29,6 +29,32 @@ function realValue(value: string | undefined | null): string | undefined {
   return value && value !== "undefined" ? value : undefined;
 }
 
+/** A domain-2 (RC/gateway) device with no platform-reported nickname or
+ * device_name is, in practice, almost always a tablet/phone running the DJI
+ * Pilot 2 app as the cloud gateway rather than a dedicated RC unit — a real
+ * RC Plus/RC Pro identifies itself with a proper model name. Showing its raw
+ * serial number in that case reads as an anonymous, unidentifiable device. */
+function domainFallbackLabel(domain: number | undefined): string | undefined {
+  return domain === 2 ? "DJI Pilot 2" : undefined;
+}
+
+/** Prefers the aircraft's own physical battery reading(s) over the
+ * platform's aggregate `battery.capacity_percent` — real OSD payloads show
+ * these can diverge by several points even for a single-battery aircraft
+ * (the aggregate is a separate system-level estimate, not simply the
+ * battery's own fuel-gauge value), and the divergent aggregate is NOT what
+ * DJI Pilot 2's own flight screen displays. */
+function resolveBatteryPercent(
+  telemetry: DeviceTelemetry | undefined,
+): number | undefined {
+  if (!telemetry) return undefined;
+  if (telemetry.batteryPercents && telemetry.batteryPercents.length > 0) {
+    const sum = telemetry.batteryPercents.reduce((a, b) => a + b, 0);
+    return Math.round(sum / telemetry.batteryPercents.length);
+  }
+  return telemetry.batteryPercent;
+}
+
 /** A workspace normally has both an aircraft and its remote controller (or
  * dock) bound, and they used to share the exact same plane icon in this
  * list — reading like two separate drones. Domain 0 is an aircraft; the
@@ -124,7 +150,7 @@ function DeviceTelemetryHud({
   const signalQuality = gatewayTelemetry?.signalQuality;
 
   const batteryLabel =
-    telemetry.batteryPercents && telemetry.batteryPercents.length > 1
+    telemetry.batteryPercents && telemetry.batteryPercents.length > 0
       ? telemetry.batteryPercents.map((p) => `${p} %`).join(" / ")
       : typeof telemetry.batteryPercent === "number"
         ? `${telemetry.batteryPercent} %`
@@ -239,9 +265,27 @@ export function DjiCloudOpsPanel() {
   const onlineDeviceSns = new Set(
     devices.filter((d) => d.status).map((d) => d.device_sn),
   );
-  const currentHmsMessages = hmsMessages.filter((msg) =>
-    onlineDeviceSns.has(msg.sn),
+  // Being online isn't enough on its own: a device's HMS history still
+  // includes every warning from EVERY past connection, not just the current
+  // one (e.g. a battery-critical code from two days ago sitting right next
+  // to a fresh warning from this session). `login_time` resets each time a
+  // device reconnects to the platform, so it's a reliable boundary for "this
+  // session" — a warning that predates it is from a previous flight/power-on
+  // and reads exactly like a live problem even though it's just history.
+  const loginTimeMsByDeviceSn = new Map(
+    devices.map((d) => [
+      d.device_sn,
+      d.login_time ? new Date(d.login_time).getTime() : undefined,
+    ]),
   );
+  const currentHmsMessages = hmsMessages.filter((msg) => {
+    if (!onlineDeviceSns.has(msg.sn)) return false;
+    const loginTimeMs = loginTimeMsByDeviceSn.get(msg.sn);
+    if (!loginTimeMs || Number.isNaN(loginTimeMs)) return true;
+    const msgTimeMs = new Date(msg.create_time).getTime();
+    if (Number.isNaN(msgTimeMs)) return true;
+    return msgTimeMs >= loginTimeMs;
+  });
 
   const toggleExpanded = () => {
     setExpanded((prev) => {
@@ -283,7 +327,7 @@ export function DjiCloudOpsPanel() {
           )}
           {devices.map((device) => {
             const deviceTelemetry = telemetry[device.device_sn];
-            const battery = deviceTelemetry?.batteryPercent;
+            const battery = resolveBatteryPercent(deviceTelemetry);
             const lastSeen = formatRelativeTime(device.login_time);
             const isFocused = focusedDeviceSn === device.device_sn;
             // domain 0 = aircraft — RC/dock entries (domain 2/3) report
@@ -337,6 +381,7 @@ export function DjiCloudOpsPanel() {
                     <span className="truncate">
                       {realValue(device.nickname) ??
                         realValue(device.device_name) ??
+                        domainFallbackLabel(device.domain) ??
                         device.device_sn}
                     </span>
                     {typeof battery === "number" && (

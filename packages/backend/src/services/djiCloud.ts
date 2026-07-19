@@ -637,13 +637,16 @@ export async function getMediaFileDownloadUrl(
   return location;
 }
 
-/** One selectable video feed (a specific lens on a specific camera). `id` is
- * NOT a usable stream identifier — the platform's own reference backend
- * fills it with a fresh random UUID on every capacity report, unrelated to
- * the actual video. The real `video_id` `startLiveStream`/`stopLiveStream`
- * expect is `{droneSn}/{payloadIndex}/{videoType}-N`, assembled by the
- * frontend from the parent device's `sn`, the parent camera's `index`, and
- * this video's own `index` field. */
+/** One selectable video feed (a specific lens on a specific camera). Neither
+ * `id` nor `index` is a usable stream identifier: `id` is a fresh random
+ * UUID the platform's own reference backend fills in on every capacity
+ * report, unrelated to the actual video, and `index` is reported identically
+ * for every lens on a payload (e.g. an M4T's wide and normal entries both
+ * come back `"normal-0"`) — only `type` actually distinguishes them. The
+ * real `video_id` `startLiveStream`/`stopLiveStream` expect is
+ * `{droneSn}/{payloadIndex}/{videoType}-0` (see `VideoId.java`'s
+ * constructor), assembled by the frontend from the parent device's `sn`,
+ * the parent camera's `index`, and this video's own `type` field. */
 export interface DjiLiveVideo {
   id: string;
   index: string;
@@ -734,8 +737,10 @@ function buildHlsUrl(videoId: string): string | null {
  * Starts pushing a live feed from the given camera to this server's own
  * relay (see docker-compose's `livestream.url.rtmp` config on the DJI
  * Cloud platform side — the aircraft/RC pushes RTMP to that fixed URL, not
- * one supplied per-call). `videoId` is one of the `video_index` values
- * from `listLiveCapacity`. `POST manage/api/v1/live/streams/start`.
+ * one supplied per-call). `videoId` is the `{droneSn}/{payloadIndex}/{videoType}-0`
+ * string the frontend assembles from a `listLiveCapacity` entry — see
+ * `DjiLiveVideo`'s doc comment for why it can't just be one of the response's
+ * own fields. `POST manage/api/v1/live/streams/start`.
  */
 export async function startLiveStream(
   videoId: string,

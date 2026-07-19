@@ -4,6 +4,7 @@ import type {
   WaypointAction,
 } from "@droneroute/shared";
 import { DEFAULT_WAYPOINT } from "@droneroute/shared";
+import { distanceToPolygonBoundaryM } from "@/lib/geo";
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -132,6 +133,22 @@ export interface OrbitParams {
   poiCenter?: [number, number];
   /** Unset means no capture actions at all — matches every orbit generated before this field existed. `DEFAULT_ORBIT_PARAMS` sets "photo" for newly created orbits. */
   captureMode?: CaptureMode;
+  /**
+   * The building footprint this orbit was recommended for, if any (set by
+   * `orbitParamsForBuilding`). A real building's footprint isn't circular,
+   * so its actual distance from the flight circle varies by waypoint — much
+   * closer on the side facing a long edge than on the side facing a corner
+   * — even though every waypoint sits at the same `radiusM` from `center`.
+   * When present and `altitudeGimbalLinked` is true, `generateOrbit` uses
+   * each waypoint's own real distance to the building's nearest edge for
+   * its gimbal pitch instead of the single flat `gimbalPitchDeg`, so the
+   * whole building stays framed consistently around the entire orbit
+   * instead of only at the one bearing `radiusM` was actually sized for.
+   * Ignored when `poiCenter` is set — that path already recomputes pitch
+   * per waypoint from a real target position, which building-edge
+   * proximity would only fight with.
+   */
+  buildingVertices?: [number, number][];
 }
 
 export interface GridParams {
@@ -645,6 +662,7 @@ export function orbitParamsForBuilding(
       poiHeight: building.height,
       gimbalPitchDeg: framed.gimbalPitchDeg,
       altitude: framed.altitude,
+      buildingVertices: building.vertices,
     };
   }
   const gimbalPitchDeg = DEFAULT_ORBIT_PARAMS.gimbalPitchDeg;
@@ -659,6 +677,7 @@ export function orbitParamsForBuilding(
       building.height,
       seed.radiusM,
     ),
+    buildingVertices: building.vertices,
   };
 }
 
@@ -710,7 +729,22 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     gimbalPitchDeg,
     poiCenter,
     captureMode,
+    buildingVertices,
+    altitudeGimbalLinked,
   } = params;
+  // A building's real footprint isn't circular, so its actual distance from
+  // the flight circle varies by waypoint even though every waypoint sits at
+  // the same radiusM from center — much closer on the side facing a long
+  // edge than on the side facing a corner (radiusM is sized from the
+  // farthest corner, via computeOrbitSeedForBuilding, so it already frames
+  // that corner correctly; every other bearing was previously getting the
+  // same pitch anyway, cropping the near side). Only kicks in when framing
+  // is actually driving gimbal pitch (altitudeGimbalLinked) — an unlocked,
+  // manually-set pitch is left alone. Skipped when poiCenter is set: that
+  // path already recomputes pitch per waypoint from a real target position
+  // below, and building-edge proximity would only fight with it.
+  const useBuildingAwarePitch =
+    !poiCenter && !!buildingVertices && altitudeGimbalLinked;
   const [cLat, cLng] = center;
   // Independent camera aim point (see OrbitParams.poiCenter). Falls back to
   // the circle's own center when not set, so undefined always means "the
@@ -760,14 +794,19 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     const [lat, lng] = destinationPoint(cLat, cLng, radiusM, angleDeg);
 
     // Calculate heading angle toward the aim point (== center unless
-    // poiCenter decouples them), and — only when decoupled — the gimbal
-    // pitch needed to keep looking at poiHeight from this waypoint's actual
-    // (now-varying) distance to that point. When poiCenter is undefined,
-    // this must stay byte-identical to the original flat-pitch behavior:
-    // every waypoint on a circle is equidistant from its own center, so
-    // recomputing per-waypoint here would be redundant, not wrong — but
-    // gimbalPitchDeg itself is NOT guaranteed to equal computeGimbalPitch's
-    // output when altitudeGimbalLinked is false, so it must be used as-is.
+    // poiCenter decouples them), and the gimbal pitch. Three cases:
+    // - poiCenter set: recompute per waypoint from this waypoint's actual
+    //   (now-varying) distance to that decoupled target.
+    // - buildingVertices known and framing-linked: recompute per waypoint
+    //   from this waypoint's actual distance to the building's own nearest
+    //   edge, not the constant radiusM — see useBuildingAwarePitch above.
+    // - otherwise: the original flat-pitch behavior, byte-identical to
+    //   before either of the above existed (every waypoint on a circle is
+    //   equidistant from its own center, so recomputing per-waypoint here
+    //   would be redundant when there's no building/target geometry to
+    //   account for — and gimbalPitchDeg isn't guaranteed to equal
+    //   computeGimbalPitch's output when altitudeGimbalLinked is false, so
+    //   it must be used as-is in that case regardless).
     const headingAngle = bearing(lat, lng, aimLat, aimLng);
     // Normalize to -180..180 range expected by DJI
     const normalizedHeading =
@@ -778,7 +817,13 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
           poiHeight,
           haversine(lat, lng, aimLat, aimLng),
         )
-      : gimbalPitchDeg;
+      : useBuildingAwarePitch
+        ? computeFramingPitch(
+            altitude,
+            poiHeight,
+            distanceToPolygonBoundaryM([lat, lng], buildingVertices),
+          )
+        : gimbalPitchDeg;
 
     waypoints.push({
       ...DEFAULT_WAYPOINT,

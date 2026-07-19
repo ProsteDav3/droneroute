@@ -225,6 +225,59 @@ export function polygonArea(vertices: [number, number][]): number {
   return Math.abs(area / 2);
 }
 
+/** Shortest distance in meters from a point to a line segment, in a flat
+ * (already-projected) 2D plane. */
+function pointToSegmentDistanceM(
+  p: [number, number],
+  a: [number, number],
+  b: [number, number],
+): number {
+  const [px, py] = p;
+  const [ax, ay] = a;
+  const [bx, by] = b;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSq = dx * dx + dy * dy;
+  const t =
+    lengthSq === 0
+      ? 0
+      : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/**
+ * Shortest distance in meters from a point to a polygon's own boundary (the
+ * nearest edge, not just the nearest vertex, and not the centroid) — how
+ * close a camera actually is to a building's nearest visible face at a
+ * given orbit position, as opposed to a single radius measured from the
+ * building's center. Projects to a local flat-earth approximation centered
+ * on `point` (equirectangular, same approach as `polygonArea`) since actual
+ * great-circle geometry doesn't matter at building-footprint scale.
+ */
+export function distanceToPolygonBoundaryM(
+  point: [number, number],
+  polygon: [number, number][],
+): number {
+  if (polygon.length < 2) return Infinity;
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371000;
+  const [lat0, lng0] = point;
+  const cosLat = Math.cos(toRad(lat0));
+  const toXY = ([lat, lng]: [number, number]): [number, number] => [
+    (lng - lng0) * toRad(1) * R * cosLat,
+    (lat - lat0) * toRad(1) * R,
+  ];
+  const p = toXY(point);
+  const pts = polygon.map(toXY);
+  let minDist = Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i];
+    const b = pts[(i + 1) % pts.length];
+    minDist = Math.min(minDist, pointToSegmentDistanceM(p, a, b));
+  }
+  return minDist;
+}
+
 function toClipPolygon(vertices: [number, number][]): ClipPolygon {
   return [[...vertices, vertices[0]]];
 }

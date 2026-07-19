@@ -44,7 +44,11 @@ import {
   estimatePhotoFileSizeMB,
   estimateMissionPhotoData,
 } from "@/lib/solarCamera";
-import { haversineDistance } from "@/lib/geo";
+import {
+  haversineDistance,
+  distanceToPolygonBoundaryM,
+  offsetLatLng,
+} from "@/lib/geo";
 
 const CENTER: [number, number] = [50.06, 14.43];
 
@@ -172,6 +176,118 @@ describe("generateOrbit", () => {
     // The POI marker should sit at the aim point, not the circle's center.
     expect(result.pois[0].latitude).toBeCloseTo(poiCenter[0], 6);
     expect(result.pois[0].longitude).toBeCloseTo(poiCenter[1], 6);
+  });
+
+  describe("buildingVertices (per-waypoint framing for a non-circular footprint)", () => {
+    // An 80m (N-S) x 10m (E-W) rectangle centered on CENTER — deliberately
+    // elongated, so a single radius measured from the center is a poor
+    // stand-in for the real per-waypoint distance to the nearest edge: a
+    // waypoint due north or south sits near the short tip (close), one due
+    // east or west sits opposite the long side (far), at the same nominal
+    // orbit radius.
+    const buildingVertices: [number, number][] = [
+      offsetLatLng(CENTER[0], CENTER[1], -40, -5),
+      offsetLatLng(CENTER[0], CENTER[1], -40, 5),
+      offsetLatLng(CENTER[0], CENTER[1], 40, 5),
+      offsetLatLng(CENTER[0], CENTER[1], 40, -5),
+    ];
+
+    it("varies gimbal pitch per waypoint instead of the flat gimbalPitchDeg, when linked", () => {
+      const result = generateOrbit({
+        ...DEFAULT_ORBIT_PARAMS,
+        center: CENTER,
+        radiusM: 50,
+        numPoints: 8,
+        altitude: 20,
+        poiHeight: 25,
+        altitudeGimbalLinked: true,
+        buildingVertices,
+      } satisfies OrbitParams);
+
+      const pitches = result.waypoints.map((wp) => wp.gimbalPitchAngle);
+      expect(new Set(pitches).size).toBeGreaterThan(1);
+    });
+
+    it("a waypoint closer to the building's actual edge gets a steeper (more negative) pitch than one farther from it, at the same nominal radius", () => {
+      const result = generateOrbit({
+        ...DEFAULT_ORBIT_PARAMS,
+        center: CENTER,
+        radiusM: 50,
+        numPoints: 8,
+        altitude: 20,
+        poiHeight: 25,
+        altitudeGimbalLinked: true,
+        buildingVertices,
+      } satisfies OrbitParams);
+
+      let closest = result.waypoints[0];
+      let closestDist = Infinity;
+      let farthest = result.waypoints[0];
+      let farthestDist = -Infinity;
+      for (const wp of result.waypoints) {
+        const d = distanceToPolygonBoundaryM(
+          [wp.latitude, wp.longitude],
+          buildingVertices,
+        );
+        if (d < closestDist) {
+          closestDist = d;
+          closest = wp;
+        }
+        if (d > farthestDist) {
+          farthestDist = d;
+          farthest = wp;
+        }
+      }
+      expect(closestDist).toBeLessThan(farthestDist);
+      expect(closest.gimbalPitchAngle).toBeLessThan(farthest.gimbalPitchAngle);
+    });
+
+    it("leaves gimbal pitch flat when altitudeGimbalLinked is false — a manually unlocked pitch is not overridden by building geometry", () => {
+      const result = generateOrbit({
+        ...DEFAULT_ORBIT_PARAMS,
+        center: CENTER,
+        radiusM: 25,
+        numPoints: 8,
+        altitude: 20,
+        poiHeight: 25,
+        altitudeGimbalLinked: false,
+        gimbalPitchDeg: -12,
+        buildingVertices,
+      } satisfies OrbitParams);
+
+      expect(result.waypoints.every((wp) => wp.gimbalPitchAngle === -12)).toBe(
+        true,
+      );
+    });
+
+    it("poiCenter takes precedence over buildingVertices when both are set", () => {
+      const poiCenter = destinationPoint(CENTER[0], CENTER[1], 40, 0);
+      const result = generateOrbit({
+        ...DEFAULT_ORBIT_PARAMS,
+        center: CENTER,
+        radiusM: 25,
+        numPoints: 8,
+        altitude: 20,
+        poiHeight: 25,
+        altitudeGimbalLinked: true,
+        poiCenter,
+        buildingVertices,
+      } satisfies OrbitParams);
+
+      result.waypoints.forEach((wp) => {
+        const expected = computeGimbalPitch(
+          20,
+          25,
+          haversineDistance(
+            wp.latitude,
+            wp.longitude,
+            poiCenter[0],
+            poiCenter[1],
+          ),
+        );
+        expect(wp.gimbalPitchAngle).toBeCloseTo(expected, 3);
+      });
+    });
   });
 });
 

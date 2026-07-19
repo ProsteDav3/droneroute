@@ -362,6 +362,18 @@ function FlightSimulationCamera({
   // near-ground, seemingly "stuck at street level" view that also read as
   // choppy since the scene was mostly solid terrain a few centimeters from
   // the lens. Retrying gives the DEM tiles a moment to load first.
+  //
+  // A location the map hasn't rendered in 3D before this exact flythrough
+  // (a mission just created at a fresh address, never previously orbited)
+  // can need noticeably longer than a few retries — its DEM tiles have
+  // never been fetched at all, not just not-yet-decoded, so the original
+  // 10x300ms (3s) budget still routinely lost the race here specifically,
+  // even though it was plenty for an area already panned/zoomed into
+  // earlier in the same session. A longer, still-bounded budget costs
+  // nothing but a slightly later flythrough start (the user sees the normal
+  // map, not a broken one, while this resolves) and avoids the underground
+  // view reappearing on exactly the missions where it's most likely: brand
+  // new locations.
   const groundElevationsRef = useRef<number[]>([]);
   const [groundReady, setGroundReady] = useState(false);
   useEffect(() => {
@@ -375,7 +387,7 @@ function FlightSimulationCamera({
     void queryElevationProfileWithRetry(
       map.getMap(),
       frames.map((f) => ({ lat: f.latitude, lng: f.longitude })),
-      10,
+      25,
       300,
     ).then((raw) => {
       if (cancelled) return;

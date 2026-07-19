@@ -83,19 +83,24 @@ export function DjiLiveVideoPanel() {
       const cameraLabel =
         camera.name && camera.name !== "undefined" ? camera.name : null;
       return camera.videos_list
-        .filter((video) => camera.index && video.index)
+        .filter((video) => camera.index && video.type)
         .map((video) => ({
           // `video.id` is NOT a usable stream identifier — the platform's
           // own reference backend fills it with a fresh random UUID on
           // every capacity report (see CameraVideoServiceImpl), unrelated
-          // to the actual video. The `video_id` the start/stop endpoints
-          // actually validate against is `{droneSn}/{payloadIndex}/{videoType}-N`
-          // (see VideoId.java's constructor), which has to be assembled
-          // from `device_sn` + the camera's own `index` + the video's own
-          // `index` fields instead — sending `video.id` here is exactly
-          // why starting a feed always failed with an "Invalid parameter"
-          // error from the platform.
-          videoId: `${device.sn}/${camera.index}/${video.index}`,
+          // to the actual video. `video.index` isn't usable either, despite
+          // its name: the platform reports the SAME index (e.g. "normal-0")
+          // for every lens on a payload — an M4T's wide and normal video
+          // entries both come back with `video_index: "normal-0"`, only
+          // their `video_type` actually differs. The `video_id` the
+          // start/stop endpoints validate against is
+          // `{droneSn}/{payloadIndex}/{videoType}-0` (see VideoId.java's
+          // constructor: `videoIdArr[2].split("-")[0]` is parsed back into
+          // a VideoTypeEnum, not matched against any index), so the third
+          // segment has to be built from the video's own `type` — using
+          // `index` there silently requested whichever lens the platform's
+          // buggy index happened to name, not the one actually clicked.
+          videoId: `${device.sn}/${camera.index}/${video.type}-0`,
           label: cameraLabel
             ? `${device.name} — ${cameraLabel}${
                 camera.videos_list.length > 1 ? ` (${video.type})` : ""

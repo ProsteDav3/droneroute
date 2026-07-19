@@ -440,6 +440,14 @@ function FlightSimulationCamera({
   // GC pressure competing with the same frame budget the render itself
   // needs.
   const cameraRef = useRef(new mapboxgl.FreeCameraOptions());
+  // Written directly via textContent inside the tick loop rather than
+  // through React state — this element updates ~60x/sec, and routing that
+  // through setState/re-render would fight the same frame budget the
+  // camera update itself needs. Temporary diagnostic surface for tracking
+  // down a persistent "camera renders near the ground" bug that's survived
+  // multiple blind fixes (terrain-elevation timing, retry budget) without
+  // a way to see the actual computed numbers at the moment it happens.
+  const debugRef = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
     // Waits for groundReady so the very first rendered frame already has
@@ -462,16 +470,24 @@ function FlightSimulationCamera({
       const groundLower = groundElevationsRef.current[lower] ?? 0;
       const groundUpper = groundElevationsRef.current[upper] ?? groundLower;
       const ground = groundLower + (groundUpper - groundLower) * t;
+      const cameraAltitude = ground + pos.height;
+      const mapboxPitch = gimbalPitchToMapboxPitch(pos.gimbalPitch);
 
       camera.position = mapboxgl.MercatorCoordinate.fromLngLat(
         { lng: pos.lng, lat: pos.lat },
-        ground + pos.height,
+        cameraAltitude,
       );
-      camera.setPitchBearing(
-        gimbalPitchToMapboxPitch(pos.gimbalPitch),
-        pos.heading,
-      );
+      camera.setPitchBearing(mapboxPitch, pos.heading);
       m.setFreeCameraOptions(camera);
+
+      if (debugRef.current) {
+        debugRef.current.textContent = [
+          `t=${continuousS.toFixed(1)}s  leg ${lower}→${upper} (t=${t.toFixed(2)})`,
+          `wp height=${pos.height.toFixed(1)}m  ground(msl)=${ground.toFixed(1)}m  camera alt(msl)=${cameraAltitude.toFixed(1)}m`,
+          `gimbal(DJI)=${pos.gimbalPitch.toFixed(1)}°  mapbox pitch=${mapboxPitch.toFixed(1)}°  heading=${pos.heading.toFixed(1)}°`,
+          `groundLower=${groundLower.toFixed(1)}  groundUpper=${groundUpper.toFixed(1)}  lat=${pos.lat.toFixed(6)} lng=${pos.lng.toFixed(6)}`,
+        ].join("\n");
+      }
 
       rafIdRef.current = requestAnimationFrame(tick);
     };
@@ -482,7 +498,14 @@ function FlightSimulationCamera({
     };
   }, [flying, map, frames, groundReady]);
 
-  return null;
+  if (!flying) return null;
+
+  return (
+    <pre
+      ref={debugRef}
+      className="absolute top-14 right-3 z-20 rounded bg-black/80 px-2 py-1.5 text-[10px] leading-tight text-emerald-300 font-mono whitespace-pre pointer-events-none"
+    />
+  );
 }
 
 /**

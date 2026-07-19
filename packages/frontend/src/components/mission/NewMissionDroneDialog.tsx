@@ -23,15 +23,23 @@ interface NewMissionDroneDialogProps {
 }
 
 /**
- * Shown right when a new mission is created, before the editor opens — asks
- * which drone this specific mission will fly with instead of silently
- * inheriting the account-wide default. A mission's drone/camera selection is
- * saved with that mission alone (see `MissionConfig`) and never updates
- * retroactively if the account default changes later, so a pilot who flies
- * more than one drone model needs an explicit per-mission choice, not just
- * an account-level one — this is that choice, made once up front instead of
- * discovered later via a wrong field-of-view calculation (e.g. Orbit's
- * whole-object framing) deep in the mission.
+ * Asks which drone a mission will fly with instead of silently inheriting
+ * the account-wide default. Two callers show this, both at the same
+ * underlying moment — right before a genuinely fresh, unsaved mission gets
+ * its first real content: `RoutesPage`'s "Nová trasa" button, and
+ * `missionStore`'s `pendingTemplateModeDroneGate` (set when a template is
+ * picked directly on an empty mission, e.g. drawing an Orbit straight onto
+ * a building without ever clicking "Nová trasa" first — just as valid a way
+ * to start a mission, and just as much in need of the right camera before
+ * any field-of-view math runs).
+ *
+ * A mission's drone/camera selection is saved with that mission alone (see
+ * `MissionConfig`) and never updates retroactively if the account default
+ * changes later, so a pilot who flies more than one drone model needs an
+ * explicit per-mission choice, not just an account-level one — this is that
+ * choice, made once up front instead of discovered later via a wrong
+ * field-of-view calculation (e.g. Orbit's whole-object framing) deep in the
+ * mission.
  */
 export function NewMissionDroneDialog({
   defaultDroneKey,

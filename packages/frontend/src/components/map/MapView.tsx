@@ -19,6 +19,7 @@ import { valueToGradientColor } from "@/lib/colorScale";
 import { WaypointMarker } from "./WaypointMarker";
 import { PoiMarker } from "./PoiMarker";
 import { MapToolbar } from "./MapToolbar";
+import { NewMissionDroneDialog } from "../mission/NewMissionDroneDialog";
 import { TemplateDrawHandler } from "./TemplateDrawHandler";
 import { PencilDrawHandler } from "./PencilDrawHandler";
 import { SolarDrawHandler } from "./SolarDrawHandler";
@@ -1027,6 +1028,18 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
   const isDrawingObstacle = useMissionStore((s) => s.isDrawingObstacle);
   const isDrawingBuilding = useMissionStore((s) => s.isDrawingBuilding);
   const templateMode = useMissionStore((s) => s.templateMode);
+  const pendingTemplateModeDroneGate = useMissionStore(
+    (s) => s.pendingTemplateModeDroneGate,
+  );
+  const confirmTemplateModeDroneGate = useMissionStore(
+    (s) => s.confirmTemplateModeDroneGate,
+  );
+  const cancelTemplateModeDroneGate = useMissionStore(
+    (s) => s.cancelTemplateModeDroneGate,
+  );
+  const missionDefaults = usePreferencesStore(
+    (s) => s.preferences.missionDefaults,
+  );
   const selectedWaypointIndices = useMissionStore(
     (s) => s.selectedWaypointIndices,
   );
@@ -1492,6 +1505,14 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
       </div>
 
       <MapToolbar />
+
+      {pendingTemplateModeDroneGate && (
+        <NewMissionDroneDialog
+          defaultDroneKey={`${missionDefaults.droneEnumValue}-${missionDefaults.droneSubEnumValue}`}
+          onConfirm={confirmTemplateModeDroneGate}
+          onCancel={cancelTemplateModeDroneGate}
+        />
+      )}
     </div>
   );
 }

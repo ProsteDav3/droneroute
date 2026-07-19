@@ -472,6 +472,86 @@ describe("missionStore — pendingPresetLoad", () => {
   });
 });
 
+describe("missionStore — pendingTemplateModeDroneGate", () => {
+  const m4t = {
+    label: "DJI Matrice 4T",
+    droneEnumValue: 99,
+    droneSubEnumValue: 1,
+    payloads: [
+      {
+        label: "Matrice 4T Camera",
+        payloadEnumValue: 89,
+        payloadSubEnumValue: 0,
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    useMissionStore.getState().clearMission();
+  });
+
+  it("picking a template on a fresh, unsaved, empty mission gates instead of entering the mode directly", () => {
+    useMissionStore.getState().setTemplateMode("orbit");
+
+    expect(useMissionStore.getState().templateMode).toBeNull();
+    expect(useMissionStore.getState().pendingTemplateModeDroneGate).toBe(
+      "orbit",
+    );
+  });
+
+  it("does not gate once the mission already has content (a second template on the same mission doesn't need to re-confirm the drone)", () => {
+    useMissionStore.getState().appendWaypoints([baseWaypoint(50, 14)]);
+
+    useMissionStore.getState().setTemplateMode("orbit");
+
+    expect(useMissionStore.getState().templateMode).toBe("orbit");
+    expect(useMissionStore.getState().pendingTemplateModeDroneGate).toBeNull();
+  });
+
+  it("does not gate once the mission has been saved (has a missionId)", () => {
+    useMissionStore.getState().setMissionId("existing-mission-id");
+
+    useMissionStore.getState().setTemplateMode("grid");
+
+    expect(useMissionStore.getState().templateMode).toBe("grid");
+    expect(useMissionStore.getState().pendingTemplateModeDroneGate).toBeNull();
+  });
+
+  it("turning template mode off (null) never gates, even on a fresh empty mission", () => {
+    useMissionStore.getState().setTemplateMode("orbit");
+    useMissionStore.getState().confirmTemplateModeDroneGate(m4t);
+
+    useMissionStore.getState().setTemplateMode(null);
+
+    expect(useMissionStore.getState().templateMode).toBeNull();
+    expect(useMissionStore.getState().pendingTemplateModeDroneGate).toBeNull();
+  });
+
+  it("confirmTemplateModeDroneGate applies the chosen drone to config and enters the gated mode", () => {
+    useMissionStore.getState().setTemplateMode("orbit");
+
+    useMissionStore.getState().confirmTemplateModeDroneGate(m4t);
+
+    const state = useMissionStore.getState();
+    expect(state.templateMode).toBe("orbit");
+    expect(state.pendingTemplateModeDroneGate).toBeNull();
+    expect(state.config.droneEnumValue).toBe(99);
+    expect(state.config.droneSubEnumValue).toBe(1);
+    expect(state.config.payloadEnumValue).toBe(89);
+    expect(state.config.payloadSubEnumValue).toBe(0);
+  });
+
+  it("cancelTemplateModeDroneGate dismisses the gate without entering any template mode", () => {
+    useMissionStore.getState().setTemplateMode("orbit");
+
+    useMissionStore.getState().cancelTemplateModeDroneGate();
+
+    const state = useMissionStore.getState();
+    expect(state.templateMode).toBeNull();
+    expect(state.pendingTemplateModeDroneGate).toBeNull();
+  });
+});
+
 describe("missionStore — mission identity and address auto-naming", () => {
   const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 

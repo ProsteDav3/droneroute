@@ -42,8 +42,10 @@ import type {
   Waypoint,
   MissionConfig,
   PointOfInterest,
+  DroneModel,
 } from "@droneroute/shared";
 import { MissionVersionHistory } from "./MissionVersionHistory";
+import { NewMissionDroneDialog } from "./NewMissionDroneDialog";
 
 /** Sentinel value for the folder filter's "all folders" option — Radix `Select.Item` requires a non-empty `value`. */
 const ALL_FOLDERS = "__all__";
@@ -90,6 +92,10 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
   const [folderFilter, setFolderFilter] = useState(ALL_FOLDERS);
   const [historyMission, setHistoryMission] = useState<SavedMission | null>(
     null,
+  );
+  const [showNewMissionDialog, setShowNewMissionDialog] = useState(false);
+  const missionDefaults = usePreferencesStore(
+    (s) => s.preferences.missionDefaults,
   );
 
   const filteredMissions = useMemo(() => {
@@ -298,7 +304,23 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
   };
 
   const handleNewRoute = () => {
+    setShowNewMissionDialog(true);
+  };
+
+  const handleConfirmNewMission = (model: DroneModel) => {
     useMissionStore.getState().clearMission();
+    // The drone/camera choice is saved with this mission specifically — the
+    // account-wide default above only seeds a *new* mission's starting
+    // point, so a pilot flying more than one model still needs to confirm
+    // it per mission rather than being stuck with whatever the account
+    // default happened to be.
+    useMissionStore.getState().setConfig({
+      droneEnumValue: model.droneEnumValue,
+      droneSubEnumValue: model.droneSubEnumValue,
+      payloadEnumValue: model.payloads[0]?.payloadEnumValue ?? 0,
+      payloadSubEnumValue: model.payloads[0]?.payloadSubEnumValue ?? 0,
+    });
+    setShowNewMissionDialog(false);
     setCurrentPage("editor");
   };
 
@@ -722,6 +744,14 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
           onRestored={() => {
             fetchMissions();
           }}
+        />
+      )}
+
+      {showNewMissionDialog && (
+        <NewMissionDroneDialog
+          defaultDroneKey={`${missionDefaults.droneEnumValue}-${missionDefaults.droneSubEnumValue}`}
+          onConfirm={handleConfirmNewMission}
+          onCancel={() => setShowNewMissionDialog(false)}
         />
       )}
     </div>

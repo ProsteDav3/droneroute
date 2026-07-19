@@ -45,7 +45,7 @@ import type {
   DroneModel,
 } from "@droneroute/shared";
 import { MissionVersionHistory } from "./MissionVersionHistory";
-import { NewMissionDroneDialog } from "./NewMissionDroneDialog";
+import { NewMissionDroneDialog } from "../mission/NewMissionDroneDialog";
 
 /** Sentinel value for the folder filter's "all folders" option — Radix `Select.Item` requires a non-empty `value`. */
 const ALL_FOLDERS = "__all__";

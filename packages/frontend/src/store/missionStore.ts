@@ -7,6 +7,7 @@ import type {
   PointOfInterest,
   Obstacle,
   Building,
+  DroneModel,
 } from "@droneroute/shared";
 import { DEFAULT_MISSION_CONFIG, DEFAULT_WAYPOINT } from "@droneroute/shared";
 import { usePreferencesStore } from "@/store/preferencesStore";
@@ -70,6 +71,22 @@ interface MissionState {
   isAddingWaypoint: boolean;
   isAddingPoi: boolean;
   templateMode: TemplateType | null;
+  /** Set instead of `templateMode` when a template is picked on a mission
+   * that's genuinely fresh and unsaved (no waypoints/POIs/obstacles/
+   * buildings, no `missionId` yet) — a template's field-of-view-dependent
+   * math (Orbit's whole-object framing) reads the mission's own drone
+   * selection, and a mission that's never had one explicitly confirmed
+   * silently inherits whatever the account default happened to be. A
+   * dialog watches this field and asks which drone before the template
+   * actually activates, instead of generating waypoints against a possibly
+   * wrong camera and leaving them stale even after the drone is fixed
+   * afterward. `null` means no gate is pending. */
+  pendingTemplateModeDroneGate: TemplateType | null;
+  /** Applies the chosen drone to the mission config, then actually enters
+   * the gated template mode. */
+  confirmTemplateModeDroneGate: (model: DroneModel) => void;
+  /** Dismisses the gate without entering any template mode. */
+  cancelTemplateModeDroneGate: () => void;
   /** Set to pan/zoom the map to a [lat, lng], e.g. after a location search. */
   flyToTarget: [number, number] | null;
   setFlyToTarget: (target: [number, number] | null) => void;
@@ -271,6 +288,7 @@ export const useMissionStore = create<MissionState>()(
       isAddingWaypoint: true,
       isAddingPoi: false,
       templateMode: null,
+      pendingTemplateModeDroneGate: null,
       flyToTarget: null,
       setFlyToTarget: (target) => set({ flyToTarget: target }),
       pendingOrbitParams: null,
@@ -930,15 +948,70 @@ export const useMissionStore = create<MissionState>()(
         set({ drawingBuildingVertices: vertices }),
 
       setTemplateMode: (mode) =>
-        set({
-          templateMode: mode,
-          isAddingWaypoint: false,
-          isAddingPoi: false,
-          isDrawingObstacle: false,
-          isDrawingBuilding: false,
-          selectedWaypointIndices: new Set(),
-          selectedPoiId: null,
+        set((state) => {
+          // Picking a template (not turning one off) on a mission that's
+          // never had its own drone confirmed — genuinely fresh, unsaved,
+          // and still empty — gates on that choice first instead of
+          // silently generating field-of-view-dependent waypoints (Orbit's
+          // whole-object framing) against whatever the account default
+          // happened to be. `templateMode` stays null so no draw handler
+          // activates until the gate resolves; `pendingTemplateModeDroneGate`
+          // remembers which mode to actually enter once it does.
+          const isFreshUnsavedMission =
+            state.missionId === null &&
+            state.waypoints.length === 0 &&
+            state.pois.length === 0 &&
+            state.obstacles.length === 0 &&
+            state.buildings.length === 0;
+          if (mode && isFreshUnsavedMission) {
+            return {
+              templateMode: null,
+              pendingTemplateModeDroneGate: mode,
+              isAddingWaypoint: false,
+              isAddingPoi: false,
+              isDrawingObstacle: false,
+              isDrawingBuilding: false,
+              selectedWaypointIndices: new Set(),
+              selectedPoiId: null,
+            };
+          }
+          return {
+            templateMode: mode,
+            pendingTemplateModeDroneGate: null,
+            isAddingWaypoint: false,
+            isAddingPoi: false,
+            isDrawingObstacle: false,
+            isDrawingBuilding: false,
+            selectedWaypointIndices: new Set(),
+            selectedPoiId: null,
+          };
         }),
+
+      confirmTemplateModeDroneGate: (model) =>
+        set((state) => {
+          const mode = state.pendingTemplateModeDroneGate;
+          if (!mode) return {};
+          return {
+            pendingTemplateModeDroneGate: null,
+            config: {
+              ...state.config,
+              droneEnumValue: model.droneEnumValue,
+              droneSubEnumValue: model.droneSubEnumValue,
+              payloadEnumValue: model.payloads[0]?.payloadEnumValue ?? 0,
+              payloadSubEnumValue: model.payloads[0]?.payloadSubEnumValue ?? 0,
+            },
+            templateMode: mode,
+            isAddingWaypoint: false,
+            isAddingPoi: false,
+            isDrawingObstacle: false,
+            isDrawingBuilding: false,
+            selectedWaypointIndices: new Set(),
+            selectedPoiId: null,
+          };
+        }),
+
+      cancelTemplateModeDroneGate: () =>
+        set({ pendingTemplateModeDroneGate: null }),
 
       appendWaypoints: (newWps, newPois, templateGroup) => {
         // Templates (Orbit/Grid/Facade/Solar/Pencil/Corridor/Turbine) are the other way a brand

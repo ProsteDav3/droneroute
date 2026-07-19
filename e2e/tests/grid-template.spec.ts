@@ -26,8 +26,17 @@ test.describe("Grid survey template", () => {
     const waypointsHeading = page.getByText(/^Body trasy \(\d+\)$/);
     await expect(waypointsHeading).toHaveText("Body trasy (0)");
 
-    // "g" enters grid-template drawing mode, then drag out a rectangle.
+    // "g" enters grid-template drawing mode. On a genuinely fresh, unsaved
+    // mission (the case here) this first asks which drone the mission will
+    // fly with, before the draw tool actually activates — confirm it with
+    // the pre-selected default to proceed.
     await page.keyboard.press("g");
+    const createMissionButton = page.getByRole("button", {
+      name: "Vytvořit misi",
+    });
+    await createMissionButton.waitFor({ state: "visible", timeout: 10_000 });
+    await createMissionButton.click();
+
     await page.mouse.move(cx - 150, cy - 100);
     await page.mouse.down();
     await page.mouse.move(cx + 150, cy + 100, { steps: 10 });

@@ -1,0 +1,3 @@
+### Fixed
+
+- The new-mission drone picker only fired from the "Nová trasa" button, not from the far more common path of picking a template (Orbit, Grid, ...) directly on a still-empty mission — e.g. drawing an Orbit straight onto a building without ever clicking "Nová trasa" first. That path generated field-of-view-dependent waypoints (Orbit's whole-object framing) against whatever drone the account happened to default to, with no prompt. The gate now lives in `setTemplateMode` itself, so it fires the same way regardless of which template is picked or how — button, template dropdown, or keyboard shortcut — as long as the mission is still genuinely empty and unsaved.

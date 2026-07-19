@@ -734,6 +734,28 @@ function buildHlsUrl(videoId: string): string | null {
 }
 
 /**
+ * True for the platform's own reference server bug where a live-start
+ * command the aircraft genuinely accepted (its MQTT `services_reply` reports
+ * `result: 0`, success) still fails at the REST layer, because the same
+ * server crashes trying to deserialize part of that reply into its response
+ * DTO — confirmed live: the aircraft's raw reply was `{"result":0,"output":
+ * {"origin_video_id":[]}}`, and the platform's own logs show this exact
+ * Jackson error immediately afterward, on the same request. The command
+ * already reached the aircraft and it's already pushing RTMP to the relay
+ * by the time this response arrives broken — failing the whole call here
+ * would report "start failed" for a stream that's actually live. This
+ * string is specific enough (Jackson's own internal wording) that it won't
+ * false-positive on an unrelated real failure.
+ */
+function isKnownLiveStartReplyDeserializationBug(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return (
+    message.includes("Cannot deserialize value of type") &&
+    message.includes("START_OBJECT")
+  );
+}
+
+/**
  * Starts pushing a live feed from the given camera to this server's own
  * relay (see docker-compose's `livestream.url.rtmp` config on the DJI
  * Cloud platform side — the aircraft/RC pushes RTMP to that fixed URL, not
@@ -749,11 +771,15 @@ export async function startLiveStream(
   const cfg = resolveConfig(userId);
   if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
   const { token } = await login(cfg);
-  await authedPost(cfg, token, "/manage/api/v1/live/streams/start", {
-    video_id: videoId,
-    url_type: 1, // RTMP (UrlTypeEnum: 0=Agora, 1=RTMP, 2=RTSP, 3=GB28181, 4=WHIP) — see the note above about the relay's fixed push URL
-    video_quality: 0, // VideoQualityEnum.AUTO
-  });
+  try {
+    await authedPost(cfg, token, "/manage/api/v1/live/streams/start", {
+      video_id: videoId,
+      url_type: 1, // RTMP (UrlTypeEnum: 0=Agora, 1=RTMP, 2=RTSP, 3=GB28181, 4=WHIP) — see the note above about the relay's fixed push URL
+      video_quality: 0, // VideoQualityEnum.AUTO
+    });
+  } catch (err) {
+    if (!isKnownLiveStartReplyDeserializationBug(err)) throw err;
+  }
   return { hlsUrl: buildHlsUrl(videoId) };
 }
 

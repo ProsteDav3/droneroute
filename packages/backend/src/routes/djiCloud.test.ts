@@ -827,6 +827,46 @@ describe("POST /api/dji-cloud/live/start", () => {
     expect(res.body.hlsUrl).toBeNull();
   });
 
+  it("treats the platform's own known reply-deserialization crash as success, since the aircraft already accepted the command by the time it happens", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: 500,
+          message:
+            "Cannot deserialize value of type `java.lang.String` from Object value (token `JsonToken.START_OBJECT`)\n at [Source: UNKNOWN; byte offset: #UNKNOWN]",
+          data: null,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/live/start")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ videoId: "1ZNDH.../39-0-0/normal-0" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+  });
+
+  it("still fails on a genuinely unrelated platform error", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 13002, message: "No camera.", data: null }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/live/start")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ videoId: "1ZNDH.../39-0-0/normal-0" });
+
+    expect(res.status).toBe(502);
+  });
+
   it("builds an hlsUrl matching the platform's own RTMP stream-key convention when the relay is configured", async () => {
     process.env.DJI_CLOUD_LIVE_HLS_BASE_URL =
       "https://dji-cloud.skydata.cz/live-hls";

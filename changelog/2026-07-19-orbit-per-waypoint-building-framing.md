@@ -1,0 +1,3 @@
+### Fixed
+
+- Orbit's whole-object framing looked right at some waypoints and wrong at others around the same circle — a real building's footprint usually isn't circular, so its actual distance from the flight circle varies by bearing even though every waypoint sits at the same nominal radius from the center. The single gimbal pitch computed for the whole orbit was sized for the farthest corner, cropping the building everywhere the camera was actually closer to it. Orbits created from a building now compute each waypoint's gimbal pitch from that waypoint's own real distance to the building's nearest edge, so the framing stays consistent all the way around instead of only at one bearing.

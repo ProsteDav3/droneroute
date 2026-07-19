@@ -9,6 +9,7 @@ import {
   haversineDistance,
   mergeBuildingFootprints,
   polygonArea,
+  distanceToPolygonBoundaryM,
 } from "./geo";
 
 // A simple square zone around [50, 14] .. [50.1, 14.1] (lat, lng).
@@ -367,5 +368,47 @@ describe("mergeBuildingFootprints", () => {
     expect(Math.abs(mergedArea - farAwayArea) / farAwayArea).toBeLessThan(
       0.001,
     );
+  });
+});
+
+describe("distanceToPolygonBoundaryM", () => {
+  // A 40m (north-south) x 10m (east-west) rectangle centered on [50, 14] —
+  // an elongated footprint, the exact shape where a single orbit radius
+  // measured from the center under- or over-estimates the real distance to
+  // the nearest edge depending on which side you're standing on.
+  const center = 50;
+  const centerLng = 14;
+  const rectangle: [number, number][] = [
+    offsetLatLng(center, centerLng, -20, -5),
+    offsetLatLng(center, centerLng, -20, 5),
+    offsetLatLng(center, centerLng, 20, 5),
+    offsetLatLng(center, centerLng, 20, -5),
+  ];
+
+  it("returns the distance to the nearest edge, not the centroid", () => {
+    // Standing 15m due east of center: nearest edge (the long east side,
+    // 5m from center) is 10m away — not haversineDistance-to-center (15m).
+    const point = offsetLatLng(center, centerLng, 0, 20);
+    const dist = distanceToPolygonBoundaryM(point, rectangle);
+    expect(dist).toBeCloseTo(15, 0);
+  });
+
+  it("varies a lot around a constant-radius circle for an elongated footprint — exactly why a single flat radius under/overshoots depending on bearing", () => {
+    // Two points at the same 25m radius from the rectangle's center: due
+    // north sits near the short (tip) edge, only 20m out from center, so
+    // the real gap is small. Due east sits opposite the long edge, just 5m
+    // out from center, so the real gap is much bigger.
+    const eastPoint = offsetLatLng(center, centerLng, 0, 25);
+    const northPoint = offsetLatLng(center, centerLng, 25, 0);
+    const eastDist = distanceToPolygonBoundaryM(eastPoint, rectangle);
+    const northDist = distanceToPolygonBoundaryM(northPoint, rectangle);
+    expect(northDist).toBeLessThan(eastDist);
+    expect(northDist).toBeCloseTo(5, 0);
+    expect(eastDist).toBeCloseTo(20, 0);
+  });
+
+  it("returns Infinity for a degenerate (fewer than 2 vertices) polygon", () => {
+    expect(distanceToPolygonBoundaryM([50, 14], [])).toBe(Infinity);
+    expect(distanceToPolygonBoundaryM([50, 14], [[50, 14]])).toBe(Infinity);
   });
 });

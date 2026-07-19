@@ -47,6 +47,8 @@ import {
   queryElevationProfileWithRetry,
   fillMissingElevations,
 } from "@/lib/terrain";
+import { WIDE_CAMERA_FOV } from "@/lib/solarCamera";
+import { DEFAULT_WIDE_VFOV_DEG } from "@/lib/templates";
 import { MeasureToolHandler } from "./MeasureToolHandler";
 import { useMeasureStore } from "@/store/measureStore";
 import { Triangle, Building2 } from "lucide-react";
@@ -226,6 +228,10 @@ function gimbalPitchToMapboxPitch(gimbalPitchDeg: number): number {
   return Math.max(0, Math.min(180, 90 + gimbalPitchDeg));
 }
 
+/** Mapbox GL's own `Transform.fov` setter silently clamps to this — set here
+ * explicitly rather than relying on that undocumented internal behavior. */
+const MAPBOX_MAX_FOV_DEG = 60;
+
 /** Linearly interpolates between two adjacent simulation frames — since
  * every frame in `buildSimulationFrames`' own 24-per-leg output is already
  * itself a linear sample along a straight waypoint-to-waypoint leg,
@@ -294,6 +300,7 @@ function FlightSimulationCamera({
   const waypoints = useMissionStore((s) => s.waypoints);
   const pois = useMissionStore((s) => s.pois);
   const autoFlightSpeed = useMissionStore((s) => s.config.autoFlightSpeed);
+  const payloadEnumValue = useMissionStore((s) => s.config.payloadEnumValue);
 
   const flying = simulationActive && cameraMode === "flythrough";
 
@@ -315,11 +322,20 @@ function FlightSimulationCamera({
     zoom: number;
     bearing: number;
     pitch: number;
+    fov: number;
   } | null>(null);
   const wasIs3DRef = useRef(is3D);
 
   // Enter/exit: capture (or restore) the view the pilot had before starting
-  // the flythrough, and force 3D on for its duration.
+  // the flythrough, force 3D on for its duration, and match the map's own
+  // rendering field of view to whatever vertical FOV the mission's gimbal
+  // math (Orbit's whole-object framing, see lib/templates.ts) assumed —
+  // Mapbox GL's default camera FOV is a fixed ~36.87°, much narrower than a
+  // real drone's wide lens (typically 55-63°). Left unset, every framing
+  // angle computed assuming the wider lens renders through a visibly
+  // narrower one instead — cropping exactly the top/bottom margin the
+  // framing math was counting on, independent of whether the angle itself
+  // was computed correctly.
   useEffect(() => {
     if (!map) return;
     const m = map.getMap();
@@ -331,19 +347,26 @@ function FlightSimulationCamera({
         zoom: m.getZoom(),
         bearing: m.getBearing(),
         pitch: m.getPitch(),
+        fov: m.transform.fov,
       };
+      const missionVfovDeg =
+        WIDE_CAMERA_FOV[payloadEnumValue]?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG;
+      m.transform.fov = Math.min(MAPBOX_MAX_FOV_DEG, missionVfovDeg);
       if (!is3D) setIs3D(true);
     } else if (!flying && originalViewRef.current) {
       const original = originalViewRef.current;
       originalViewRef.current = null;
       if (!wasIs3DRef.current) setIs3D(false);
+      m.transform.fov = original.fov;
       // Calling easeTo (or any standard camera method) after
       // setFreeCameraOptions hands control back to the normal camera model.
       m.easeTo({ ...original, duration: 500 });
     }
-    // is3D/setIs3D deliberately excluded: this effect only cares about the
-    // flying transition, not about is3D changes for other reasons (e.g. the
-    // pilot manually toggling 2D/3D mid-flythrough).
+    // is3D/setIs3D/payloadEnumValue deliberately excluded: this effect only
+    // cares about the flying transition, not about is3D changes for other
+    // reasons (e.g. the pilot manually toggling 2D/3D mid-flythrough), and a
+    // drone changed mid-flythrough shouldn't retarget the FOV until the next
+    // flythrough starts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flying, map]);
 
@@ -486,7 +509,8 @@ function FlightSimulationCamera({
           `t=${continuousS.toFixed(1)}s  leg ${lower}→${upper} (t=${t.toFixed(2)})`,
           `wp height=${pos.height.toFixed(1)}m  ground(msl)=${ground.toFixed(1)}m  camera alt(msl)=${cameraAltitude.toFixed(1)}m`,
           `gimbal(DJI)=${pos.gimbalPitch.toFixed(1)}°  mapbox pitch=${mapboxPitch.toFixed(1)}°  heading=${pos.heading.toFixed(1)}°`,
-          `groundLower=${groundLower.toFixed(1)}  groundUpper=${groundUpper.toFixed(1)}  lat=${pos.lat.toFixed(6)} lng=${pos.lng.toFixed(6)}`,
+          `map fov=${m.transform.fov.toFixed(1)}°  groundLower=${groundLower.toFixed(1)}  groundUpper=${groundUpper.toFixed(1)}`,
+          `lat=${pos.lat.toFixed(6)} lng=${pos.lng.toFixed(6)}`,
         ].join("\n");
       }
 

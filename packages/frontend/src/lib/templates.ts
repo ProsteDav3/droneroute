@@ -613,13 +613,16 @@ export function computeOrbitSeedForBuilding(
 /**
  * Full OrbitParams recommended for orbiting a building: center/radius from
  * `computeOrbitSeedForBuilding`, POI height set to the building's real
- * height. When `vfovDeg` is given (the selected drone/payload's known wide
- * camera vertical FOV), altitude/gimbal pitch are derived so the whole
- * building fits in frame via `computeFramedForRadius`. Otherwise (unknown
- * FOV) falls back to the previous fixed -45°/`computeAltitudeForPitch`
- * heuristic. Shared by the "place a POI on a building" flow and any direct
- * "create orbit around this building" action so both compute the
- * recommendation identically.
+ * height, altitude/gimbal pitch derived so the whole building fits in frame
+ * via `computeFramedForRadius`. Uses the selected drone/payload's known wide
+ * camera vertical FOV when given; otherwise (no camera selected, or one
+ * without known FOV data) falls back to a typical wide-angle lens rather
+ * than skipping the framing math — see `DEFAULT_WIDE_VFOV_DEG`. Only when
+ * the building itself is degenerate (zero height, zero radius — nothing a
+ * FOV assumption can fix) falls back further to the older fixed
+ * -45°/`computeAltitudeForPitch` heuristic. Shared by the "place a POI on a
+ * building" flow and any direct "create orbit around this building" action
+ * so both compute the recommendation identically.
  */
 export function orbitParamsForBuilding(
   building: {
@@ -629,10 +632,11 @@ export function orbitParamsForBuilding(
   vfovDeg?: number,
 ): OrbitParams {
   const seed = computeOrbitSeedForBuilding(building.vertices);
-  const framed =
-    vfovDeg !== undefined
-      ? computeFramedForRadius(seed.radiusM, building.height, vfovDeg)
-      : null;
+  const framed = computeFramedForRadius(
+    seed.radiusM,
+    building.height,
+    vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
+  );
   if (framed) {
     return {
       ...DEFAULT_ORBIT_PARAMS,

@@ -8,6 +8,7 @@ import {
   computeFramedForAltitude,
   computeOrbitSeedForBuilding,
   orbitParamsForBuilding,
+  DEFAULT_WIDE_VFOV_DEG,
   generateSolarSurvey,
   DEFAULT_SOLAR_PARAMS,
   generateGrid,
@@ -739,7 +740,7 @@ describe("orbitParamsForBuilding", () => {
     return [c00, c10, c11, c01];
   }
 
-  it("uses the building's height as POI height, and derives center/radius/altitude/gimbal pitch consistently with computeOrbitSeedForBuilding + computeAltitudeForPitch", () => {
+  it("uses the building's height as POI height, and derives center/radius/altitude/gimbal pitch consistently with computeOrbitSeedForBuilding + computeFramedForRadius using the default wide-angle FOV", () => {
     const vertices = squareFootprint(40);
     const params = orbitParamsForBuilding({ vertices, height: 25 });
 
@@ -747,14 +748,8 @@ describe("orbitParamsForBuilding", () => {
     expect(params.center).toEqual(seed.center);
     expect(params.radiusM).toBe(seed.radiusM);
     expect(params.poiHeight).toBe(25);
-    expect(params.altitude).toBe(
-      computeAltitudeForPitch(params.gimbalPitchDeg, 25, seed.radiusM),
-    );
-    // Round-trip sanity: the stored altitude/gimbal pair should reproduce
-    // itself through computeGimbalPitch, same as any linked orbit.
-    expect(computeGimbalPitch(params.altitude, 25, seed.radiusM)).toBe(
-      params.gimbalPitchDeg,
-    );
+    const span = verticalSpanDeg(params.altitude, 25, seed.radiusM);
+    expect(span).toBeLessThanOrEqual(DEFAULT_WIDE_VFOV_DEG * 0.5 + 0.5);
   });
 
   it("produces params usable directly by generateOrbit (a full waypoint loop, not just a seed)", () => {
@@ -764,25 +759,28 @@ describe("orbitParamsForBuilding", () => {
     expect(result.waypoints.length).toBe(params.numPoints);
   });
 
-  it("with a known camera vfovDeg, derives altitude/gimbal pitch so the whole building fits in frame instead of the fixed -45° heuristic", () => {
+  it("with a known camera vfovDeg, derives altitude/gimbal pitch so the whole building fits in frame using that camera's own FOV rather than the default", () => {
     const vertices = squareFootprint(40);
     const seed = computeOrbitSeedForBuilding(vertices);
-    const vfovDeg = 56.8;
+    const vfovDeg = 26; // narrower than the default wide-angle FOV
     const params = orbitParamsForBuilding({ vertices, height: 25 }, vfovDeg);
 
     expect(params.center).toEqual(seed.center);
     expect(params.radiusM).toBe(seed.radiusM);
     expect(params.poiHeight).toBe(25);
-    // Should differ from the no-FOV fallback's fixed -45°.
-    expect(params.gimbalPitchDeg).not.toBe(-45);
     const span = verticalSpanDeg(params.altitude, 25, seed.radiusM);
     expect(span).toBeLessThanOrEqual(vfovDeg * 0.5 + 0.5);
   });
 
-  it("falls back to the fixed -45°/computeAltitudeForPitch heuristic when vfovDeg is omitted", () => {
+  it("frames using a default wide-angle FOV instead of the fixed -45°/computeAltitudeForPitch heuristic when vfovDeg is omitted (no drone/camera selected)", () => {
     const vertices = squareFootprint(40);
+    const seed = computeOrbitSeedForBuilding(vertices);
     const params = orbitParamsForBuilding({ vertices, height: 25 });
-    expect(params.gimbalPitchDeg).toBe(-45);
+
+    expect(params.gimbalPitchDeg).not.toBe(-45);
+    expect(params.altitude).not.toBe(
+      computeAltitudeForPitch(-45, 25, seed.radiusM),
+    );
   });
 });
 

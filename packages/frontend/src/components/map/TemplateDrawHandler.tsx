@@ -18,6 +18,7 @@ import {
   computeGimbalPitch,
   minStandoffForFovM,
   clampOrbitCenterForPoiClearance,
+  recomputeBuildingOrbitForArc,
   DEFAULT_ORBIT_PARAMS,
   DEFAULT_GRID_PARAMS,
   DEFAULT_FACADE_PARAMS,
@@ -726,11 +727,40 @@ export function TemplateDrawHandler() {
             orbitParams={orbitParams}
             onRotate={(newStartAngleDeg) => {
               const width = orbitParams.endAngleDeg - orbitParams.startAngleDeg;
-              setOrbitParams({
-                ...orbitParams,
-                startAngleDeg: newStartAngleDeg,
-                endAngleDeg: newStartAngleDeg + width,
-              });
+              const newEndAngleDeg = newStartAngleDeg + width;
+              // Rotating a building orbit's arc to a different side of the
+              // building can need a different standoff too (an irregular
+              // footprint isn't equally close to the circle at every
+              // bearing) — re-derive it the same way narrowing the arc's
+              // width does, see OrbitFields' applyArcChange.
+              if (
+                orbitParams.buildingVertices &&
+                orbitParams.altitudeGimbalLinked &&
+                !orbitParams.poiCenter
+              ) {
+                const reframed = recomputeBuildingOrbitForArc(
+                  orbitParams.buildingVertices,
+                  orbitParams.poiHeight,
+                  vfovDeg,
+                  newStartAngleDeg,
+                  newEndAngleDeg,
+                );
+                setOrbitParams({
+                  ...orbitParams,
+                  startAngleDeg: newStartAngleDeg,
+                  endAngleDeg: newEndAngleDeg,
+                  center: reframed.center,
+                  radiusM: reframed.radiusM,
+                  altitude: reframed.altitude,
+                  gimbalPitchDeg: reframed.gimbalPitchDeg,
+                });
+              } else {
+                setOrbitParams({
+                  ...orbitParams,
+                  startAngleDeg: newStartAngleDeg,
+                  endAngleDeg: newEndAngleDeg,
+                });
+              }
             }}
           />
           {orbitParams.poiCenter && (

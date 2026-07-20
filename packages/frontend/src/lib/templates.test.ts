@@ -8,6 +8,7 @@ import {
   computeFramedForAltitude,
   computeOrbitSeedForBuilding,
   orbitParamsForBuilding,
+  recomputeBuildingOrbitForArc,
   DEFAULT_WIDE_VFOV_DEG,
   generateSolarSurvey,
   DEFAULT_SOLAR_PARAMS,
@@ -886,6 +887,64 @@ describe("computeOrbitSeedForBuilding", () => {
       minDist = Math.min(minDist, distanceToPolygonBoundaryM(point, vertices));
     }
     expect(minDist).toBeGreaterThanOrEqual(requiredStandoffM - 1);
+  });
+
+  it("recommends a smaller radius for a partial arc facing the building's long side than for the full 360° loop", () => {
+    // Same 80x10m elongated footprint: the full-circle radius has to clear
+    // the short N/S tips (close to the circle), which a partial arc facing
+    // only the long E/W sides never actually visits.
+    const vertices: [number, number][] = [
+      offsetLatLng(CENTER[0], CENTER[1], -40, -5),
+      offsetLatLng(CENTER[0], CENTER[1], -40, 5),
+      offsetLatLng(CENTER[0], CENTER[1], 40, 5),
+      offsetLatLng(CENTER[0], CENTER[1], 40, -5),
+    ];
+    const vfovDeg = 55;
+    const height = 25;
+
+    const fullLoop = computeOrbitSeedForBuilding(vertices, height, vfovDeg);
+    // An arc centered on due east (90°), comfortably within the long side,
+    // nowhere near the narrow N/S tips at 0°/180°.
+    const partialArc = computeOrbitSeedForBuilding(
+      vertices,
+      height,
+      vfovDeg,
+      60,
+      120,
+    );
+
+    expect(partialArc.radiusM).toBeLessThan(fullLoop.radiusM);
+  });
+});
+
+describe("recomputeBuildingOrbitForArc", () => {
+  it("shrinks the radius (and re-centers altitude/pitch accordingly) when narrowing to a partial arc facing the building's long side", () => {
+    const vertices: [number, number][] = [
+      offsetLatLng(CENTER[0], CENTER[1], -40, -5),
+      offsetLatLng(CENTER[0], CENTER[1], -40, 5),
+      offsetLatLng(CENTER[0], CENTER[1], 40, 5),
+      offsetLatLng(CENTER[0], CENTER[1], 40, -5),
+    ];
+    const vfovDeg = 55;
+    const height = 25;
+
+    const fullLoop = orbitParamsForBuilding({ vertices, height }, vfovDeg);
+    const partial = recomputeBuildingOrbitForArc(
+      vertices,
+      height,
+      vfovDeg,
+      60,
+      120,
+    );
+
+    expect(partial.radiusM).toBeLessThan(fullLoop.radiusM);
+    // Center is the building's own centroid regardless of which arc is
+    // flown — narrowing the arc only affects standoff distance, not where
+    // the (unflown portion of the) circle would be centered.
+    expect(partial.center).toEqual(fullLoop.center);
+    // Altitude still stays comfortably above the roofline even at the
+    // smaller radius.
+    expect(partial.altitude).toBeGreaterThanOrEqual(height);
   });
 });
 

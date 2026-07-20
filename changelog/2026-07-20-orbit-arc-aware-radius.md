@@ -1,0 +1,3 @@
+### Fixed
+
+- A building orbit's recommended radius was always sized for a full 360° loop, even after narrowing the arc to fly only in front of the building (start/end angle, or dragging the rotation handle) because an obstacle or a neighboring structure blocked the rest. For a large or elongated building, that full-circle sizing could recommend a standoff wide enough to reach past the building's own footprint into an unrelated obstacle nearby — the drone never actually flies the far side that drove the radius up, but the radius stayed sized for it anyway. Editing the arc now re-derives the radius, altitude, and gimbal pitch for just the bearings actually flown.

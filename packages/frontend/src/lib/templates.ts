@@ -4,7 +4,7 @@ import type {
   WaypointAction,
 } from "@droneroute/shared";
 import { DEFAULT_WAYPOINT } from "@droneroute/shared";
-import { distanceToPolygonBoundaryM } from "@/lib/geo";
+import { distanceToPolygonBoundaryM, polygonCentroid } from "@/lib/geo";
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -693,14 +693,19 @@ export interface BuildingOrbitSeed {
 
 /**
  * Recommended orbit center + radius for flying around a building footprint:
- * center is the footprint's centroid, radius starts as the larger of (a) the
- * farthest vertex from that centroid plus a safety clearance, so the orbit
- * clears every corner (including non-rectangular or rotated footprints), and
- * (b) a height-based floor (see `MIN_RADIUS_TO_HEIGHT_RATIO`) so a tall,
- * narrow building still gets a comfortable standoff distance — then grows
- * further if needed so *every* bearing around the circle, not just the one
- * facing the farthest vertex, has enough real clearance from the building's
- * edge to frame it comfortably.
+ * center is the footprint's real area centroid (`polygonCentroid` — NOT a
+ * plain average of the vertices, which skews toward whichever side of the
+ * shape happens to have more vertices packed onto it, e.g. a jagged wing
+ * versus one simple straight wall — badly enough for a real, irregular
+ * building outline that the orbit's own center can end up visibly off to
+ * one side of the building instead of over it), radius starts as the larger
+ * of (a) the farthest vertex from that centroid plus a safety clearance, so
+ * the orbit clears every corner (including non-rectangular or rotated
+ * footprints), and (b) a height-based floor (see `MIN_RADIUS_TO_HEIGHT_RATIO`)
+ * so a tall, narrow building still gets a comfortable standoff distance —
+ * then grows further if needed so *every* bearing around the circle, not
+ * just the one facing the farthest vertex, has enough real clearance from
+ * the building's edge to frame it comfortably.
  *
  * A non-circular (and especially concave or multi-wing) footprint can sit
  * much closer to the flight circle at some bearings than at others even
@@ -726,11 +731,7 @@ export function computeOrbitSeedForBuilding(
   buildingHeight: number,
   vfovDeg: number = DEFAULT_WIDE_VFOV_DEG,
 ): BuildingOrbitSeed {
-  const centerLat =
-    vertices.reduce((sum, v) => sum + v[0], 0) / vertices.length;
-  const centerLng =
-    vertices.reduce((sum, v) => sum + v[1], 0) / vertices.length;
-  const center: [number, number] = [centerLat, centerLng];
+  const center = polygonCentroid(vertices);
   const maxDist = Math.max(
     ...vertices.map((v) => haversine(center[0], center[1], v[0], v[1])),
   );

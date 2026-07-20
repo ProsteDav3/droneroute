@@ -10,6 +10,7 @@ import {
   mergeBuildingFootprints,
   polygonArea,
   distanceToPolygonBoundaryM,
+  polygonCentroid,
 } from "./geo";
 
 // A simple square zone around [50, 14] .. [50.1, 14.1] (lat, lng).
@@ -410,5 +411,72 @@ describe("distanceToPolygonBoundaryM", () => {
   it("returns Infinity for a degenerate (fewer than 2 vertices) polygon", () => {
     expect(distanceToPolygonBoundaryM([50, 14], [])).toBe(Infinity);
     expect(distanceToPolygonBoundaryM([50, 14], [[50, 14]])).toBe(Infinity);
+  });
+});
+
+describe("polygonCentroid", () => {
+  const center = 50;
+  const centerLng = 14;
+
+  it("matches a plain vertex average for a regular, evenly-vertexed shape (a square)", () => {
+    const square: [number, number][] = [
+      offsetLatLng(center, centerLng, -20, -20),
+      offsetLatLng(center, centerLng, -20, 20),
+      offsetLatLng(center, centerLng, 20, 20),
+      offsetLatLng(center, centerLng, 20, -20),
+    ];
+    const centroid = polygonCentroid(square);
+    expect(centroid[0]).toBeCloseTo(center, 5);
+    expect(centroid[1]).toBeCloseTo(centerLng, 5);
+  });
+
+  it("stays near the shape's real area center even when extra vertices are packed onto one side — unlike a plain vertex average, which skews toward the vertex-dense side", () => {
+    // A 40x40m square, but the east wall is subdivided into many extra
+    // vertices (a stepped/detailed facade) while the other three walls stay
+    // as single edges — same real shape and area center, very different
+    // vertex distribution. A plain average of all vertices would be pulled
+    // noticeably east, toward where most of the vertices sit.
+    const denseEastWall: [number, number][] = [];
+    for (let i = 0; i <= 20; i++) {
+      denseEastWall.push(offsetLatLng(center, centerLng, -20 + i * 2, 20));
+    }
+    const square: [number, number][] = [
+      offsetLatLng(center, centerLng, -20, -20),
+      offsetLatLng(center, centerLng, -20, 20),
+      ...denseEastWall,
+      offsetLatLng(center, centerLng, 20, -20),
+    ];
+
+    const vertexAverageLat =
+      square.reduce((s, v) => s + v[0], 0) / square.length;
+    const vertexAverageLng =
+      square.reduce((s, v) => s + v[1], 0) / square.length;
+    const vertexAverageOffsetM = haversineDistance(
+      center,
+      centerLng,
+      vertexAverageLat,
+      vertexAverageLng,
+    );
+    const centroid = polygonCentroid(square);
+    const centroidOffsetM = haversineDistance(
+      center,
+      centerLng,
+      centroid[0],
+      centroid[1],
+    );
+
+    // The naive average is pulled measurably off the true center by the
+    // extra vertices — proving this test fixture actually distinguishes the
+    // two approaches — while the real area centroid stays much closer to it.
+    expect(vertexAverageOffsetM).toBeGreaterThan(10);
+    expect(centroidOffsetM).toBeLessThan(1);
+  });
+
+  it("falls back to a plain vertex average for a degenerate (fewer than 3 vertices) input", () => {
+    const centroid = polygonCentroid([
+      [center, centerLng],
+      offsetLatLng(center, centerLng, 0, 10),
+    ]);
+    expect(centroid[1]).toBeGreaterThan(centerLng);
   });
 });

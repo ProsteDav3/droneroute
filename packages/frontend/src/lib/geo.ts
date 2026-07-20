@@ -225,6 +225,62 @@ export function polygonArea(vertices: [number, number][]): number {
   return Math.abs(area / 2);
 }
 
+/**
+ * True area centroid of a polygon — NOT a plain average of its vertices,
+ * which is biased toward whichever side of the shape happens to have more
+ * vertices packed onto it. A real building outline commonly has far more
+ * vertices on a detailed or jagged side (bay windows, stepped walls) than on
+ * a single straight side, so a vertex average can land visibly off-center
+ * from the shape's actual bulk — badly enough, for an irregular footprint,
+ * that a circle centered there sits much closer to the building on one side
+ * than the recommended radius accounts for. Uses the standard area-weighted
+ * centroid formula on a local equirectangular projection (same approach as
+ * `polygonArea`), then converts the result back to lat/lng. Falls back to a
+ * plain vertex average for a degenerate (fewer than 3 vertices, or
+ * zero-area/collinear) polygon, where the area-weighted formula is
+ * undefined.
+ */
+export function polygonCentroid(
+  vertices: [number, number][],
+): [number, number] {
+  const vertexAverage = (): [number, number] => [
+    vertices.reduce((s, v) => s + v[0], 0) / vertices.length,
+    vertices.reduce((s, v) => s + v[1], 0) / vertices.length,
+  ];
+  if (vertices.length < 3) return vertexAverage();
+
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const R = 6371000;
+  const refLat = vertices[0][0];
+  const refLng = vertices[0][1];
+  const cosLat = Math.cos(toRad(refLat));
+  const toXY = ([lat, lng]: [number, number]): [number, number] => [
+    (lng - refLng) * toRad(1) * R * cosLat,
+    (lat - refLat) * toRad(1) * R,
+  ];
+  const pts = vertices.map(toXY);
+
+  let signedArea = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < pts.length; i++) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[(i + 1) % pts.length];
+    const cross = x0 * y1 - x1 * y0;
+    signedArea += cross;
+    cx += (x0 + x1) * cross;
+    cy += (y0 + y1) * cross;
+  }
+  signedArea *= 0.5;
+  if (Math.abs(signedArea) < 1e-9) return vertexAverage();
+  cx /= 6 * signedArea;
+  cy /= 6 * signedArea;
+
+  const lat = refLat + (cy / R) * (180 / Math.PI);
+  const lng = refLng + (cx / (R * cosLat)) * (180 / Math.PI);
+  return [lat, lng];
+}
+
 /** Shortest distance in meters from a point to a line segment, in a flat
  * (already-projected) 2D plane. */
 function pointToSegmentDistanceM(

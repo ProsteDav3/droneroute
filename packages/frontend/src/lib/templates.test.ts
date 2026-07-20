@@ -3,6 +3,7 @@ import {
   generateOrbit,
   DEFAULT_ORBIT_PARAMS,
   computeGimbalPitch,
+  computeFramingPitch,
   computeAltitudeForPitch,
   computeFramedForRadius,
   computeFramedForAltitude,
@@ -246,7 +247,7 @@ describe("generateOrbit", () => {
       );
     });
 
-    it("poiCenter takes precedence over buildingVertices when both are set", () => {
+    it("poiCenter takes precedence over buildingVertices for the aim point, but buildingVertices still switches the pitch formula to whole-object framing", () => {
       const poiCenter = destinationPoint(CENTER[0], CENTER[1], 40, 0);
       const result = generateOrbit({
         ...DEFAULT_ORBIT_PARAMS,
@@ -261,7 +262,13 @@ describe("generateOrbit", () => {
       } satisfies OrbitParams);
 
       result.waypoints.forEach((wp) => {
-        const expected = computeGimbalPitch(
+        // poiCenter still wins for the aim *point* — pitch is computed from
+        // distance to poiCenter, not the building's own edges. But since
+        // buildingVertices is also set, the target is treated as a whole
+        // building (computeFramingPitch, ground-to-roof midpoint) rather
+        // than one exact point (computeGimbalPitch) — see generateOrbit's
+        // own comment on why that distinction matters.
+        const expected = computeFramingPitch(
           20,
           25,
           haversineDistance(

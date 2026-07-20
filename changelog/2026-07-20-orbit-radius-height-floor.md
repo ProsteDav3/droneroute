@@ -1,0 +1,3 @@
+### Fixed
+
+- A building orbit's recommended radius was sized only from the footprint (farthest corner + clearance), never from the building's height. For a tall, narrow building this produced a radius so small that no achievable altitude could get meaningfully above the roofline — every previous framing fix (default camera FOV, matching Mapbox's own render FOV, per-waypoint building-edge pitch) only changed how gimbal pitch was computed for that already-too-small radius, so the camera kept flying close to roof height with the gimbal pointed slightly up instead of comfortably down at the building. The recommended radius is now the larger of the footprint-based radius and the building's own height, so tall buildings automatically get a farther, higher orbit.

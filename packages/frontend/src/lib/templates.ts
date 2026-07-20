@@ -599,6 +599,21 @@ export function computeFramedForAltitude(
 /** Extra clearance (meters) beyond a building's footprint so an orbit around it clears every corner. */
 const BUILDING_ORBIT_CLEARANCE_M = 15;
 
+/**
+ * Minimum orbit radius, as a multiple of the building's height, applied on
+ * top of the footprint-based radius. A footprint-only radius works for
+ * short/wide buildings, but for a tall building with a small footprint
+ * (radius << height), `computeFramedForRadius`'s two altitude roots both
+ * collapse toward poiHeight itself as radius shrinks — so no matter how
+ * precisely gimbal pitch is then computed, the camera never gets to fly
+ * meaningfully above the roofline, which reads as "too low/close, gimbal
+ * looking up at the sky instead of down at the building" regardless of the
+ * per-waypoint pitch math. Flying at least as far away as the building is
+ * tall (ratio 1) keeps altitude comfortably above poiHeight (worked out by
+ * hand: ~1.6x poiHeight at a 63° default wide FOV) instead of pinned near it.
+ */
+const MIN_RADIUS_TO_HEIGHT_RATIO = 1;
+
 export interface BuildingOrbitSeed {
   center: [number, number];
   radiusM: number;
@@ -606,12 +621,15 @@ export interface BuildingOrbitSeed {
 
 /**
  * Recommended orbit center + radius for flying around a building footprint:
- * center is the footprint's centroid, radius is the farthest vertex from
- * that centroid plus a safety clearance so the orbit clears every corner
- * (including non-rectangular or rotated footprints).
+ * center is the footprint's centroid, radius is the larger of (a) the
+ * farthest vertex from that centroid plus a safety clearance, so the orbit
+ * clears every corner (including non-rectangular or rotated footprints), and
+ * (b) a height-based floor (see `MIN_RADIUS_TO_HEIGHT_RATIO`) so a tall,
+ * narrow building still gets a comfortable standoff distance.
  */
 export function computeOrbitSeedForBuilding(
   vertices: [number, number][],
+  buildingHeight: number,
 ): BuildingOrbitSeed {
   const centerLat =
     vertices.reduce((sum, v) => sum + v[0], 0) / vertices.length;
@@ -621,9 +639,11 @@ export function computeOrbitSeedForBuilding(
   const maxDist = Math.max(
     ...vertices.map((v) => haversine(center[0], center[1], v[0], v[1])),
   );
+  const footprintRadiusM = maxDist + BUILDING_ORBIT_CLEARANCE_M;
+  const heightRadiusM = buildingHeight * MIN_RADIUS_TO_HEIGHT_RATIO;
   return {
     center,
-    radiusM: Math.round(maxDist + BUILDING_ORBIT_CLEARANCE_M),
+    radiusM: Math.round(Math.max(footprintRadiusM, heightRadiusM)),
   };
 }
 
@@ -648,7 +668,7 @@ export function orbitParamsForBuilding(
   },
   vfovDeg?: number,
 ): OrbitParams {
-  const seed = computeOrbitSeedForBuilding(building.vertices);
+  const seed = computeOrbitSeedForBuilding(building.vertices, building.height);
   const framed = computeFramedForRadius(
     seed.radiusM,
     building.height,

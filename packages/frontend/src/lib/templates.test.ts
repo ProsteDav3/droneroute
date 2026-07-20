@@ -26,6 +26,7 @@ import {
   bearing,
   destinationPoint,
   minStandoffForFovM,
+  minStandoffForBuildingPoiClearanceM,
   clampOrbitCenterForPoiClearance,
 } from "./templates";
 import type {
@@ -824,9 +825,15 @@ describe("computeOrbitSeedForBuilding", () => {
     expect(distFromCorner).toBeGreaterThan(25);
     expect(distFromCorner).toBeLessThan(32);
 
-    // Radius covers the half-diagonal (~28.3m) plus the fixed clearance.
-    expect(seed.radiusM).toBeGreaterThan(40);
-    expect(seed.radiusM).toBeLessThan(46);
+    // Radius comfortably clears more than just the half-diagonal (~28.3m)
+    // plus the fixed clearance (~43m total): a corner-facing bearing sees
+    // *both* adjacent walls at once (their combined apparent width is the
+    // full diagonal, ~56.6m for a 40m square), which needs meaningfully
+    // more standoff to fit edge-to-edge than the vertex-clearance floor
+    // alone provides — see the horizontal-fit growth in
+    // `worstBuildingStandoffDeficitM`.
+    expect(seed.radiusM).toBeGreaterThan(60);
+    expect(seed.radiusM).toBeLessThan(75);
   });
 
   it("is invariant under vertex winding order", () => {
@@ -1098,6 +1105,49 @@ describe("clampOrbitCenterForPoiClearance", () => {
     const clamped = clampOrbitCenterForPoiClearance(poi, poi, 50, minStandoffM);
     expect(Number.isFinite(clamped[0])).toBe(true);
     expect(Number.isFinite(clamped[1])).toBe(true);
+  });
+});
+
+describe("minStandoffForBuildingPoiClearanceM", () => {
+  it("matches minStandoffForFovM for a footprint with negligible width (near-point target)", () => {
+    // A tiny footprint has almost no horizontal-fit requirement, so the
+    // combined minimum should reduce to the plain vertical one.
+    const vertices: [number, number][] = [
+      offsetLatLng(CENTER[0], CENTER[1], -0.1, -0.1),
+      offsetLatLng(CENTER[0], CENTER[1], -0.1, 0.1),
+      offsetLatLng(CENTER[0], CENTER[1], 0.1, 0.1),
+      offsetLatLng(CENTER[0], CENTER[1], 0.1, -0.1),
+    ];
+    const height = 25;
+    const vfovDeg = 55;
+
+    const combined = minStandoffForBuildingPoiClearanceM(
+      vertices,
+      height,
+      vfovDeg,
+    );
+    expect(combined).toBeCloseTo(minStandoffForFovM(height, vfovDeg), 0);
+  });
+
+  it("exceeds the vertical-only minimum for an elongated building, whose length needs more standoff than its height does", () => {
+    // Same 80x10m elongated footprint used by computeOrbitSeedForBuilding's
+    // own arc tests: looking along its long side, 80m of length needs far
+    // more standoff to fit inside frame than a 25m roofline ever does.
+    const vertices: [number, number][] = [
+      offsetLatLng(CENTER[0], CENTER[1], -40, -5),
+      offsetLatLng(CENTER[0], CENTER[1], -40, 5),
+      offsetLatLng(CENTER[0], CENTER[1], 40, 5),
+      offsetLatLng(CENTER[0], CENTER[1], 40, -5),
+    ];
+    const height = 25;
+    const vfovDeg = 55;
+
+    const combined = minStandoffForBuildingPoiClearanceM(
+      vertices,
+      height,
+      vfovDeg,
+    );
+    expect(combined).toBeGreaterThan(minStandoffForFovM(height, vfovDeg) * 2);
   });
 });
 

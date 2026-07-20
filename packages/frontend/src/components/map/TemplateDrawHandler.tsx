@@ -17,6 +17,7 @@ import {
   bearing,
   computeGimbalPitch,
   minStandoffForFovM,
+  minStandoffForBuildingPoiClearanceM,
   clampOrbitCenterForPoiClearance,
   recomputeBuildingOrbitForArc,
   DEFAULT_ORBIT_PARAMS,
@@ -303,6 +304,23 @@ export function TemplateDrawHandler() {
   const [orbitParams, setOrbitParams] = useState<OrbitParams | null>(null);
   const [gridParams, setGridParams] = useState<GridParams | null>(null);
   const [facadeParams, setFacadeParams] = useState<FacadeParams | null>(null);
+
+  /** The locked-POI clearance minimum: when the POI sits inside a real
+   * building footprint, the flight circle also needs to stay far enough back
+   * to frame the building's own worst-case (widest) side, not just clear the
+   * point target vertically — see `minStandoffForBuildingPoiClearanceM`. A
+   * bare POI with no building has no such horizontal constraint. */
+  const poiClearanceStandoffM = (
+    poiHeight: number,
+    buildingVertices?: [number, number][],
+  ) =>
+    buildingVertices
+      ? minStandoffForBuildingPoiClearanceM(
+          buildingVertices,
+          poiHeight,
+          vfovDeg,
+        )
+      : minStandoffForFovM(poiHeight, vfovDeg);
 
   const resetState = useCallback(() => {
     setDragging(false);
@@ -772,7 +790,10 @@ export function TemplateDrawHandler() {
                   type="geojson"
                   data={buildGuideRingGeojson(
                     orbitParams.poiCenter,
-                    minStandoffForFovM(orbitParams.poiHeight, vfovDeg),
+                    poiClearanceStandoffM(
+                      orbitParams.poiHeight,
+                      orbitParams.buildingVertices,
+                    ),
                   )}
                 >
                   <Layer
@@ -798,7 +819,10 @@ export function TemplateDrawHandler() {
                       newCenter,
                       orbitParams.poiCenter,
                       orbitParams.radiusM,
-                      minStandoffForFovM(orbitParams.poiHeight, vfovDeg),
+                      poiClearanceStandoffM(
+                        orbitParams.poiHeight,
+                        orbitParams.buildingVertices,
+                      ),
                     )
                   : newCenter;
               setOrbitParams({ ...orbitParams, center: clampedCenter });

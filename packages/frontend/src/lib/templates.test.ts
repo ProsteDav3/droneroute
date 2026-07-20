@@ -27,6 +27,7 @@ import {
   destinationPoint,
   minStandoffForFovM,
   minStandoffForBuildingPoiClearanceM,
+  maxPoiOffsetForRatioM,
   clampOrbitCenterForPoiClearance,
 } from "./templates";
 import type {
@@ -1148,6 +1149,65 @@ describe("minStandoffForBuildingPoiClearanceM", () => {
       vfovDeg,
     );
     expect(combined).toBeGreaterThan(minStandoffForFovM(height, vfovDeg) * 2);
+  });
+});
+
+describe("maxPoiOffsetForRatioM / clampOrbitCenterForPoiClearance's optional offset cap", () => {
+  it("keeps the worst-case near/far distance ratio at or under the configured maximum", () => {
+    const radiusM = 145;
+    const offsetM = maxPoiOffsetForRatioM(radiusM);
+    const near = radiusM - offsetM;
+    const far = radiusM + offsetM;
+    expect(far / near).toBeLessThanOrEqual(1.6 + 1e-9);
+  });
+
+  it("leaves the clearance-clamped result untouched when no maxOffsetM is given (existing behavior preserved)", () => {
+    const poi: [number, number] = CENTER;
+    const radiusM = 300;
+    const candidate = destinationPoint(poi[0], poi[1], radiusM - 10, 45);
+    const minStandoffM = minStandoffForFovM(25, 55);
+
+    const withoutCap = clampOrbitCenterForPoiClearance(
+      candidate,
+      poi,
+      radiusM,
+      minStandoffM,
+    );
+    const withInfiniteCap = clampOrbitCenterForPoiClearance(
+      candidate,
+      poi,
+      radiusM,
+      minStandoffM,
+      Infinity,
+    );
+    expect(withoutCap).toEqual(withInfiniteCap);
+  });
+
+  it("pulls an already clearance-satisfying center back toward the POI when it's offset too far relative to the radius", () => {
+    const poi: [number, number] = CENTER;
+    const radiusM = 145;
+    // Offset the candidate well past what a 1.6 ratio allows, but still
+    // outside the plain clearance minimum (so only the new cap should act).
+    const minStandoffM = 20;
+    const offsetM = 80;
+    const candidate = destinationPoint(poi[0], poi[1], offsetM, 90);
+
+    const clamped = clampOrbitCenterForPoiClearance(
+      candidate,
+      poi,
+      radiusM,
+      minStandoffM,
+      maxPoiOffsetForRatioM(radiusM),
+    );
+
+    const clampedDist = haversineDistance(
+      poi[0],
+      poi[1],
+      clamped[0],
+      clamped[1],
+    );
+    expect(clampedDist).toBeCloseTo(maxPoiOffsetForRatioM(radiusM), 0);
+    expect(clampedDist).toBeLessThan(offsetM);
   });
 });
 

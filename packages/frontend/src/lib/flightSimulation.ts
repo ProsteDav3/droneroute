@@ -1,8 +1,6 @@
 import type { Waypoint, PointOfInterest } from "@droneroute/shared";
 import { bearingTo, resolveHeading } from "@/components/map/CameraFrustum";
 import { estimateWaypointArrivalTimes, haversine } from "@/lib/flightStats";
-import { computeFramingPitch } from "@/lib/templates";
-import { distanceToPolygonBoundaryM } from "@/lib/geo";
 import type { TemplateGroup } from "@/store/missionStore";
 
 /** Gimbal pitch (DJI convention: 0° = level, -90° = straight down) needed to
@@ -157,43 +155,22 @@ function findImpliedPoi(
   });
 }
 
-/** Building footprint + target height for a leg's whole-object framing, when
- * that leg belongs to an orbit generated around a real building (see
- * `OrbitParams.buildingVertices` in lib/templates.ts). `undefined` for any
- * other leg — a manually-drawn orbit, a non-orbit template, or an orbit
- * that predates that field. `aimLat`/`aimLng` is the orbit's own center (the
- * camera's aim point for this leg) — kept alongside the footprint so heading
- * can be derived from the exact same target as pitch, rather than from
- * `findImpliedPoi`'s separate point-tracking check (see below). */
-interface LegBuildingFraming {
-  buildingVertices: [number, number][];
-  poiHeight: number;
-  aimLat: number;
-  aimLng: number;
-}
-
-/** Looks up whether `from`'s leg belongs to a building-orbit template group
- * with real footprint data attached, via the same `templateGroupId` tag
- * `generateOrbit` stamps on every waypoint it creates. A building's real
- * footprint isn't circular, so `computeGimbalPitch`/`pitchTo`'s single-point
- * model (used by `findImpliedPoi` below) doesn't reproduce what
- * `generateOrbit` actually baked into these waypoints — recomputing pitch
- * per frame the *same* single-point way this leg's own static data was NOT
- * generated with would silently re-introduce the exact per-waypoint framing
- * drift the building-vertices fix in `generateOrbit` exists to remove.
- * `buildSimulationFrames` uses this instead of `findImpliedPoi`'s
- * point-tracking whenever it's available — for BOTH heading and pitch, not
- * just pitch: `findImpliedPoi`'s own tolerance check compares each
- * waypoint's static pitch against what simple point-tracking to "Střed
- * orbitu" would produce, but building-edge-aware pitch routinely differs
- * from that by more than its 15° tolerance, so it was silently failing to
- * recognize these legs at all — falling back to raw heading interpolation
- * between waypoints (the exact "drifts off the subject mid-leg" bug
- * `findImpliedPoi` exists to prevent) even though pitch was already fixed. */
-function getLegBuildingFraming(
+/** An orbit's own center, when `from`'s leg belongs to a building-orbit
+ * template group (see `OrbitParams.buildingVertices` in lib/templates.ts).
+ * `undefined` for any other leg — a manually-drawn orbit, a non-orbit
+ * template, or an orbit that predates that field. Used only for heading
+ * continuity: `generateOrbit` now bakes a single flat gimbal pitch into
+ * every waypoint of a building orbit (so the shot reads as one continuous
+ * view instead of the gimbal visibly tilting up and down over the flight —
+ * see its own comment), so pitch just interpolates normally like any other
+ * leg; only heading still needs re-deriving every frame, since the drone's
+ * yaw must keep tracking the circle's center continuously between waypoints
+ * rather than drifting off it via `findImpliedPoi`'s separate point-tracking
+ * check (see below). */
+function getLegOrbitCenterAim(
   from: Waypoint,
   templateGroups: Record<string, TemplateGroup>,
-): LegBuildingFraming | undefined {
+): { aimLat: number; aimLng: number } | undefined {
   const groupId = from.templateGroupId;
   if (!groupId) return undefined;
   const group = templateGroups[groupId];
@@ -201,7 +178,6 @@ function getLegBuildingFraming(
   const params = group.params as {
     center?: [number, number];
     buildingVertices?: [number, number][];
-    poiHeight?: number;
     altitudeGimbalLinked?: boolean;
     poiCenter?: [number, number];
   };
@@ -211,12 +187,7 @@ function getLegBuildingFraming(
     return undefined;
   }
   if (!params.center) return undefined;
-  return {
-    buildingVertices: params.buildingVertices,
-    poiHeight: params.poiHeight ?? 0,
-    aimLat: params.center[0],
-    aimLng: params.center[1],
-  };
+  return { aimLat: params.center[0], aimLng: params.center[1] };
 }
 
 /**
@@ -248,11 +219,13 @@ function getLegBuildingFraming(
  * the same wall-clock time regardless of real distance or configured speed.
  *
  * `templateGroups` (optional, keyed the same way `missionStore.templateGroups`
- * is) lets a building-orbit leg use its own real footprint for pitch — see
- * `getLegBuildingFraming` — instead of `findImpliedPoi`'s single-point
- * model, which doesn't match what `generateOrbit` bakes into those
- * waypoints for a non-circular building and would otherwise silently
- * override it back to the old, less accurate framing during playback.
+ * is) lets a building-orbit leg keep its heading continuously tracking the
+ * orbit's own center — see `getLegOrbitCenterAim` — instead of falling back
+ * to `findImpliedPoi`'s separate point-tracking check, which can miss a
+ * building-orbit leg and drift the yaw off the subject mid-leg. Gimbal pitch
+ * itself is not treated specially for these legs: `generateOrbit` bakes one
+ * flat pitch into every waypoint of a building orbit, so plain interpolation
+ * between two identical values already holds it steady for the whole shot.
  */
 export function buildSimulationFrames(
   waypoints: Waypoint[],
@@ -292,7 +265,7 @@ export function buildSimulationFrames(
       from.headingMode === "towardPOI" && from.poiId
         ? pois.find((p) => p.id === from.poiId)
         : findImpliedPoi(from, to, pois);
-    const buildingFraming = getLegBuildingFraming(from, templateGroups);
+    const orbitCenterAim = getLegOrbitCenterAim(from, templateGroups);
     const legStartS = arrivalTimesS[i];
     const legDurationS = arrivalTimesS[i + 1] - legStartS;
 
@@ -305,25 +278,35 @@ export function buildSimulationFrames(
       const latitude = from.latitude + (to.latitude - from.latitude) * t;
       const longitude = from.longitude + (to.longitude - from.longitude) * t;
       const height = from.height + (to.height - from.height) * t;
-      const heading = buildingFraming
+      const heading = orbitCenterAim
         ? bearingTo(
             latitude,
             longitude,
-            buildingFraming.aimLat,
-            buildingFraming.aimLng,
+            orbitCenterAim.aimLat,
+            orbitCenterAim.aimLng,
           )
         : poi
           ? bearingTo(latitude, longitude, poi.latitude, poi.longitude)
           : interpolateHeading(fromHeading, toHeading, t);
-      const gimbalPitchAngle = buildingFraming
-        ? computeFramingPitch(
-            height,
-            buildingFraming.poiHeight,
-            distanceToPolygonBoundaryM(
-              [latitude, longitude],
-              buildingFraming.buildingVertices,
-            ),
-          )
+      const flatInterpolatedPitch =
+        from.gimbalPitchAngle +
+        (to.gimbalPitchAngle - from.gimbalPitchAngle) * t;
+      // An orbit leg's simulated position is interpolated along the
+      // straight chord between its two waypoints, not the actual circular
+      // arc — so its distance to the orbit's own center (and thus a
+      // dynamically point-tracked pitch) shrinks toward the chord's
+      // midpoint and grows back out toward each endpoint, even though both
+      // waypoints themselves sit at the identical, correct distance. That
+      // "breathing" was invisible for the pitch value itself when it also
+      // varied per waypoint (an earlier revision's per-waypoint building
+      // framing), but now that every waypoint of an orbit shares one flat
+      // pitch (see generateOrbit), the dynamic tracking below would be the
+      // ONLY thing still making pitch drift during playback — so an orbit
+      // leg always uses plain linear interpolation between its two
+      // waypoints' own values instead, which trivially stays flat when (as
+      // is now the normal case) both endpoints already agree.
+      const gimbalPitchAngle = orbitCenterAim
+        ? flatInterpolatedPitch
         : poi
           ? pitchTo(
               latitude,
@@ -333,8 +316,7 @@ export function buildSimulationFrames(
               poi.longitude,
               poi.height,
             )
-          : from.gimbalPitchAngle +
-            (to.gimbalPitchAngle - from.gimbalPitchAngle) * t;
+          : flatInterpolatedPitch;
 
       frames.push({
         latitude,

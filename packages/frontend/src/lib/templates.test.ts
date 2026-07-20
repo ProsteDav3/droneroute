@@ -180,13 +180,15 @@ describe("generateOrbit", () => {
     expect(result.pois[0].longitude).toBeCloseTo(poiCenter[1], 6);
   });
 
-  describe("buildingVertices (per-waypoint framing for a non-circular footprint)", () => {
+  describe("buildingVertices (a single flat pitch for the whole orbit, regardless of footprint shape)", () => {
     // An 80m (N-S) x 10m (E-W) rectangle centered on CENTER — deliberately
-    // elongated, so a single radius measured from the center is a poor
-    // stand-in for the real per-waypoint distance to the nearest edge: a
-    // waypoint due north or south sits near the short tip (close), one due
-    // east or west sits opposite the long side (far), at the same nominal
-    // orbit radius.
+    // elongated, so the real per-waypoint distance to the nearest edge
+    // varies a lot around the loop (a waypoint due north or south sits near
+    // the short tip, one due east or west sits opposite the long side, at
+    // the same nominal orbit radius) — exactly the shape that used to make
+    // pitch vary per waypoint before that was replaced with a single flat
+    // value, computed once, so the whole flight reads as one continuous
+    // shot instead of the gimbal visibly tilting over the flight.
     const buildingVertices: [number, number][] = [
       offsetLatLng(CENTER[0], CENTER[1], -40, -5),
       offsetLatLng(CENTER[0], CENTER[1], -40, 5),
@@ -194,7 +196,7 @@ describe("generateOrbit", () => {
       offsetLatLng(CENTER[0], CENTER[1], 40, -5),
     ];
 
-    it("varies gimbal pitch per waypoint instead of the flat gimbalPitchDeg, when linked", () => {
+    it("keeps gimbal pitch flat across every waypoint, matching gimbalPitchDeg, even though real edge distance varies a lot around this footprint", () => {
       const result = generateOrbit({
         ...DEFAULT_ORBIT_PARAMS,
         center: CENTER,
@@ -203,45 +205,26 @@ describe("generateOrbit", () => {
         altitude: 20,
         poiHeight: 25,
         altitudeGimbalLinked: true,
+        gimbalPitchDeg: -18,
         buildingVertices,
       } satisfies OrbitParams);
 
-      const pitches = result.waypoints.map((wp) => wp.gimbalPitchAngle);
-      expect(new Set(pitches).size).toBeGreaterThan(1);
-    });
-
-    it("a waypoint closer to the building's actual edge gets a steeper (more negative) pitch than one farther from it, at the same nominal radius", () => {
-      const result = generateOrbit({
-        ...DEFAULT_ORBIT_PARAMS,
-        center: CENTER,
-        radiusM: 50,
-        numPoints: 8,
-        altitude: 20,
-        poiHeight: 25,
-        altitudeGimbalLinked: true,
-        buildingVertices,
-      } satisfies OrbitParams);
-
-      let closest = result.waypoints[0];
-      let closestDist = Infinity;
-      let farthest = result.waypoints[0];
-      let farthestDist = -Infinity;
-      for (const wp of result.waypoints) {
-        const d = distanceToPolygonBoundaryM(
+      // Confirms this building really does have widely varying edge
+      // distance around the loop — otherwise a flat pitch wouldn't be
+      // distinguishing this behavior from the trivial "any circle" case.
+      const distances = result.waypoints.map((wp) =>
+        distanceToPolygonBoundaryM(
           [wp.latitude, wp.longitude],
           buildingVertices,
-        );
-        if (d < closestDist) {
-          closestDist = d;
-          closest = wp;
-        }
-        if (d > farthestDist) {
-          farthestDist = d;
-          farthest = wp;
-        }
-      }
-      expect(closestDist).toBeLessThan(farthestDist);
-      expect(closest.gimbalPitchAngle).toBeLessThan(farthest.gimbalPitchAngle);
+        ),
+      );
+      expect(Math.max(...distances) - Math.min(...distances)).toBeGreaterThan(
+        10,
+      );
+
+      expect(result.waypoints.every((wp) => wp.gimbalPitchAngle === -18)).toBe(
+        true,
+      );
     });
 
     it("leaves gimbal pitch flat when altitudeGimbalLinked is false — a manually unlocked pitch is not overridden by building geometry", () => {

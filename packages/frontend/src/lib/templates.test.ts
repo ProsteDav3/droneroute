@@ -863,6 +863,45 @@ describe("computeOrbitSeedForBuilding", () => {
 
     expect(seed.radiusM).toBeGreaterThanOrEqual(25);
   });
+
+  it("grows the radius so even the bearing closest to the building's real edge (not just the farthest vertex) clears enough distance to frame it comfortably", () => {
+    // Same elongated 80x10m footprint as the buildingVertices describe block
+    // below: the farthest-vertex radius clears the short N/S tips by only
+    // BUILDING_ORBIT_CLEARANCE_M (15m) — nowhere near enough standoff to
+    // frame a 25m-tall building at a realistic camera FOV from there.
+    const vertices: [number, number][] = [
+      offsetLatLng(CENTER[0], CENTER[1], -40, -5),
+      offsetLatLng(CENTER[0], CENTER[1], -40, 5),
+      offsetLatLng(CENTER[0], CENTER[1], 40, 5),
+      offsetLatLng(CENTER[0], CENTER[1], 40, -5),
+    ];
+    const vfovDeg = 55;
+    const height = 25;
+
+    const seed = computeOrbitSeedForBuilding(vertices, height, vfovDeg);
+
+    // Independent re-derivation of the physical "closest distance for the
+    // whole object to fit inside the FOV at any pitch" minimum (mirrors
+    // minStandoffForFovM's own math: occurs at altitude = height/2, using
+    // 90% of the real FOV so the object isn't touching the frame edge).
+    const targetSpanRad = ((vfovDeg * 0.9) / 2) * (Math.PI / 180);
+    const requiredStandoffM = height / (2 * Math.tan(targetSpanRad));
+
+    // Sample the resulting circle at many bearings — the worst (closest)
+    // one must still clear the required standoff, not just the bearing the
+    // old farthest-vertex-only radius happened to be sized for.
+    let minDist = Infinity;
+    for (let i = 0; i < 72; i++) {
+      const point = destinationPoint(
+        seed.center[0],
+        seed.center[1],
+        seed.radiusM,
+        (360 * i) / 72,
+      );
+      minDist = Math.min(minDist, distanceToPolygonBoundaryM(point, vertices));
+    }
+    expect(minDist).toBeGreaterThanOrEqual(requiredStandoffM - 1);
+  });
 });
 
 describe("orbitParamsForBuilding", () => {
@@ -895,8 +934,8 @@ describe("orbitParamsForBuilding", () => {
 
   it("with a known camera vfovDeg, derives altitude/gimbal pitch so the whole building fits in frame using that camera's own FOV rather than the default", () => {
     const vertices = squareFootprint(40);
-    const seed = computeOrbitSeedForBuilding(vertices, 25);
     const vfovDeg = 26; // narrower than the default wide-angle FOV
+    const seed = computeOrbitSeedForBuilding(vertices, 25, vfovDeg);
     const params = orbitParamsForBuilding({ vertices, height: 25 }, vfovDeg);
 
     expect(params.center).toEqual(seed.center);

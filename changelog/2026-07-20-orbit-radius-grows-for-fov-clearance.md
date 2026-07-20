@@ -1,0 +1,3 @@
+### Fixed
+
+- A building orbit's recommended radius, even after being floored to the building's height, could still leave the whole building too close to fit inside the camera's field of view at some bearings — the radius was sized only from the farthest vertex, so a narrow wing or corner of an irregular footprint could sit much closer to the flight circle than that. The recommended radius now grows further when needed so that even the closest point on the circle to the building's real edge (sampled around the whole loop, not just at the vertices) has enough physical distance for the whole building to fit inside the camera's actual FOV at any gimbal angle.

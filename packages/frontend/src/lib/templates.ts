@@ -614,6 +614,78 @@ const BUILDING_ORBIT_CLEARANCE_M = 15;
  */
 const MIN_RADIUS_TO_HEIGHT_RATIO = 1;
 
+/**
+ * Minimum altitude, as a multiple of the building's own height, for a
+ * first-time orbit recommendation — a natural "look down from above the
+ * roofline" shot. Used both to floor the recommended altitude (see
+ * `ensureAltitudeAboveBuilding`) and, at that same altitude, as the target
+ * viewpoint `computeOrbitSeedForBuilding` grows the radius to comfortably
+ * frame from — see its own doc comment for why growing the radius still
+ * needs a fixed altitude to grow *toward*, not just "farther is better".
+ */
+const MIN_ALTITUDE_ABOVE_BUILDING_FACTOR = 1.3;
+
+/** Fraction of the camera's real vertical FOV the whole building (ground to
+ * `poiHeight`) may occupy at minimum, when growing a building orbit's
+ * radius — see `minStandoffForFovM`. Deliberately NOT the same target as
+ * `FOV_SAFETY_MARGIN` (0.5, an aesthetic "how much of frame should the
+ * subject nicely fill" choice used elsewhere): growing the radius toward
+ * that tighter, aesthetic target would let the solver satisfy it by tilting
+ * ever more steeply downward from close range instead of actually standing
+ * farther back — mathematically valid (the ground-to-roof span still fits)
+ * but visually the opposite of what "the building isn't visible" is asking
+ * for, since a very steep pitch from up close reads as looming/cropped, not
+ * as a nicely composed elevation view. This factor instead answers a purely
+ * physical question — is the building simply too close to fit inside the
+ * camera's FOV at all, at any pitch — independent of how nicely composed
+ * the shot ends up; a small margin below 1 keeps the building off the very
+ * edge of frame. */
+const MIN_FOV_FIT_FACTOR = 0.9;
+
+/** Minimum horizontal distance for an object spanning ground level to
+ * `poiHeight` to fit inside `vfovDeg` at all, at any camera pitch — the
+ * inverse of `maxSpanForRadius`'s own "max achievable span at a given
+ * radius" (occurs at altitude = poiHeight/2, where a close-up object
+ * subtends the widest angle any altitude choice can ever achieve from that
+ * distance): closer than this, no altitude/pitch combination keeps the
+ * whole object in frame. */
+function minStandoffForFovM(poiHeight: number, vfovDeg: number): number {
+  const targetSpanRad = (vfovDeg * MIN_FOV_FIT_FACTOR * Math.PI) / 180;
+  return poiHeight / (2 * Math.tan(targetSpanRad / 2));
+}
+
+/** How many bearings to sample around a candidate circle when checking how
+ * close it gets to a building's real (possibly irregular/concave) edge —
+ * fine enough to catch a narrow wing or sharp corner that vertex-only math
+ * would miss, coarse enough to stay cheap for an interactive recommendation. */
+const CIRCLE_CLEARANCE_SAMPLE_COUNT = 72;
+
+/** The closest a circle (`center`, `radiusM`) ever gets to `vertices`' real
+ * boundary, checked by sampling points around the circle rather than just
+ * the polygon's own vertices — a building's real footprint isn't circular,
+ * so the true minimum can fall on an edge midpoint or a concave notch that a
+ * vertex-only check would miss entirely. */
+function minCircleToBuildingDistanceM(
+  center: [number, number],
+  radiusM: number,
+  vertices: [number, number][],
+): number {
+  let min = Infinity;
+  for (let i = 0; i < CIRCLE_CLEARANCE_SAMPLE_COUNT; i++) {
+    const bearingDeg = (360 * i) / CIRCLE_CLEARANCE_SAMPLE_COUNT;
+    const point = destinationPoint(center[0], center[1], radiusM, bearingDeg);
+    const d = distanceToPolygonBoundaryM(point, vertices);
+    if (d < min) min = d;
+  }
+  return min;
+}
+
+/** How many times to grow the radius and re-check clearance — increasing
+ * radius by exactly the shortfall at the worst bearing converges in one or
+ * two steps for most footprints; a few extra iterations absorb the curvature
+ * effects of an irregular/concave shape without looping indefinitely. */
+const MAX_RADIUS_GROWTH_ITERATIONS = 6;
+
 export interface BuildingOrbitSeed {
   center: [number, number];
   radiusM: number;
@@ -621,15 +693,38 @@ export interface BuildingOrbitSeed {
 
 /**
  * Recommended orbit center + radius for flying around a building footprint:
- * center is the footprint's centroid, radius is the larger of (a) the
+ * center is the footprint's centroid, radius starts as the larger of (a) the
  * farthest vertex from that centroid plus a safety clearance, so the orbit
  * clears every corner (including non-rectangular or rotated footprints), and
  * (b) a height-based floor (see `MIN_RADIUS_TO_HEIGHT_RATIO`) so a tall,
- * narrow building still gets a comfortable standoff distance.
+ * narrow building still gets a comfortable standoff distance — then grows
+ * further if needed so *every* bearing around the circle, not just the one
+ * facing the farthest vertex, has enough real clearance from the building's
+ * edge to frame it comfortably.
+ *
+ * A non-circular (and especially concave or multi-wing) footprint can sit
+ * much closer to the flight circle at some bearings than at others even
+ * though every waypoint shares the same radius from the center — the
+ * farthest-vertex radius alone only guarantees clearance at the one bearing
+ * it was sized for. `generateOrbit` already adapts each waypoint's gimbal
+ * pitch to its own real edge distance (so the whole building stays inside
+ * the angular span at every bearing), but pitch alone can't fix a bearing
+ * where that real distance is simply too short for the whole building to
+ * fit within the camera's actual field of view at all — that needs more
+ * standoff distance, not a different angle. This grows the radius (sampling
+ * the candidate circle at many bearings via `minCircleToBuildingDistanceM`,
+ * since the true closest point can fall on an edge or concave notch a
+ * vertex-only check would miss) until even the closest bearing clears the
+ * purely physical minimum distance for the whole building to fit inside the
+ * camera's FOV at any pitch (`minStandoffForFovM`) — not the tighter,
+ * aesthetic default-framing target used elsewhere, which a close-range,
+ * steeply-tilted-down shot can satisfy on paper without actually looking
+ * like a comfortable elevation view.
  */
 export function computeOrbitSeedForBuilding(
   vertices: [number, number][],
   buildingHeight: number,
+  vfovDeg: number = DEFAULT_WIDE_VFOV_DEG,
 ): BuildingOrbitSeed {
   const centerLat =
     vertices.reduce((sum, v) => sum + v[0], 0) / vertices.length;
@@ -641,44 +736,36 @@ export function computeOrbitSeedForBuilding(
   );
   const footprintRadiusM = maxDist + BUILDING_ORBIT_CLEARANCE_M;
   const heightRadiusM = buildingHeight * MIN_RADIUS_TO_HEIGHT_RATIO;
+  let radiusM = Math.max(footprintRadiusM, heightRadiusM);
+
+  if (buildingHeight > 0) {
+    const requiredStandoffM = minStandoffForFovM(buildingHeight, vfovDeg);
+    for (let i = 0; i < MAX_RADIUS_GROWTH_ITERATIONS; i++) {
+      const minDist = minCircleToBuildingDistanceM(center, radiusM, vertices);
+      if (minDist >= requiredStandoffM) break;
+      radiusM += requiredStandoffM - minDist;
+    }
+  }
+
   return {
     center,
-    radiusM: Math.round(Math.max(footprintRadiusM, heightRadiusM)),
+    radiusM: Math.round(radiusM),
   };
 }
 
 /**
- * Minimum altitude, as a multiple of the building's own height, for a
- * first-time orbit recommendation — a natural "look down from above the
- * roofline" shot.
- *
- * `computeFramedForRadius` only lands above the roofline when the desired
- * framing margin (`FOV_SAFETY_MARGIN` of the camera's FOV) is achievable at
- * the given radius. Once a building's footprint forces a radius past that
- * achievability threshold, its two quadratic altitude roots collapse toward
- * `poiHeight / 2` by construction (see `maxSpanForRadius`) — no amount of
- * *further* increasing the radius ever recovers an above-roofline altitude
- * from that formula, since the achievable span keeps shrinking too, and
- * `pickPositiveRoot`'s "prefer the larger root" rule just ends up choosing
- * the taller of two altitudes that are both still roughly waist/window
- * height on the building, not roof height. Confirmed against a real report:
- * a 25m-tall building with a 53m recommended radius (already past its ~51m
- * threshold at a 55°-FOV camera) came back with altitude=20m — visibly
- * below its own roof.
- *
- * Rather than accept that degenerate near-half-height view for a first
- * recommendation, fall back to a fixed comfortable altitude above the roof
- * and whatever (necessarily narrower than the aspirational target) framing
- * span results from it — the whole building (ground to `poiHeight`) is
- * still fully inside that span by construction, just using more of the
- * frame than the ideal margin. This only overrides the *initial*
+ * Fallback for when `computeOrbitSeedForBuilding`'s radius growth still
+ * isn't enough to keep `computeFramedForRadius` above the roofline — e.g. a
+ * FOV so narrow that no reasonable growth converges, or an older/manually
+ * edited orbit whose radius predates that growth logic. Uses the same
+ * `MIN_ALTITUDE_ABOVE_BUILDING_FACTOR` target the radius growth itself grows
+ * toward, so the two stay consistent. This only overrides the *initial*
  * recommendation; live edits still go through the plain
  * `computeFramedForRadius`/`computeFramedForAltitude` pair, which correctly
  * honors whatever radius/altitude the user explicitly chose (including ones
- * in this same capped regime — see its own tests).
+ * in the capped regime this exists to avoid for new recommendations — see
+ * that pair's own tests).
  */
-const MIN_ALTITUDE_ABOVE_BUILDING_FACTOR = 1.3;
-
 function ensureAltitudeAboveBuilding(
   framed: { altitude: number; gimbalPitchDeg: number },
   radiusM: number,
@@ -713,11 +800,16 @@ export function orbitParamsForBuilding(
   },
   vfovDeg?: number,
 ): OrbitParams {
-  const seed = computeOrbitSeedForBuilding(building.vertices, building.height);
+  const resolvedVfovDeg = vfovDeg ?? DEFAULT_WIDE_VFOV_DEG;
+  const seed = computeOrbitSeedForBuilding(
+    building.vertices,
+    building.height,
+    resolvedVfovDeg,
+  );
   const framed = computeFramedForRadius(
     seed.radiusM,
     building.height,
-    vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
+    resolvedVfovDeg,
   );
   if (framed) {
     const { altitude, gimbalPitchDeg } = ensureAltitudeAboveBuilding(

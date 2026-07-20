@@ -1,6 +1,7 @@
 import type { Waypoint, PointOfInterest } from "@droneroute/shared";
 import { bearingTo, resolveHeading } from "@/components/map/CameraFrustum";
 import { estimateWaypointArrivalTimes, haversine } from "@/lib/flightStats";
+import { computeFramingPitch } from "@/lib/templates";
 import type { TemplateGroup } from "@/store/missionStore";
 
 /** Gimbal pitch (DJI convention: 0° = level, -90° = straight down) needed to
@@ -191,6 +192,36 @@ function getLegOrbitCenterAim(
 }
 
 /**
+ * Whether `from`'s leg belongs to an orbit whose POI is locked (`poiCenter`)
+ * to a whole building (`buildingVertices` present) rather than one exact
+ * point — used to pick `computeFramingPitch` (ground-to-roof midpoint) over
+ * the plain point-tracking `pitchTo` below, the same distinction
+ * `generateOrbit` itself makes for the exported waypoints (see its own
+ * comment): aiming exactly at a single height reads as an oddly shallow,
+ * near-level angle when flight altitude isn't dramatically above the
+ * building, instead of the comfortable "look down at the whole structure"
+ * angle whole-object framing gives at the same distance.
+ */
+function legLockedPoiIsBuilding(
+  from: Waypoint,
+  templateGroups: Record<string, TemplateGroup>,
+): boolean {
+  const groupId = from.templateGroupId;
+  if (!groupId) return false;
+  const group = templateGroups[groupId];
+  if (!group || group.type !== "orbit") return false;
+  const params = group.params as {
+    poiCenter?: [number, number];
+    buildingVertices?: [number, number][];
+  };
+  return (
+    !!params.poiCenter &&
+    !!params.buildingVertices &&
+    params.buildingVertices.length >= 2
+  );
+}
+
+/**
  * Builds an animation-ready sequence of camera frames along the mission's
  * flight path, interpolating position, height, gimbal pitch, and heading
  * between each pair of consecutive waypoints — the same "fly a straight 3D
@@ -266,6 +297,7 @@ export function buildSimulationFrames(
         ? pois.find((p) => p.id === from.poiId)
         : findImpliedPoi(from, to, pois);
     const orbitCenterAim = getLegOrbitCenterAim(from, templateGroups);
+    const lockedPoiIsBuilding = legLockedPoiIsBuilding(from, templateGroups);
     const legStartS = arrivalTimesS[i];
     const legDurationS = arrivalTimesS[i + 1] - legStartS;
 
@@ -308,14 +340,20 @@ export function buildSimulationFrames(
       const gimbalPitchAngle = orbitCenterAim
         ? flatInterpolatedPitch
         : poi
-          ? pitchTo(
-              latitude,
-              longitude,
-              height,
-              poi.latitude,
-              poi.longitude,
-              poi.height,
-            )
+          ? lockedPoiIsBuilding
+            ? computeFramingPitch(
+                height,
+                poi.height,
+                haversine(latitude, longitude, poi.latitude, poi.longitude),
+              )
+            : pitchTo(
+                latitude,
+                longitude,
+                height,
+                poi.latitude,
+                poi.longitude,
+                poi.height,
+              )
           : flatInterpolatedPitch;
 
       frames.push({

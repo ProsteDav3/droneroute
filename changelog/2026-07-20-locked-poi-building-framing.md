@@ -1,0 +1,3 @@
+### Fixed
+
+- A building orbit with "Uzamknout POI" (lock POI) enabled — needed to fly a wide arc around a large or elongated building without the radius reaching unreasonably far near its narrowest side — aimed the camera exactly at the locked target's height instead of framing the whole building. At a flight altitude only modestly above the building, that gave an oddly shallow, near-level gimbal pitch (e.g. -6° for a 52m flight over a 40m building) instead of a comfortable, clearly downward-looking view — the same building now gets about -15° from the same distance. Affects both the exported waypoints and the 3D flythrough's live camera.

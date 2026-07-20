@@ -424,6 +424,94 @@ describe("buildSimulationFrames", () => {
     const fastDuration = framesFast[framesFast.length - 1].timeS;
     expect(slowDuration).toBeGreaterThan(fastDuration);
   });
+
+  it("frames a locked POI that targets a whole building at the ground-to-roof midpoint, not exactly at poiHeight — matching generateOrbit's own distinction", () => {
+    // altitude only modestly above poiHeight (52m over a 40m building, the
+    // exact real-world numbers this was reported against): aiming exactly
+    // at the roof (pitchTo/computeGimbalPitch) gives an oddly shallow,
+    // near-level angle, while framing the whole object (computeFramingPitch)
+    // gives a clearly downward-looking one from the same position.
+    const poiCenter: [number, number] = offsetLatLng(50, 14, 40, 0);
+    const poi: PointOfInterest = {
+      id: "poi-1",
+      name: "Cíl kamery",
+      latitude: poiCenter[0],
+      longitude: poiCenter[1],
+      height: 40,
+    };
+    const orbitParams: OrbitParams = {
+      ...DEFAULT_ORBIT_PARAMS,
+      center: [50, 14],
+      radiusM: 119,
+      altitude: 52,
+      poiHeight: 40,
+      altitudeGimbalLinked: true,
+      poiCenter,
+      buildingVertices: [
+        offsetLatLng(50, 14, -10, -70),
+        offsetLatLng(50, 14, 10, -70),
+        offsetLatLng(50, 14, 10, 70),
+        offsetLatLng(50, 14, -10, 70),
+      ],
+    };
+    const templateGroups: Record<string, TemplateGroup> = {
+      "group-1": { type: "orbit", params: orbitParams },
+    };
+    const from = baseWaypoint({
+      index: 0,
+      latitude: 50,
+      longitude: 13.9985,
+      height: 52,
+      headingMode: "towardPOI",
+      poiId: "poi-1",
+      gimbalPitchAngle: -15,
+      templateGroupId: "group-1",
+    });
+    const to = baseWaypoint({
+      index: 1,
+      latitude: 50.0005,
+      longitude: 13.999,
+      height: 52,
+      headingMode: "towardPOI",
+      poiId: "poi-1",
+      gimbalPitchAngle: -14,
+      templateGroupId: "group-1",
+    });
+
+    const frames = buildSimulationFrames(
+      [from, to],
+      [poi],
+      5,
+      SPEED_MPS,
+      templateGroups,
+    );
+    const mid = frames[Math.floor(frames.length / 2)];
+
+    const distM = haversine(
+      mid.latitude,
+      mid.longitude,
+      poiCenter[0],
+      poiCenter[1],
+    );
+    const wholeObjectPitch =
+      (Math.atan2(mid.height, distM) + Math.atan2(mid.height - 40, distM)) /
+      -2 /
+      (Math.PI / 180);
+    const exactPointPitch = testPitchTo(
+      mid.latitude,
+      mid.longitude,
+      mid.height,
+      poiCenter[0],
+      poiCenter[1],
+      40,
+    );
+
+    // The two formulas must actually disagree for this test to mean
+    // anything — confirms this isn't a coincidental match.
+    expect(Math.abs(wholeObjectPitch - exactPointPitch)).toBeGreaterThan(3);
+    // computeFramingPitch rounds to the nearest whole degree internally.
+    expect(mid.gimbalPitchAngle).toBeCloseTo(wholeObjectPitch, 0);
+  });
 });
 
 describe("findFrameBracket", () => {

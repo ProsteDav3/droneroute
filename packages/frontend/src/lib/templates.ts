@@ -1038,6 +1038,7 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     gimbalPitchDeg,
     poiCenter,
     captureMode,
+    buildingVertices,
   } = params;
   const [cLat, cLng] = center;
   // Independent camera aim point (see OrbitParams.poiCenter). Falls back to
@@ -1109,12 +1110,20 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     // Normalize to -180..180 range expected by DJI
     const normalizedHeading =
       headingAngle > 180 ? headingAngle - 360 : headingAngle;
+    const lockedPoiDistanceM = haversine(lat, lng, aimLat, aimLng);
     const gimbalPitchAngle = poiCenter
-      ? computeGimbalPitch(
-          altitude,
-          poiHeight,
-          haversine(lat, lng, aimLat, aimLng),
-        )
+      ? buildingVertices
+        ? // The locked target is a whole building, not one exact point —
+          // aim at the ground-to-roof midpoint (same as the rest of a
+          // building orbit) instead of computeGimbalPitch's "look exactly
+          // at poiHeight," which reads as an oddly shallow, near-level
+          // angle when the flight altitude isn't dramatically above the
+          // building (e.g. altitude=52m over a 40m building: aiming
+          // exactly at the roof gives ~-6°, barely tilted down at all,
+          // instead of the ~-15° a whole-object framing gives at the same
+          // distance).
+          computeFramingPitch(altitude, poiHeight, lockedPoiDistanceM)
+        : computeGimbalPitch(altitude, poiHeight, lockedPoiDistanceM)
       : gimbalPitchDeg;
 
     waypoints.push({

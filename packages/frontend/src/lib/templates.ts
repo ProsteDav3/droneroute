@@ -725,7 +725,7 @@ function minStandoffForWidthFovM(widthM: number, hfovDeg: number): number {
  * along so the clamp feels like hitting a wall, not a jump to an unrelated
  * spot. Used by `TemplateDrawHandler`'s orbit center drag handle.
  */
-export function clampOrbitCenterForPoiClearance(
+function clampOrbitCenterForPoiMinStandoff(
   candidateCenter: [number, number],
   poiCenter: [number, number],
   radiusM: number,
@@ -753,6 +753,68 @@ export function clampOrbitCenterForPoiClearance(
       : outsideDist;
 
   return destinationPoint(poiLat, poiLng, targetDist, bearingDeg);
+}
+
+/** How much farther the flight circle's farthest point from a locked POI may
+ * be than its nearest point — e.g. 1.6 means the subject may look up to 60%
+ * smaller in frame at the far end of the arc than at the near end. Circle
+ * geometry (near = |radiusM - offsetM|, far = radiusM + offsetM, for offsetM
+ * = distance from the POI to the flight circle's own center) makes this
+ * ratio worst exactly when the POI sits close to the circle's own edge
+ * (offsetM near radiusM, where near approaches 0) and best when the offset
+ * is small relative to the radius (POI near the circle's own center, where
+ * near and far both approach radiusM) — dragging the circle far *outside*
+ * the POI can mathematically also reach a good ratio again at very large
+ * offsets, but that defeats the point of orbiting close to the subject, so
+ * this only bounds the practical small-offset side. */
+const MAX_POI_DISTANCE_RATIO = 1.6;
+
+/** The largest distance a flight circle's own center may sit from a locked
+ * POI, at a given `radiusM`, while keeping the near/far distance ratio at or
+ * under `MAX_POI_DISTANCE_RATIO` — see its doc comment for the geometry.
+ * Solving `(radiusM + offsetM) / (radiusM - offsetM) <= MAX_POI_DISTANCE_RATIO`
+ * for `offsetM`. */
+export function maxPoiOffsetForRatioM(radiusM: number): number {
+  return (
+    (radiusM * (MAX_POI_DISTANCE_RATIO - 1)) / (MAX_POI_DISTANCE_RATIO + 1)
+  );
+}
+
+/**
+ * `clampOrbitCenterForPoiMinStandoff` alone only prevents the circle from
+ * getting too *close* to a locked POI — it doesn't stop the opposite
+ * problem, dragging the circle's center so far from the POI (relative to
+ * its own radius) that the subject's apparent size swings wildly over the
+ * course of the arc (see `maxPoiOffsetForRatioM`). This layers that second,
+ * optional cap on top: when `maxOffsetM` is passed (typically only when the
+ * POI came from a real building, where that framing consistency matters
+ * most — see `TemplateDrawHandler`), pulls the already-clearance-clamped
+ * center back toward the POI along the same bearing if it's still too far
+ * offset. Omitting `maxOffsetM` (the default) preserves the exact prior
+ * clearance-only behavior, including its own inside/outside choice.
+ */
+export function clampOrbitCenterForPoiClearance(
+  candidateCenter: [number, number],
+  poiCenter: [number, number],
+  radiusM: number,
+  minStandoffM: number,
+  maxOffsetM = Infinity,
+): [number, number] {
+  const clearanceClamped = clampOrbitCenterForPoiMinStandoff(
+    candidateCenter,
+    poiCenter,
+    radiusM,
+    minStandoffM,
+  );
+  if (!Number.isFinite(maxOffsetM)) return clearanceClamped;
+
+  const [poiLat, poiLng] = poiCenter;
+  const [cLat, cLng] = clearanceClamped;
+  const dist = haversine(poiLat, poiLng, cLat, cLng);
+  if (dist <= maxOffsetM) return clearanceClamped;
+
+  const bearingDeg = dist > 0 ? bearing(poiLat, poiLng, cLat, cLng) : 0;
+  return destinationPoint(poiLat, poiLng, maxOffsetM, bearingDeg);
 }
 
 /** How many bearings to sample around a candidate circle when checking how

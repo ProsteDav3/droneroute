@@ -18,6 +18,7 @@ import {
   computeGimbalPitch,
   minStandoffForFovM,
   minStandoffForBuildingPoiClearanceM,
+  maxPoiOffsetForRatioM,
   clampOrbitCenterForPoiClearance,
   recomputeBuildingOrbitForArc,
   DEFAULT_ORBIT_PARAMS,
@@ -823,6 +824,9 @@ export function TemplateDrawHandler() {
                         orbitParams.poiHeight,
                         orbitParams.buildingVertices,
                       ),
+                      orbitParams.buildingVertices
+                        ? maxPoiOffsetForRatioM(orbitParams.radiusM)
+                        : undefined,
                     )
                   : newCenter;
               setOrbitParams({ ...orbitParams, center: clampedCenter });

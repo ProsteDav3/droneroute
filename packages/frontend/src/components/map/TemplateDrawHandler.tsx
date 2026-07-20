@@ -803,8 +803,8 @@ export function TemplateDrawHandler() {
                     type="line"
                     paint={{
                       "line-color": "#00c2ff",
-                      "line-width": 1.5,
-                      "line-opacity": 0.5,
+                      "line-width": 2.5,
+                      "line-opacity": 0.9,
                       "line-dasharray": [2, 2],
                     }}
                   />
@@ -841,8 +841,8 @@ export function TemplateDrawHandler() {
                     type="line"
                     paint={{
                       "line-color": "#fbbf24",
-                      "line-width": 1.5,
-                      "line-opacity": 0.5,
+                      "line-width": 2.5,
+                      "line-opacity": 0.9,
                       "line-dasharray": [1, 3],
                     }}
                   />

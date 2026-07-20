@@ -161,10 +161,15 @@ function findImpliedPoi(
  * that leg belongs to an orbit generated around a real building (see
  * `OrbitParams.buildingVertices` in lib/templates.ts). `undefined` for any
  * other leg — a manually-drawn orbit, a non-orbit template, or an orbit
- * that predates that field. */
+ * that predates that field. `aimLat`/`aimLng` is the orbit's own center (the
+ * camera's aim point for this leg) — kept alongside the footprint so heading
+ * can be derived from the exact same target as pitch, rather than from
+ * `findImpliedPoi`'s separate point-tracking check (see below). */
 interface LegBuildingFraming {
   buildingVertices: [number, number][];
   poiHeight: number;
+  aimLat: number;
+  aimLng: number;
 }
 
 /** Looks up whether `from`'s leg belongs to a building-orbit template group
@@ -177,9 +182,14 @@ interface LegBuildingFraming {
  * generated with would silently re-introduce the exact per-waypoint framing
  * drift the building-vertices fix in `generateOrbit` exists to remove.
  * `buildSimulationFrames` uses this instead of `findImpliedPoi`'s
- * point-tracking whenever it's available, so the flythrough's continuous
- * per-frame pitch stays consistent with the real per-waypoint data instead
- * of quietly overriding it. */
+ * point-tracking whenever it's available — for BOTH heading and pitch, not
+ * just pitch: `findImpliedPoi`'s own tolerance check compares each
+ * waypoint's static pitch against what simple point-tracking to "Střed
+ * orbitu" would produce, but building-edge-aware pitch routinely differs
+ * from that by more than its 15° tolerance, so it was silently failing to
+ * recognize these legs at all — falling back to raw heading interpolation
+ * between waypoints (the exact "drifts off the subject mid-leg" bug
+ * `findImpliedPoi` exists to prevent) even though pitch was already fixed. */
 function getLegBuildingFraming(
   from: Waypoint,
   templateGroups: Record<string, TemplateGroup>,
@@ -189,6 +199,7 @@ function getLegBuildingFraming(
   const group = templateGroups[groupId];
   if (!group || group.type !== "orbit") return undefined;
   const params = group.params as {
+    center?: [number, number];
     buildingVertices?: [number, number][];
     poiHeight?: number;
     altitudeGimbalLinked?: boolean;
@@ -199,9 +210,12 @@ function getLegBuildingFraming(
   if (!params.buildingVertices || params.buildingVertices.length < 2) {
     return undefined;
   }
+  if (!params.center) return undefined;
   return {
     buildingVertices: params.buildingVertices,
     poiHeight: params.poiHeight ?? 0,
+    aimLat: params.center[0],
+    aimLng: params.center[1],
   };
 }
 
@@ -291,9 +305,16 @@ export function buildSimulationFrames(
       const latitude = from.latitude + (to.latitude - from.latitude) * t;
       const longitude = from.longitude + (to.longitude - from.longitude) * t;
       const height = from.height + (to.height - from.height) * t;
-      const heading = poi
-        ? bearingTo(latitude, longitude, poi.latitude, poi.longitude)
-        : interpolateHeading(fromHeading, toHeading, t);
+      const heading = buildingFraming
+        ? bearingTo(
+            latitude,
+            longitude,
+            buildingFraming.aimLat,
+            buildingFraming.aimLng,
+          )
+        : poi
+          ? bearingTo(latitude, longitude, poi.latitude, poi.longitude)
+          : interpolateHeading(fromHeading, toHeading, t);
       const gimbalPitchAngle = buildingFraming
         ? computeFramingPitch(
             height,

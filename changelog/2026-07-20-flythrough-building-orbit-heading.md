@@ -1,0 +1,3 @@
+### Fixed
+
+- A building-orbit leg's simulated heading during the 3D flythrough could still drift away from the building instead of tracking it continuously — the per-frame heading was only resolved via a direct POI-ID reference or a separate point-tracking heuristic (`findImpliedPoi`), neither of which was guaranteed to line up with the same building-aware target `generateOrbit`'s per-waypoint pitch actually uses. The flythrough now derives heading for a building-orbit leg from the same orbit center the pitch calculation already uses, so yaw and tilt are always aimed at the same point instead of being resolved through two independent (and occasionally inconsistent) code paths.

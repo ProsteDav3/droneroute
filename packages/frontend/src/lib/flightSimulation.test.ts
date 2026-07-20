@@ -359,6 +359,20 @@ describe("buildSimulationFrames", () => {
     );
     expect(Math.abs(expectedPitch - pointTrackingPitch)).toBeGreaterThan(1);
     expect(mid.gimbalPitchAngle).toBeCloseTo(expectedPitch, 3);
+
+    // Heading must track the orbit's own center continuously too — not just
+    // pitch. findImpliedPoi's tolerance check compares this leg's static
+    // pitch against plain point-tracking, which the assertion above proves
+    // differs by more than its 15° tolerance — so it fails to recognize
+    // this leg, and heading must not silently fall back to raw
+    // interpolation between the two waypoints' static headings instead.
+    const expectedHeading = bearingTo(
+      mid.latitude,
+      mid.longitude,
+      center[0],
+      center[1],
+    );
+    expect(mid.headingAngle).toBeCloseTo(expectedHeading, 3);
   });
 
   it("does NOT dynamically track a POI when the two waypoints' angles don't actually match it (an unrelated survey leg)", () => {

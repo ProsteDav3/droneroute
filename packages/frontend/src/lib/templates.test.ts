@@ -23,6 +23,8 @@ import {
   DEFAULT_TURBINE_PARAMS,
   bearing,
   destinationPoint,
+  minStandoffForFovM,
+  clampOrbitCenterForPoiClearance,
 } from "./templates";
 import type {
   OrbitParams,
@@ -972,6 +974,81 @@ describe("orbitParamsForBuilding", () => {
     const angleTop =
       (Math.atan2(params.altitude - 25, params.radiusM) * 180) / Math.PI;
     expect(angleTop).toBeGreaterThan(0);
+  });
+});
+
+describe("clampOrbitCenterForPoiClearance", () => {
+  const poi: [number, number] = CENTER;
+  const height = 25;
+  const vfovDeg = 55;
+  const minStandoffM = minStandoffForFovM(height, vfovDeg);
+
+  it("leaves the candidate center untouched when already far enough from the POI", () => {
+    // 200m due east — the circle's near edge (200 - radius) is still well
+    // past the minimum standoff.
+    const radiusM = 50;
+    const candidate = destinationPoint(poi[0], poi[1], 200, 90);
+    const clamped = clampOrbitCenterForPoiClearance(
+      candidate,
+      poi,
+      radiusM,
+      minStandoffM,
+    );
+    expect(clamped).toEqual(candidate);
+  });
+
+  it("pushes the center farther away when the circle's near edge would otherwise cross the minimum standoff", () => {
+    const radiusM = 50;
+    // Only 60m from the POI — with a 50m radius, the near edge would sit
+    // just 10m from the POI, far inside the physical minimum.
+    const candidate = destinationPoint(poi[0], poi[1], 60, 90);
+    const clamped = clampOrbitCenterForPoiClearance(
+      candidate,
+      poi,
+      radiusM,
+      minStandoffM,
+    );
+
+    const clampedDist = bearing(poi[0], poi[1], clamped[0], clamped[1]);
+    // Direction (bearing) is preserved — still due east.
+    expect(clampedDist).toBeCloseTo(90, 0);
+
+    // The circle's near edge now sits exactly at the minimum standoff.
+    const distFromPoi = Math.hypot(
+      (clamped[0] - poi[0]) * 111320,
+      (clamped[1] - poi[1]) * 111320 * Math.cos((poi[0] * Math.PI) / 180),
+    );
+    expect(Math.abs(distFromPoi - radiusM)).toBeCloseTo(minStandoffM, 0);
+  });
+
+  it("keeps the POI inside the circle rather than pushing it outside, when that requires less movement", () => {
+    // A large radius (300m) with the candidate center placed so the POI
+    // sits just 10m inside the circle's boundary (dist = radius - 10) —
+    // closer to satisfying the standoff by nudging the center a little
+    // farther out (POI stays inside) than by dragging the whole 300m circle
+    // all the way past the POI to the outside.
+    const radiusM = 300;
+    const candidate = destinationPoint(poi[0], poi[1], radiusM - 10, 45);
+    const clamped = clampOrbitCenterForPoiClearance(
+      candidate,
+      poi,
+      radiusM,
+      minStandoffM,
+    );
+
+    const distFromPoi = Math.hypot(
+      (clamped[0] - poi[0]) * 111320,
+      (clamped[1] - poi[1]) * 111320 * Math.cos((poi[0] * Math.PI) / 180),
+    );
+    // Confirms the "inside" branch was chosen: distance from POI to the new
+    // center is close to radiusM - minStandoffM, not radiusM + minStandoffM.
+    expect(distFromPoi).toBeCloseTo(radiusM - minStandoffM, 0);
+  });
+
+  it("picks an arbitrary direction (doesn't throw) when the candidate lands exactly on the POI", () => {
+    const clamped = clampOrbitCenterForPoiClearance(poi, poi, 50, minStandoffM);
+    expect(Number.isFinite(clamped[0])).toBe(true);
+    expect(Number.isFinite(clamped[1])).toBe(true);
   });
 });
 

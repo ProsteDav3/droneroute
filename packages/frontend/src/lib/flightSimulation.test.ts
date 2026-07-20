@@ -7,12 +7,8 @@ import {
 } from "./flightSimulation";
 import { estimateWaypointArrivalTimes, haversine } from "@/lib/flightStats";
 import { bearingTo } from "@/components/map/CameraFrustum";
-import {
-  computeFramingPitch,
-  DEFAULT_ORBIT_PARAMS,
-  type OrbitParams,
-} from "@/lib/templates";
-import { distanceToPolygonBoundaryM, offsetLatLng } from "@/lib/geo";
+import { DEFAULT_ORBIT_PARAMS, type OrbitParams } from "@/lib/templates";
+import { offsetLatLng } from "@/lib/geo";
 import type { TemplateGroup } from "@/store/missionStore";
 import type { Waypoint, PointOfInterest } from "@droneroute/shared";
 

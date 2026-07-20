@@ -108,12 +108,14 @@ export function recommendSolarSpacing(
 }
 
 /**
- * `WIDE_CAMERA_FOV` only stores vertical FOV (all that Orbit-framing ever
- * needed). Grid's GSD/overlap math also needs horizontal FOV, so derive it
- * from VFOV using the same 4:3 sensor aspect ratio these VFOV values were
- * themselves derived from (tan(HFOV/2) = tan(VFOV/2) * width/height).
+ * `WIDE_CAMERA_FOV` only stores vertical FOV. Grid's GSD/overlap math and
+ * Orbit's whole-building framing (an elongated building's horizontal extent
+ * can need more standoff than its height does — see
+ * `templates.ts:buildingProjectedWidthM`) both also need horizontal FOV, so
+ * derive it from VFOV using the same 4:3 sensor aspect ratio these VFOV
+ * values were themselves derived from (tan(HFOV/2) = tan(VFOV/2) * width/height).
  */
-function deriveHfovFromVfov(vfovDeg: number): number {
+export function deriveHfovFromVfov(vfovDeg: number): number {
   const toRad = (d: number) => (d * Math.PI) / 180;
   const toDeg = (r: number) => (r * 180) / Math.PI;
   return toDeg(2 * Math.atan(Math.tan(toRad(vfovDeg) / 2) * (4 / 3)));

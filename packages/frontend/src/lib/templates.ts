@@ -5,6 +5,7 @@ import type {
 } from "@droneroute/shared";
 import { DEFAULT_WAYPOINT } from "@droneroute/shared";
 import { distanceToPolygonBoundaryM, polygonCentroid } from "@/lib/geo";
+import { deriveHfovFromVfov } from "@/lib/solarCamera";
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -659,6 +660,59 @@ export function minStandoffForFovM(poiHeight: number, vfovDeg: number): number {
 }
 
 /**
+ * A building's apparent horizontal extent as seen from a given bearing — the
+ * width of its footprint's silhouette projected onto the axis perpendicular
+ * to that viewing direction (what has to fit "left edge to right edge" in
+ * frame when looking along that bearing), not its footprint diagonal or any
+ * single fixed dimension. An elongated building's apparent width varies
+ * hugely by viewing angle: looking straight at a long side shows its full
+ * length; looking at a short end shows only that end's width. Every
+ * building-orbit standoff calculation before this only considered vertical
+ * extent (height) — for a long, narrow building this silently let the
+ * standoff be plenty for the roofline to fit while still cropping the
+ * building's own left/right edges out of frame, since fitting the *height*
+ * needs far less distance than fitting the *length* does for a shape this
+ * elongated. Projects using the same local equirectangular approach as
+ * `polygonArea`/`distanceToPolygonBoundaryM` (building-footprint scale, not
+ * global geometry).
+ */
+function buildingProjectedWidthM(
+  vertices: [number, number][],
+  viewBearingDeg: number,
+): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const R = 6371000;
+  const [refLat, refLng] = vertices[0];
+  const cosLat = Math.cos(toRad(refLat));
+  const toXY = ([lat, lng]: [number, number]): [number, number] => [
+    (lng - refLng) * toRad(1) * R * cosLat,
+    (lat - refLat) * toRad(1) * R,
+  ];
+  // Unit vector along the axis perpendicular to the view bearing — i.e. the
+  // "left-right in frame" direction when looking along viewBearingDeg.
+  const perpRad = toRad(viewBearingDeg + 90);
+  const ux = Math.sin(perpRad);
+  const uy = Math.cos(perpRad);
+  const projections = vertices.map((v) => {
+    const [x, y] = toXY(v);
+    return x * ux + y * uy;
+  });
+  return Math.max(...projections) - Math.min(...projections);
+}
+
+/** Minimum horizontal distance for an object of `widthM` (left edge to right
+ * edge, as actually seen from some viewing bearing — see
+ * `buildingProjectedWidthM`) to fit inside `hfovDeg` at all. Unlike
+ * `minStandoffForFovM`'s vertical case, there's no altitude-like second
+ * degree of freedom to optimize over here — a horizontal view is always
+ * naturally centered on the target, so this is the plain "width fits inside
+ * an angle, viewed from some distance" relationship directly. */
+function minStandoffForWidthFovM(widthM: number, hfovDeg: number): number {
+  const targetSpanRad = (hfovDeg * MIN_FOV_FIT_FACTOR * Math.PI) / 180;
+  return widthM / (2 * Math.tan(targetSpanRad / 2));
+}
+
+/**
  * When an orbit's POI is locked (`OrbitParams.poiCenter`) separately from
  * its flight circle — e.g. flying an arc offset to one side of a subject
  * because an obstacle blocks the far side — dragging the circle's own
@@ -732,31 +786,88 @@ function sampleArcBearingsDeg(
   );
 }
 
-/** The closest a circle (`center`, `radiusM`) ever gets to `vertices`' real
- * boundary, checked by sampling points around the circle rather than just
- * the polygon's own vertices — a building's real footprint isn't circular,
- * so the true minimum can fall on an edge midpoint or a concave notch that a
- * vertex-only check would miss entirely. Sampling defaults to the full
+/**
+ * The worst (largest) shortfall between a candidate circle's real clearance
+ * from `vertices` and what's actually required to frame the building from
+ * that specific bearing, sampled around the circle rather than just at the
+ * polygon's own vertices — a building's real footprint isn't circular, so
+ * the true worst point can fall on an edge midpoint or a concave notch a
+ * vertex-only check would miss entirely. "Required" combines two
+ * independent constraints per bearing: the constant vertical minimum
+ * (`requiredVerticalStandoffM`, same at every bearing — see
+ * `minStandoffForFovM`) and a per-bearing horizontal minimum, since an
+ * elongated building's apparent width — and therefore how much standoff its
+ * *length* needs — varies hugely by viewing angle (see
+ * `buildingProjectedWidthM`); fitting the roofline needs far less distance
+ * than fitting a long facade edge-to-edge does. A non-positive return means
+ * every sampled bearing already clears both. Sampling defaults to the full
  * circle; pass `startAngleDeg`/`endAngleDeg` to restrict the check to a
- * partial arc instead (see `sampleArcBearingsDeg`). */
-function minCircleToBuildingDistanceM(
+ * partial arc instead (see `sampleArcBearingsDeg`).
+ */
+function worstBuildingStandoffDeficitM(
   center: [number, number],
   radiusM: number,
   vertices: [number, number][],
+  requiredVerticalStandoffM: number,
+  hfovDeg: number,
   startAngleDeg = 0,
   endAngleDeg = 360,
 ): number {
-  let min = Infinity;
+  let worstDeficit = -Infinity;
   for (const bearingDeg of sampleArcBearingsDeg(
     startAngleDeg,
     endAngleDeg,
     CIRCLE_CLEARANCE_SAMPLE_COUNT,
   )) {
     const point = destinationPoint(center[0], center[1], radiusM, bearingDeg);
-    const d = distanceToPolygonBoundaryM(point, vertices);
-    if (d < min) min = d;
+    const edgeDistM = distanceToPolygonBoundaryM(point, vertices);
+    const widthM = buildingProjectedWidthM(vertices, bearingDeg);
+    const requiredHorizontalStandoffM = minStandoffForWidthFovM(
+      widthM,
+      hfovDeg,
+    );
+    const requiredM = Math.max(
+      requiredVerticalStandoffM,
+      requiredHorizontalStandoffM,
+    );
+    const deficit = requiredM - edgeDistM;
+    if (deficit > worstDeficit) worstDeficit = deficit;
   }
-  return min;
+  return worstDeficit;
+}
+
+/**
+ * The largest standoff distance a locked-POI orbit's flight circle needs to
+ * keep from `vertices`, combining `minStandoffForFovM`'s constant vertical
+ * minimum with the *worst* (largest) horizontal minimum across every viewing
+ * bearing (see `buildingProjectedWidthM`/`minStandoffForWidthFovM`). Used by
+ * `TemplateDrawHandler`'s POI-clearance drag clamp and guide ring, which —
+ * unlike `computeOrbitSeedForBuilding`'s own per-bearing growth loop — don't
+ * know in advance which bearing the user will end up dragging the flight
+ * circle toward, so they need a single conservative floor that's safe from
+ * every direction rather than one tailored to a specific sampled point.
+ */
+export function minStandoffForBuildingPoiClearanceM(
+  vertices: [number, number][],
+  poiHeight: number,
+  vfovDeg: number,
+): number {
+  const requiredVerticalStandoffM = minStandoffForFovM(poiHeight, vfovDeg);
+  const hfovDeg = deriveHfovFromVfov(vfovDeg);
+  let maxWidthM = 0;
+  for (const bearingDeg of sampleArcBearingsDeg(
+    0,
+    360,
+    CIRCLE_CLEARANCE_SAMPLE_COUNT,
+  )) {
+    const widthM = buildingProjectedWidthM(vertices, bearingDeg);
+    if (widthM > maxWidthM) maxWidthM = widthM;
+  }
+  const requiredHorizontalStandoffM = minStandoffForWidthFovM(
+    maxWidthM,
+    hfovDeg,
+  );
+  return Math.max(requiredVerticalStandoffM, requiredHorizontalStandoffM);
 }
 
 /** How many times to grow the radius and re-check clearance — increasing
@@ -796,14 +907,19 @@ export interface BuildingOrbitSeed {
  * where that real distance is simply too short for the whole building to
  * fit within the camera's actual field of view at all — that needs more
  * standoff distance, not a different angle. This grows the radius (sampling
- * the candidate circle at many bearings via `minCircleToBuildingDistanceM`,
+ * the candidate circle at many bearings via `worstBuildingStandoffDeficitM`,
  * since the true closest point can fall on an edge or concave notch a
- * vertex-only check would miss) until even the closest bearing clears the
+ * vertex-only check would miss) until even the worst bearing clears the
  * purely physical minimum distance for the whole building to fit inside the
- * camera's FOV at any pitch (`minStandoffForFovM`) — not the tighter,
- * aesthetic default-framing target used elsewhere, which a close-range,
- * steeply-tilted-down shot can satisfy on paper without actually looking
- * like a comfortable elevation view.
+ * camera's FOV at any pitch — not the tighter, aesthetic default-framing
+ * target used elsewhere, which a close-range, steeply-tilted-down shot can
+ * satisfy on paper without actually looking like a comfortable elevation
+ * view. That minimum considers BOTH vertical fit (`minStandoffForFovM`,
+ * constant regardless of bearing) and horizontal fit (varies by bearing —
+ * see `buildingProjectedWidthM`): an elongated building's own length can
+ * need much more standoff to fit edge-to-edge than its height ever does, so
+ * a radius that comfortably clears the roofline can still crop the
+ * building's left/right edges out of frame for a long enough footprint.
  *
  * `startAngleDeg`/`endAngleDeg` (default: a full 360° loop) restrict that
  * growth check to only the bearings actually flown. A large or elongated
@@ -833,17 +949,23 @@ export function computeOrbitSeedForBuilding(
   let radiusM = Math.max(footprintRadiusM, heightRadiusM);
 
   if (buildingHeight > 0) {
-    const requiredStandoffM = minStandoffForFovM(buildingHeight, vfovDeg);
+    const requiredVerticalStandoffM = minStandoffForFovM(
+      buildingHeight,
+      vfovDeg,
+    );
+    const hfovDeg = deriveHfovFromVfov(vfovDeg);
     for (let i = 0; i < MAX_RADIUS_GROWTH_ITERATIONS; i++) {
-      const minDist = minCircleToBuildingDistanceM(
+      const deficit = worstBuildingStandoffDeficitM(
         center,
         radiusM,
         vertices,
+        requiredVerticalStandoffM,
+        hfovDeg,
         startAngleDeg,
         endAngleDeg,
       );
-      if (minDist >= requiredStandoffM) break;
-      radiusM += requiredStandoffM - minDist;
+      if (deficit <= 0) break;
+      radiusM += deficit;
     }
   }
 
@@ -855,23 +977,32 @@ export function computeOrbitSeedForBuilding(
 
 /**
  * Fallback for when `computeOrbitSeedForBuilding`'s radius growth still
- * isn't enough to keep `computeFramedForRadius` above the roofline — e.g. a
- * FOV so narrow that no reasonable growth converges, or an older/manually
- * edited orbit whose radius predates that growth logic. Uses the same
- * `MIN_ALTITUDE_ABOVE_BUILDING_FACTOR` target the radius growth itself grows
- * toward, so the two stay consistent. This only overrides the *initial*
- * recommendation; live edits still go through the plain
- * `computeFramedForRadius`/`computeFramedForAltitude` pair, which correctly
- * honors whatever radius/altitude the user explicitly chose (including ones
- * in the capped regime this exists to avoid for new recommendations — see
- * that pair's own tests).
+ * isn't enough to keep `computeFramedForRadius` comfortably above the
+ * roofline — e.g. a FOV so narrow that no reasonable growth converges, an
+ * older/manually edited orbit whose radius predates that growth logic, or
+ * (the case that motivated the stricter `>=` check below) a radius grown
+ * for horizontal fit that pushes vertical framing back into the same capped
+ * regime this whole mechanism exists to avoid: once the desired vertical
+ * margin becomes unreachable at a given radius, `computeFramedForRadius`'s
+ * two altitude roots collapse toward `poiHeight / 2`, symmetric around it —
+ * "prefer the larger root" can land exactly *at* `poiHeight` (technically
+ * satisfying a plain `>=` check) without being meaningfully *above* it, so
+ * this requires clearing the same `MIN_ALTITUDE_ABOVE_BUILDING_FACTOR`
+ * target the radius growth itself grows toward, not just clearing zero.
+ * This only overrides the *initial* recommendation; live edits still go
+ * through the plain `computeFramedForRadius`/`computeFramedForAltitude`
+ * pair, which correctly honors whatever radius/altitude the user explicitly
+ * chose (including ones in the capped regime this exists to avoid for new
+ * recommendations — see that pair's own tests).
  */
 function ensureAltitudeAboveBuilding(
   framed: { altitude: number; gimbalPitchDeg: number },
   radiusM: number,
   poiHeight: number,
 ): { altitude: number; gimbalPitchDeg: number } {
-  if (framed.altitude >= poiHeight) return framed;
+  if (framed.altitude >= poiHeight * MIN_ALTITUDE_ABOVE_BUILDING_FACTOR) {
+    return framed;
+  }
   const altitude = Math.round(poiHeight * MIN_ALTITUDE_ABOVE_BUILDING_FACTOR);
   return {
     altitude,

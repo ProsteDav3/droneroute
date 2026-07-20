@@ -817,7 +817,9 @@ describe("computeOrbitSeedForBuilding", () => {
     const c11 = destinationPoint(c01[0], c01[1], size, 90);
     const vertices: [number, number][] = [c00, c10, c11, c01];
 
-    const seed = computeOrbitSeedForBuilding(vertices);
+    // Height well under the footprint radius so the height floor doesn't
+    // interfere with this footprint-only assertion.
+    const seed = computeOrbitSeedForBuilding(vertices, 10);
 
     // True geometric center of a 40x40 square is ~28.3m from any corner.
     const distFromCorner = haversineDistance(
@@ -840,10 +842,26 @@ describe("computeOrbitSeedForBuilding", () => {
       destinationPoint(CENTER[0], CENTER[1], 30, 90),
       destinationPoint(CENTER[0], CENTER[1], 30, 45),
     ];
-    const forward = computeOrbitSeedForBuilding(vertices);
-    const reversed = computeOrbitSeedForBuilding([...vertices].reverse());
+    const forward = computeOrbitSeedForBuilding(vertices, 10);
+    const reversed = computeOrbitSeedForBuilding([...vertices].reverse(), 10);
     expect(reversed.center).toEqual(forward.center);
     expect(reversed.radiusM).toEqual(forward.radiusM);
+  });
+
+  it("floors the radius to the building's height when the footprint is small relative to how tall it is", () => {
+    // A narrow 6x6 footprint: footprint-based radius is only
+    // ~4.2 (half-diagonal) + 15 clearance =~ 19m, far less than a 25m-tall
+    // building — the height floor (radius >= height) must take over.
+    const size = 6;
+    const c00 = CENTER;
+    const c10 = destinationPoint(c00[0], c00[1], size, 90);
+    const c01 = destinationPoint(c00[0], c00[1], size, 0);
+    const c11 = destinationPoint(c01[0], c01[1], size, 90);
+    const vertices: [number, number][] = [c00, c10, c11, c01];
+
+    const seed = computeOrbitSeedForBuilding(vertices, 25);
+
+    expect(seed.radiusM).toBeGreaterThanOrEqual(25);
   });
 });
 
@@ -860,7 +878,7 @@ describe("orbitParamsForBuilding", () => {
     const vertices = squareFootprint(40);
     const params = orbitParamsForBuilding({ vertices, height: 25 });
 
-    const seed = computeOrbitSeedForBuilding(vertices);
+    const seed = computeOrbitSeedForBuilding(vertices, 25);
     expect(params.center).toEqual(seed.center);
     expect(params.radiusM).toBe(seed.radiusM);
     expect(params.poiHeight).toBe(25);
@@ -877,7 +895,7 @@ describe("orbitParamsForBuilding", () => {
 
   it("with a known camera vfovDeg, derives altitude/gimbal pitch so the whole building fits in frame using that camera's own FOV rather than the default", () => {
     const vertices = squareFootprint(40);
-    const seed = computeOrbitSeedForBuilding(vertices);
+    const seed = computeOrbitSeedForBuilding(vertices, 25);
     const vfovDeg = 26; // narrower than the default wide-angle FOV
     const params = orbitParamsForBuilding({ vertices, height: 25 }, vfovDeg);
 
@@ -890,7 +908,7 @@ describe("orbitParamsForBuilding", () => {
 
   it("frames using a default wide-angle FOV instead of the fixed -45°/computeAltitudeForPitch heuristic when vfovDeg is omitted (no drone/camera selected)", () => {
     const vertices = squareFootprint(40);
-    const seed = computeOrbitSeedForBuilding(vertices);
+    const seed = computeOrbitSeedForBuilding(vertices, 25);
     const params = orbitParamsForBuilding({ vertices, height: 25 });
 
     expect(params.gimbalPitchDeg).not.toBe(-45);

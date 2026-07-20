@@ -15,6 +15,7 @@ import {
   computeAltitudeForPitch,
   computeFramedForRadius,
   computeFramedForAltitude,
+  recomputeBuildingOrbitForArc,
   DEFAULT_WIDE_VFOV_DEG,
   type OrbitParams,
 } from "@/lib/templates";
@@ -39,6 +40,43 @@ export function OrbitFields({
   heightModeText,
   setFlyToTarget,
 }: OrbitFieldsProps) {
+  /**
+   * Narrowing a building orbit's arc to one side (an obstacle or neighboring
+   * structure blocks the rest) should also shrink the radius back down —
+   * the initial recommendation sizes it for a full 360° loop, which for a
+   * large building can end up far larger than the arc actually flown needs,
+   * reaching past the building's own footprint into unrelated obstacles.
+   * Only re-derives when linked framing is actually driving the numbers
+   * (skipped for a manually unlocked pitch or a locked/decoupled POI, same
+   * gating as everywhere else this data is used).
+   */
+  const applyArcChange = (startAngleDeg: number, endAngleDeg: number) => {
+    if (
+      orbitParams.buildingVertices &&
+      orbitParams.altitudeGimbalLinked &&
+      !orbitParams.poiCenter
+    ) {
+      const reframed = recomputeBuildingOrbitForArc(
+        orbitParams.buildingVertices,
+        orbitParams.poiHeight,
+        wideFov?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
+        startAngleDeg,
+        endAngleDeg,
+      );
+      onOrbitChange({
+        ...orbitParams,
+        startAngleDeg,
+        endAngleDeg,
+        center: reframed.center,
+        radiusM: reframed.radiusM,
+        altitude: reframed.altitude,
+        gimbalPitchDeg: reframed.gimbalPitchDeg,
+      });
+    } else {
+      onOrbitChange({ ...orbitParams, startAngleDeg, endAngleDeg });
+    }
+  };
+
   return (
     <div className="grid grid-cols-2 gap-2 mb-3">
       <div className="col-span-2">
@@ -274,7 +312,7 @@ export function OrbitFields({
         <Label className="text-[10px]">Počáteční úhel (°)</Label>
         <NumericInput
           value={orbitParams.startAngleDeg}
-          onChange={(v) => onOrbitChange({ ...orbitParams, startAngleDeg: v })}
+          onChange={(v) => applyArcChange(v, orbitParams.endAngleDeg)}
           min={-360}
           max={360}
           step={5}
@@ -286,7 +324,7 @@ export function OrbitFields({
         <Label className="text-[10px]">Koncový úhel (°, 360 = celý kruh)</Label>
         <NumericInput
           value={orbitParams.endAngleDeg}
-          onChange={(v) => onOrbitChange({ ...orbitParams, endAngleDeg: v })}
+          onChange={(v) => applyArcChange(orbitParams.startAngleDeg, v)}
           min={orbitParams.startAngleDeg}
           max={720}
           step={5}

@@ -707,19 +707,51 @@ export function clampOrbitCenterForPoiClearance(
  * would miss, coarse enough to stay cheap for an interactive recommendation. */
 const CIRCLE_CLEARANCE_SAMPLE_COUNT = 72;
 
+/**
+ * The bearings (degrees) to sample around a candidate orbit circle for
+ * clearance checking — every bearing on a full 360° loop, or just the ones
+ * actually flown for a partial arc (`endAngleDeg - startAngleDeg < 360`,
+ * the same "how wide is this arc" convention `generateOrbit` itself uses).
+ * Sampling only the flown arc, when one is given, avoids growing the radius
+ * to satisfy clearance at a bearing the drone will never actually visit —
+ * see `computeOrbitSeedForBuilding`'s doc comment.
+ */
+function sampleArcBearingsDeg(
+  startAngleDeg: number,
+  endAngleDeg: number,
+  count: number,
+): number[] {
+  const isClosedLoop = endAngleDeg - startAngleDeg >= 360;
+  if (isClosedLoop) {
+    return Array.from({ length: count }, (_, i) => (360 * i) / count);
+  }
+  const sweepDeg = endAngleDeg - startAngleDeg;
+  return Array.from(
+    { length: count },
+    (_, i) => startAngleDeg + (sweepDeg * i) / (count - 1),
+  );
+}
+
 /** The closest a circle (`center`, `radiusM`) ever gets to `vertices`' real
  * boundary, checked by sampling points around the circle rather than just
  * the polygon's own vertices — a building's real footprint isn't circular,
  * so the true minimum can fall on an edge midpoint or a concave notch that a
- * vertex-only check would miss entirely. */
+ * vertex-only check would miss entirely. Sampling defaults to the full
+ * circle; pass `startAngleDeg`/`endAngleDeg` to restrict the check to a
+ * partial arc instead (see `sampleArcBearingsDeg`). */
 function minCircleToBuildingDistanceM(
   center: [number, number],
   radiusM: number,
   vertices: [number, number][],
+  startAngleDeg = 0,
+  endAngleDeg = 360,
 ): number {
   let min = Infinity;
-  for (let i = 0; i < CIRCLE_CLEARANCE_SAMPLE_COUNT; i++) {
-    const bearingDeg = (360 * i) / CIRCLE_CLEARANCE_SAMPLE_COUNT;
+  for (const bearingDeg of sampleArcBearingsDeg(
+    startAngleDeg,
+    endAngleDeg,
+    CIRCLE_CLEARANCE_SAMPLE_COUNT,
+  )) {
     const point = destinationPoint(center[0], center[1], radiusM, bearingDeg);
     const d = distanceToPolygonBoundaryM(point, vertices);
     if (d < min) min = d;
@@ -772,11 +804,25 @@ export interface BuildingOrbitSeed {
  * aesthetic default-framing target used elsewhere, which a close-range,
  * steeply-tilted-down shot can satisfy on paper without actually looking
  * like a comfortable elevation view.
+ *
+ * `startAngleDeg`/`endAngleDeg` (default: a full 360° loop) restrict that
+ * growth check to only the bearings actually flown. A large or elongated
+ * building can need a genuinely huge radius to clear its *own* narrowest
+ * side from every direction — but a drone only flying a partial arc in
+ * front of it (because an obstacle, a neighboring building, or a property
+ * line blocks the rest) never visits the far side that drove that radius up
+ * in the first place, so sizing for the whole circle there would recommend
+ * an unnecessarily (and sometimes impractically, reaching into unrelated
+ * obstacles) wide standoff. The footprint- and height-based floors above
+ * still consider the whole building regardless of the arc, as a basic
+ * "never clip the structure's own silhouette" safety margin.
  */
 export function computeOrbitSeedForBuilding(
   vertices: [number, number][],
   buildingHeight: number,
   vfovDeg: number = DEFAULT_WIDE_VFOV_DEG,
+  startAngleDeg = 0,
+  endAngleDeg = 360,
 ): BuildingOrbitSeed {
   const center = polygonCentroid(vertices);
   const maxDist = Math.max(
@@ -789,7 +835,13 @@ export function computeOrbitSeedForBuilding(
   if (buildingHeight > 0) {
     const requiredStandoffM = minStandoffForFovM(buildingHeight, vfovDeg);
     for (let i = 0; i < MAX_RADIUS_GROWTH_ITERATIONS; i++) {
-      const minDist = minCircleToBuildingDistanceM(center, radiusM, vertices);
+      const minDist = minCircleToBuildingDistanceM(
+        center,
+        radiusM,
+        vertices,
+        startAngleDeg,
+        endAngleDeg,
+      );
       if (minDist >= requiredStandoffM) break;
       radiusM += requiredStandoffM - minDist;
     }
@@ -827,6 +879,26 @@ function ensureAltitudeAboveBuilding(
   };
 }
 
+/** Altitude/gimbal pitch for a given building orbit seed — shared by
+ * `orbitParamsForBuilding` (the initial, full-circle recommendation) and
+ * `recomputeBuildingOrbitForArc` (re-deriving the same framing after the
+ * arc has been narrowed), so both compute it identically. */
+function framingForBuildingSeed(
+  seed: BuildingOrbitSeed,
+  poiHeight: number,
+  vfovDeg: number,
+): { altitude: number; gimbalPitchDeg: number } {
+  const framed = computeFramedForRadius(seed.radiusM, poiHeight, vfovDeg);
+  if (framed) {
+    return ensureAltitudeAboveBuilding(framed, seed.radiusM, poiHeight);
+  }
+  const gimbalPitchDeg = DEFAULT_ORBIT_PARAMS.gimbalPitchDeg;
+  return {
+    gimbalPitchDeg,
+    altitude: computeAltitudeForPitch(gimbalPitchDeg, poiHeight, seed.radiusM),
+  };
+}
+
 /**
  * Full OrbitParams recommended for orbiting a building: center/radius from
  * `computeOrbitSeedForBuilding`, POI height set to the building's real
@@ -839,7 +911,9 @@ function ensureAltitudeAboveBuilding(
  * FOV assumption can fix) falls back further to the older fixed
  * -45°/`computeAltitudeForPitch` heuristic. Shared by the "place a POI on a
  * building" flow and any direct "create orbit around this building" action
- * so both compute the recommendation identically.
+ * so both compute the recommendation identically. Always seeds a full 360°
+ * loop — see `recomputeBuildingOrbitForArc` for re-deriving the same
+ * recommendation once the user narrows the arc to one side of the building.
  */
 export function orbitParamsForBuilding(
   building: {
@@ -854,40 +928,65 @@ export function orbitParamsForBuilding(
     building.height,
     resolvedVfovDeg,
   );
-  const framed = computeFramedForRadius(
-    seed.radiusM,
+  const { altitude, gimbalPitchDeg } = framingForBuildingSeed(
+    seed,
     building.height,
     resolvedVfovDeg,
   );
-  if (framed) {
-    const { altitude, gimbalPitchDeg } = ensureAltitudeAboveBuilding(
-      framed,
-      seed.radiusM,
-      building.height,
-    );
-    return {
-      ...DEFAULT_ORBIT_PARAMS,
-      center: seed.center,
-      radiusM: seed.radiusM,
-      poiHeight: building.height,
-      gimbalPitchDeg,
-      altitude,
-      buildingVertices: building.vertices,
-    };
-  }
-  const gimbalPitchDeg = DEFAULT_ORBIT_PARAMS.gimbalPitchDeg;
   return {
     ...DEFAULT_ORBIT_PARAMS,
     center: seed.center,
     radiusM: seed.radiusM,
     poiHeight: building.height,
     gimbalPitchDeg,
-    altitude: computeAltitudeForPitch(
-      gimbalPitchDeg,
-      building.height,
-      seed.radiusM,
-    ),
+    altitude,
     buildingVertices: building.vertices,
+  };
+}
+
+/**
+ * Re-derives center/radius/altitude/gimbal pitch for a building orbit after
+ * its arc has been narrowed to only the side of the building the drone can
+ * actually reach (an obstacle, neighboring structure, or property line
+ * blocks the rest) — see `computeOrbitSeedForBuilding`'s `startAngleDeg`/
+ * `endAngleDeg` params for why this matters: the *initial* recommendation
+ * always sizes the radius for a full 360° loop, which can end up far larger
+ * than the arc actually flown needs, and for a large building that
+ * unnecessary standoff can reach past the building's own footprint into
+ * genuinely unrelated obstacles nearby. Callers (the orbit config panel)
+ * should call this whenever `startAngleDeg`/`endAngleDeg` change on a
+ * building-derived, framing-linked orbit — the same way editing radius or
+ * altitude already triggers a live recompute.
+ */
+export function recomputeBuildingOrbitForArc(
+  buildingVertices: [number, number][],
+  poiHeight: number,
+  vfovDeg: number,
+  startAngleDeg: number,
+  endAngleDeg: number,
+): {
+  center: [number, number];
+  radiusM: number;
+  altitude: number;
+  gimbalPitchDeg: number;
+} {
+  const seed = computeOrbitSeedForBuilding(
+    buildingVertices,
+    poiHeight,
+    vfovDeg,
+    startAngleDeg,
+    endAngleDeg,
+  );
+  const { altitude, gimbalPitchDeg } = framingForBuildingSeed(
+    seed,
+    poiHeight,
+    vfovDeg,
+  );
+  return {
+    center: seed.center,
+    radiusM: seed.radiusM,
+    altitude,
+    gimbalPitchDeg,
   };
 }
 

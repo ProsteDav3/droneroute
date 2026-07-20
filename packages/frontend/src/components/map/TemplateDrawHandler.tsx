@@ -16,10 +16,14 @@ import {
   destinationPoint,
   bearing,
   computeGimbalPitch,
+  minStandoffForFovM,
+  clampOrbitCenterForPoiClearance,
   DEFAULT_ORBIT_PARAMS,
   DEFAULT_GRID_PARAMS,
   DEFAULT_FACADE_PARAMS,
+  DEFAULT_WIDE_VFOV_DEG,
 } from "@/lib/templates";
+import { WIDE_CAMERA_FOV } from "@/lib/solarCamera";
 
 /** DEFAULT_ORBIT_PARAMS + a freshly-drawn center/radius, with gimbal pitch
  * recomputed for that radius instead of the static default. */
@@ -182,6 +186,33 @@ function OrbitPoiHandle({ poiCenter }: { poiCenter: [number, number] }) {
   );
 }
 
+/** GeoJSON ring (as a closed LineString) at `radiusM` around `center` — the
+ * visual guide showing the minimum-clearance boundary from a locked POI, so
+ * dragging the orbit's center shows *why* it stops rather than just
+ * silently refusing to move closer. */
+function buildGuideRingGeojson(
+  center: [number, number],
+  radiusM: number,
+): GeoJSON.Feature<GeoJSON.LineString> {
+  const [lat, lng] = center;
+  const SEGMENTS = 64;
+  const coords: [number, number][] = [];
+  for (let i = 0; i <= SEGMENTS; i++) {
+    const [pLat, pLng] = destinationPoint(
+      lat,
+      lng,
+      radiusM,
+      (360 * i) / SEGMENTS,
+    );
+    coords.push([pLng, pLat]);
+  }
+  return {
+    type: "Feature",
+    properties: {},
+    geometry: { type: "LineString", coordinates: coords },
+  };
+}
+
 /**
  * A draggable handle sitting on the orbit's start bearing. Dragging it
  * rotates the whole arc (keeping its angular width constant) around the
@@ -246,6 +277,9 @@ export function TemplateDrawHandler() {
   const setPendingOrbitParams = useMissionStore((s) => s.setPendingOrbitParams);
   const pendingPresetLoad = useMissionStore((s) => s.pendingPresetLoad);
   const setPendingPresetLoad = useMissionStore((s) => s.setPendingPresetLoad);
+  const payloadEnumValue = useMissionStore((s) => s.config.payloadEnumValue);
+  const vfovDeg =
+    WIDE_CAMERA_FOV[payloadEnumValue]?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG;
   const { current: map } = useMap();
 
   // Only react to a pending preset load when it's one of the types this
@@ -700,13 +734,45 @@ export function TemplateDrawHandler() {
             }}
           />
           {orbitParams.poiCenter && (
-            <OrbitPoiHandle poiCenter={orbitParams.poiCenter} />
+            <>
+              <OrbitPoiHandle poiCenter={orbitParams.poiCenter} />
+              {orbitParams.poiHeight > 0 && (
+                <Source
+                  id="orbit-poi-clearance-guide"
+                  type="geojson"
+                  data={buildGuideRingGeojson(
+                    orbitParams.poiCenter,
+                    minStandoffForFovM(orbitParams.poiHeight, vfovDeg),
+                  )}
+                >
+                  <Layer
+                    id="orbit-poi-clearance-guide-layer"
+                    type="line"
+                    paint={{
+                      "line-color": "#00c2ff",
+                      "line-width": 1.5,
+                      "line-opacity": 0.5,
+                      "line-dasharray": [2, 2],
+                    }}
+                  />
+                </Source>
+              )}
+            </>
           )}
           <OrbitCenterHandle
             center={orbitParams.center}
-            onMove={(newCenter) =>
-              setOrbitParams({ ...orbitParams, center: newCenter })
-            }
+            onMove={(newCenter) => {
+              const clampedCenter =
+                orbitParams.poiCenter && orbitParams.poiHeight > 0
+                  ? clampOrbitCenterForPoiClearance(
+                      newCenter,
+                      orbitParams.poiCenter,
+                      orbitParams.radiusM,
+                      minStandoffForFovM(orbitParams.poiHeight, vfovDeg),
+                    )
+                  : newCenter;
+              setOrbitParams({ ...orbitParams, center: clampedCenter });
+            }}
           />
         </>
       )}

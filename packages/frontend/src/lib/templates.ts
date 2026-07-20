@@ -648,10 +648,57 @@ const MIN_FOV_FIT_FACTOR = 0.9;
  * radius" (occurs at altitude = poiHeight/2, where a close-up object
  * subtends the widest angle any altitude choice can ever achieve from that
  * distance): closer than this, no altitude/pitch combination keeps the
- * whole object in frame. */
-function minStandoffForFovM(poiHeight: number, vfovDeg: number): number {
+ * whole object in frame. Exported for `TemplateDrawHandler`, which uses the
+ * same physical minimum to keep a manually-dragged orbit center (with an
+ * independently locked POI — see `OrbitParams.poiCenter`) from being placed
+ * so close to the POI that no point on the resulting flight circle could
+ * ever frame it. */
+export function minStandoffForFovM(poiHeight: number, vfovDeg: number): number {
   const targetSpanRad = (vfovDeg * MIN_FOV_FIT_FACTOR * Math.PI) / 180;
   return poiHeight / (2 * Math.tan(targetSpanRad / 2));
+}
+
+/**
+ * When an orbit's POI is locked (`OrbitParams.poiCenter`) separately from
+ * its flight circle — e.g. flying an arc offset to one side of a subject
+ * because an obstacle blocks the far side — dragging the circle's own
+ * center too close to that fixed POI can put every point on the resulting
+ * circle too close for the whole subject to ever fit in the camera's FOV,
+ * regardless of gimbal pitch (the same physical limit `minStandoffForFovM`
+ * itself guards elsewhere). Clamps a dragged candidate center to the
+ * nearest point that keeps the circle's closest approach to the POI at or
+ * above that minimum, preserving the bearing the user is actually dragging
+ * along so the clamp feels like hitting a wall, not a jump to an unrelated
+ * spot. Used by `TemplateDrawHandler`'s orbit center drag handle.
+ */
+export function clampOrbitCenterForPoiClearance(
+  candidateCenter: [number, number],
+  poiCenter: [number, number],
+  radiusM: number,
+  minStandoffM: number,
+): [number, number] {
+  const [poiLat, poiLng] = poiCenter;
+  const [cLat, cLng] = candidateCenter;
+  const dist = haversine(poiLat, poiLng, cLat, cLng);
+  const closestApproach = Math.abs(dist - radiusM);
+  if (closestApproach >= minStandoffM) return candidateCenter;
+
+  const bearingDeg = dist > 0 ? bearing(poiLat, poiLng, cLat, cLng) : 0;
+
+  // Two distances from the POI satisfy the constraint: POI outside the
+  // circle (dist = radiusM + minStandoffM) or POI inside it (dist = radiusM
+  // - minStandoffM, only possible when the radius itself exceeds the
+  // minimum standoff). Pick whichever needs the smaller change from the
+  // candidate's own distance, so the clamp reads as "stopped at the nearest
+  // boundary" instead of snapping to the far side.
+  const outsideDist = radiusM + minStandoffM;
+  const insideDist = radiusM - minStandoffM;
+  const targetDist =
+    insideDist > 0 && Math.abs(insideDist - dist) < Math.abs(outsideDist - dist)
+      ? insideDist
+      : outsideDist;
+
+  return destinationPoint(poiLat, poiLng, targetDist, bearingDeg);
 }
 
 /** How many bearings to sample around a candidate circle when checking how

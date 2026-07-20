@@ -781,6 +781,32 @@ export function maxPoiOffsetForRatioM(radiusM: number): number {
 }
 
 /**
+ * The actual reachable distance a flight circle's own center may sit from a
+ * locked POI, combining `maxPoiOffsetForRatioM`'s ratio-based cap with
+ * `clampOrbitCenterForPoiMinStandoff`'s own inner boundary
+ * (`radiusM - minStandoffM`, the closest the plain clearance clamp itself
+ * ever allows the center to land — its "POI outside the circle" solution
+ * always sits at `radiusM + minStandoffM`, which is always farther from the
+ * POI than `radiusM` itself, and therefore always farther than any ratio cap
+ * worth imposing — see `maxPoiOffsetForRatioM`'s doc comment — so once a
+ * ratio cap applies at all, that outer solution is never actually reachable
+ * and can be ignored). For a large building whose minimum standoff already
+ * exceeds this ratio cap's own boundary, the clearance clamp's inner
+ * boundary is the *tighter* of the two and wins — using the ratio cap alone
+ * here would draw a guide ring, and clamp a drag, past a point the
+ * clearance requirement itself already forbids reaching, silently trapping
+ * the drag well short of the visible ring. */
+export function effectivePoiOffsetCapM(
+  radiusM: number,
+  minStandoffM: number,
+): number {
+  return Math.min(
+    maxPoiOffsetForRatioM(radiusM),
+    Math.max(radiusM - minStandoffM, 0),
+  );
+}
+
+/**
  * `clampOrbitCenterForPoiMinStandoff` alone only prevents the circle from
  * getting too *close* to a locked POI — it doesn't stop the opposite
  * problem, dragging the circle's center so far from the POI (relative to
@@ -788,10 +814,15 @@ export function maxPoiOffsetForRatioM(radiusM: number): number {
  * course of the arc (see `maxPoiOffsetForRatioM`). This layers that second,
  * optional cap on top: when `maxOffsetM` is passed (typically only when the
  * POI came from a real building, where that framing consistency matters
- * most — see `TemplateDrawHandler`), pulls the already-clearance-clamped
- * center back toward the POI along the same bearing if it's still too far
- * offset. Omitting `maxOffsetM` (the default) preserves the exact prior
- * clearance-only behavior, including its own inside/outside choice.
+ * most — see `TemplateDrawHandler`), clamps to the single reachable inner
+ * boundary that satisfies BOTH constraints at once (see
+ * `effectivePoiOffsetCapM`), rather than running the two clamps as separate
+ * passes — running them separately let the min-standoff clamp's own "snap to
+ * its nearest boundary" behavior silently override a `maxOffsetM` value that
+ * turned out to sit farther out than that boundary, making the ratio cap
+ * unreachable in practice for a large building. Omitting `maxOffsetM` (the
+ * default `Infinity`) preserves the exact prior clearance-only behavior,
+ * including its own inside/outside choice.
  */
 export function clampOrbitCenterForPoiClearance(
   candidateCenter: [number, number],
@@ -800,21 +831,27 @@ export function clampOrbitCenterForPoiClearance(
   minStandoffM: number,
   maxOffsetM = Infinity,
 ): [number, number] {
-  const clearanceClamped = clampOrbitCenterForPoiMinStandoff(
-    candidateCenter,
-    poiCenter,
-    radiusM,
-    minStandoffM,
+  if (!Number.isFinite(maxOffsetM)) {
+    return clampOrbitCenterForPoiMinStandoff(
+      candidateCenter,
+      poiCenter,
+      radiusM,
+      minStandoffM,
+    );
+  }
+
+  const effectiveMaxOffsetM = Math.min(
+    maxOffsetM,
+    Math.max(radiusM - minStandoffM, 0),
   );
-  if (!Number.isFinite(maxOffsetM)) return clearanceClamped;
 
   const [poiLat, poiLng] = poiCenter;
-  const [cLat, cLng] = clearanceClamped;
+  const [cLat, cLng] = candidateCenter;
   const dist = haversine(poiLat, poiLng, cLat, cLng);
-  if (dist <= maxOffsetM) return clearanceClamped;
+  if (dist <= effectiveMaxOffsetM) return candidateCenter;
 
   const bearingDeg = dist > 0 ? bearing(poiLat, poiLng, cLat, cLng) : 0;
-  return destinationPoint(poiLat, poiLng, maxOffsetM, bearingDeg);
+  return destinationPoint(poiLat, poiLng, effectiveMaxOffsetM, bearingDeg);
 }
 
 /** How many bearings to sample around a candidate circle when checking how

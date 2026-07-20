@@ -1,0 +1,3 @@
+### Fixed
+
+- Dragging a building orbit's locked-POI flight circle toward the new outer (max-offset) guide ring could get silently stuck well short of it — the minimum-clearance clamp and the offset-ratio cap were applied as two separate passes, and for a large building whose own minimum clearance requirement exceeded the ratio cap's boundary, the clearance clamp's "snap to its own nearest boundary" behavior overrode the ratio cap before it ever got a chance to act, trapping the drag at a smaller, invisible boundary. The two constraints are now combined into a single reachable boundary that both the drag clamp and the guide ring use, so the ring always shows exactly as far as the center handle can actually go.

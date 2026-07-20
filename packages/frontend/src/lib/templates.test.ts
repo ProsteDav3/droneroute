@@ -916,6 +916,24 @@ describe("orbitParamsForBuilding", () => {
       computeAltitudeForPitch(-45, 25, seed.radiusM),
     );
   });
+
+  it("recommends an altitude above the building's own roofline even when its footprint pushes the radius past what the desired framing margin can achieve (regression — a 25m building with a 60m-wide footprint at a 55°-FOV camera used to come back with altitude=20m, below its own 25m roof)", () => {
+    // Half-diagonal of a 60x60 square (~42.4m) + 15m clearance = ~57.4m
+    // radius, comfortably past the ~51m achievability threshold for a 25m
+    // building at a 55° FOV — computeFramedForRadius alone would land both
+    // its altitude roots below 25m here (as its own "picks the root closest
+    // to a given previous value" test documents for a similar radius).
+    const vertices = squareFootprint(60);
+    const params = orbitParamsForBuilding({ vertices, height: 25 }, 55);
+
+    expect(params.altitude).toBeGreaterThanOrEqual(25);
+    // The whole building (ground to roof) must still be inside the frame:
+    // the gimbal should look at least slightly downward past the roofline,
+    // not level or upward.
+    const angleTop =
+      (Math.atan2(params.altitude - 25, params.radiusM) * 180) / Math.PI;
+    expect(angleTop).toBeGreaterThan(0);
+  });
 });
 
 describe("capture mode (photo/video)", () => {

@@ -648,6 +648,51 @@ export function computeOrbitSeedForBuilding(
 }
 
 /**
+ * Minimum altitude, as a multiple of the building's own height, for a
+ * first-time orbit recommendation — a natural "look down from above the
+ * roofline" shot.
+ *
+ * `computeFramedForRadius` only lands above the roofline when the desired
+ * framing margin (`FOV_SAFETY_MARGIN` of the camera's FOV) is achievable at
+ * the given radius. Once a building's footprint forces a radius past that
+ * achievability threshold, its two quadratic altitude roots collapse toward
+ * `poiHeight / 2` by construction (see `maxSpanForRadius`) — no amount of
+ * *further* increasing the radius ever recovers an above-roofline altitude
+ * from that formula, since the achievable span keeps shrinking too, and
+ * `pickPositiveRoot`'s "prefer the larger root" rule just ends up choosing
+ * the taller of two altitudes that are both still roughly waist/window
+ * height on the building, not roof height. Confirmed against a real report:
+ * a 25m-tall building with a 53m recommended radius (already past its ~51m
+ * threshold at a 55°-FOV camera) came back with altitude=20m — visibly
+ * below its own roof.
+ *
+ * Rather than accept that degenerate near-half-height view for a first
+ * recommendation, fall back to a fixed comfortable altitude above the roof
+ * and whatever (necessarily narrower than the aspirational target) framing
+ * span results from it — the whole building (ground to `poiHeight`) is
+ * still fully inside that span by construction, just using more of the
+ * frame than the ideal margin. This only overrides the *initial*
+ * recommendation; live edits still go through the plain
+ * `computeFramedForRadius`/`computeFramedForAltitude` pair, which correctly
+ * honors whatever radius/altitude the user explicitly chose (including ones
+ * in this same capped regime — see its own tests).
+ */
+const MIN_ALTITUDE_ABOVE_BUILDING_FACTOR = 1.3;
+
+function ensureAltitudeAboveBuilding(
+  framed: { altitude: number; gimbalPitchDeg: number },
+  radiusM: number,
+  poiHeight: number,
+): { altitude: number; gimbalPitchDeg: number } {
+  if (framed.altitude >= poiHeight) return framed;
+  const altitude = Math.round(poiHeight * MIN_ALTITUDE_ABOVE_BUILDING_FACTOR);
+  return {
+    altitude,
+    gimbalPitchDeg: computeFramingPitch(altitude, poiHeight, radiusM),
+  };
+}
+
+/**
  * Full OrbitParams recommended for orbiting a building: center/radius from
  * `computeOrbitSeedForBuilding`, POI height set to the building's real
  * height, altitude/gimbal pitch derived so the whole building fits in frame
@@ -675,13 +720,18 @@ export function orbitParamsForBuilding(
     vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
   );
   if (framed) {
+    const { altitude, gimbalPitchDeg } = ensureAltitudeAboveBuilding(
+      framed,
+      seed.radiusM,
+      building.height,
+    );
     return {
       ...DEFAULT_ORBIT_PARAMS,
       center: seed.center,
       radiusM: seed.radiusM,
       poiHeight: building.height,
-      gimbalPitchDeg: framed.gimbalPitchDeg,
-      altitude: framed.altitude,
+      gimbalPitchDeg,
+      altitude,
       buildingVertices: building.vertices,
     };
   }

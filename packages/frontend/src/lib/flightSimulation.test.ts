@@ -264,12 +264,15 @@ describe("buildSimulationFrames", () => {
     expect(mid.gimbalPitchAngle).toBeCloseTo(expectedPitch, 3);
   });
 
-  it("uses the building's real footprint distance for a building-orbit leg, instead of findImpliedPoi's single-point tracking to the orbit's own center POI", () => {
+  it("keeps heading continuously tracking a building-orbit's own center mid-leg, while gimbal pitch stays at its flat baked-in value instead of being recomputed per frame", () => {
     // A 40m (N-S) x 10m (E-W) building, matching lib/templates.ts's own
-    // test fixtures for the same shape — elongated enough that a
-    // single-point model (what findImpliedPoi would otherwise recover)
-    // gives a visibly different answer than the real per-position edge
-    // distance at most points on the circle.
+    // test fixtures for the same shape — elongated enough that raw
+    // shortest-path heading interpolation between the two waypoints (what
+    // findImpliedPoi failing to recognize this leg would fall back to)
+    // drifts visibly off the true center mid-leg, for a leg this far apart
+    // (90° of arc). `generateOrbit` now bakes one flat gimbal pitch into
+    // every waypoint of a building orbit, so both waypoints here share the
+    // same value — pitch just needs to interpolate normally between them.
     const center: [number, number] = [50, 14];
     const buildingVertices: [number, number][] = [
       offsetLatLng(center[0], center[1], -20, -5),
@@ -284,6 +287,7 @@ describe("buildSimulationFrames", () => {
       longitude: center[1],
       height: 15,
     };
+    const flatPitch = -18;
     const orbitParams: OrbitParams = {
       ...DEFAULT_ORBIT_PARAMS,
       center,
@@ -291,6 +295,7 @@ describe("buildSimulationFrames", () => {
       altitude: 20,
       poiHeight: 15,
       altitudeGimbalLinked: true,
+      gimbalPitchDeg: flatPitch,
       buildingVertices,
     };
     const templateGroups: Record<string, TemplateGroup> = {
@@ -306,11 +311,7 @@ describe("buildSimulationFrames", () => {
       height: 20,
       headingMode: "fixed",
       headingAngle: bearingTo(fromPos[0], fromPos[1], center[0], center[1]),
-      gimbalPitchAngle: computeFramingPitch(
-        20,
-        15,
-        distanceToPolygonBoundaryM(fromPos, buildingVertices),
-      ),
+      gimbalPitchAngle: flatPitch,
       templateGroupId: "group-1",
     });
     const to = baseWaypoint({
@@ -320,11 +321,7 @@ describe("buildSimulationFrames", () => {
       height: 20,
       headingMode: "fixed",
       headingAngle: bearingTo(toPos[0], toPos[1], center[0], center[1]),
-      gimbalPitchAngle: computeFramingPitch(
-        20,
-        15,
-        distanceToPolygonBoundaryM(toPos, buildingVertices),
-      ),
+      gimbalPitchAngle: flatPitch,
       templateGroupId: "group-1",
     });
 
@@ -337,35 +334,9 @@ describe("buildSimulationFrames", () => {
     );
     const mid = frames[Math.floor(frames.length / 2)];
 
-    const expectedPitch = computeFramingPitch(
-      mid.height,
-      15,
-      distanceToPolygonBoundaryM(
-        [mid.latitude, mid.longitude],
-        buildingVertices,
-      ),
-    );
-    // What plain single-point tracking to the orbit's own center POI would
-    // have given instead — the two must differ meaningfully for this
-    // elongated a footprint, or the test isn't actually distinguishing the
-    // two code paths.
-    const pointTrackingPitch = testPitchTo(
-      mid.latitude,
-      mid.longitude,
-      mid.height,
-      poi.latitude,
-      poi.longitude,
-      poi.height,
-    );
-    expect(Math.abs(expectedPitch - pointTrackingPitch)).toBeGreaterThan(1);
-    expect(mid.gimbalPitchAngle).toBeCloseTo(expectedPitch, 3);
-
-    // Heading must track the orbit's own center continuously too — not just
-    // pitch. findImpliedPoi's tolerance check compares this leg's static
-    // pitch against plain point-tracking, which the assertion above proves
-    // differs by more than its 15° tolerance — so it fails to recognize
-    // this leg, and heading must not silently fall back to raw
-    // interpolation between the two waypoints' static headings instead.
+    // Heading at the midpoint tracks the orbit's own center continuously —
+    // computed from the actual interpolated position, not just settled
+    // between the two waypoints' static headings.
     const expectedHeading = bearingTo(
       mid.latitude,
       mid.longitude,
@@ -373,6 +344,10 @@ describe("buildSimulationFrames", () => {
       center[1],
     );
     expect(mid.headingAngle).toBeCloseTo(expectedHeading, 3);
+
+    // Gimbal pitch stays exactly at the flat value baked into both
+    // waypoints — not recomputed from the real edge distance mid-leg.
+    expect(mid.gimbalPitchAngle).toBeCloseTo(flatPitch, 3);
   });
 
   it("does NOT dynamically track a POI when the two waypoints' angles don't actually match it (an unrelated survey leg)", () => {

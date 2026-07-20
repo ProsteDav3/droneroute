@@ -23,6 +23,7 @@ export function FlightSimulationPanel() {
   const pois = useMissionStore((s) => s.pois);
   const config = useMissionStore((s) => s.config);
   const templateMode = useMissionStore((s) => s.templateMode);
+  const templateGroups = useMissionStore((s) => s.templateGroups);
   const editingTemplateGroupId = useMissionStore(
     (s) => s.editingTemplateGroupId,
   );
@@ -45,8 +46,9 @@ export function FlightSimulationPanel() {
         pois,
         FRAMES_PER_SEGMENT,
         config.autoFlightSpeed,
+        templateGroups,
       ),
-    [waypoints, pois, config.autoFlightSpeed],
+    [waypoints, pois, config.autoFlightSpeed, templateGroups],
   );
 
   const rafRef = useRef<number | null>(null);

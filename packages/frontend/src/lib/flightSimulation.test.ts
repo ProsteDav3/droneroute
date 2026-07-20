@@ -7,6 +7,13 @@ import {
 } from "./flightSimulation";
 import { estimateWaypointArrivalTimes, haversine } from "@/lib/flightStats";
 import { bearingTo } from "@/components/map/CameraFrustum";
+import {
+  computeFramingPitch,
+  DEFAULT_ORBIT_PARAMS,
+  type OrbitParams,
+} from "@/lib/templates";
+import { distanceToPolygonBoundaryM, offsetLatLng } from "@/lib/geo";
+import type { TemplateGroup } from "@/store/missionStore";
 import type { Waypoint, PointOfInterest } from "@droneroute/shared";
 
 /** Mirrors flightSimulation.ts's own (unexported) pitchTo — used only to
@@ -254,6 +261,103 @@ describe("buildSimulationFrames", () => {
       poi.height,
     );
     expect(mid.headingAngle).toBeCloseTo(expectedHeading, 3);
+    expect(mid.gimbalPitchAngle).toBeCloseTo(expectedPitch, 3);
+  });
+
+  it("uses the building's real footprint distance for a building-orbit leg, instead of findImpliedPoi's single-point tracking to the orbit's own center POI", () => {
+    // A 40m (N-S) x 10m (E-W) building, matching lib/templates.ts's own
+    // test fixtures for the same shape — elongated enough that a
+    // single-point model (what findImpliedPoi would otherwise recover)
+    // gives a visibly different answer than the real per-position edge
+    // distance at most points on the circle.
+    const center: [number, number] = [50, 14];
+    const buildingVertices: [number, number][] = [
+      offsetLatLng(center[0], center[1], -20, -5),
+      offsetLatLng(center[0], center[1], -20, 5),
+      offsetLatLng(center[0], center[1], 20, 5),
+      offsetLatLng(center[0], center[1], 20, -5),
+    ];
+    const poi: PointOfInterest = {
+      id: "poi-1",
+      name: "Střed orbitu",
+      latitude: center[0],
+      longitude: center[1],
+      height: 15,
+    };
+    const orbitParams: OrbitParams = {
+      ...DEFAULT_ORBIT_PARAMS,
+      center,
+      radiusM: 25,
+      altitude: 20,
+      poiHeight: 15,
+      altitudeGimbalLinked: true,
+      buildingVertices,
+    };
+    const templateGroups: Record<string, TemplateGroup> = {
+      "group-1": { type: "orbit", params: orbitParams },
+    };
+
+    const fromPos = offsetLatLng(center[0], center[1], 25, 0); // due north — near the short edge
+    const toPos = offsetLatLng(center[0], center[1], 0, 25); // due east — opposite the long edge
+    const from = baseWaypoint({
+      index: 0,
+      latitude: fromPos[0],
+      longitude: fromPos[1],
+      height: 20,
+      headingMode: "fixed",
+      headingAngle: bearingTo(fromPos[0], fromPos[1], center[0], center[1]),
+      gimbalPitchAngle: computeFramingPitch(
+        20,
+        15,
+        distanceToPolygonBoundaryM(fromPos, buildingVertices),
+      ),
+      templateGroupId: "group-1",
+    });
+    const to = baseWaypoint({
+      index: 1,
+      latitude: toPos[0],
+      longitude: toPos[1],
+      height: 20,
+      headingMode: "fixed",
+      headingAngle: bearingTo(toPos[0], toPos[1], center[0], center[1]),
+      gimbalPitchAngle: computeFramingPitch(
+        20,
+        15,
+        distanceToPolygonBoundaryM(toPos, buildingVertices),
+      ),
+      templateGroupId: "group-1",
+    });
+
+    const frames = buildSimulationFrames(
+      [from, to],
+      [poi],
+      9,
+      SPEED_MPS,
+      templateGroups,
+    );
+    const mid = frames[Math.floor(frames.length / 2)];
+
+    const expectedPitch = computeFramingPitch(
+      mid.height,
+      15,
+      distanceToPolygonBoundaryM(
+        [mid.latitude, mid.longitude],
+        buildingVertices,
+      ),
+    );
+    // What plain single-point tracking to the orbit's own center POI would
+    // have given instead — the two must differ meaningfully for this
+    // elongated a footprint, or the test isn't actually distinguishing the
+    // two code paths.
+    const pointTrackingPitch = testPitchTo(
+      mid.latitude,
+      mid.longitude,
+      mid.height,
+      poi.latitude,
+      poi.longitude,
+      poi.height,
+    );
+    expect(Math.abs(expectedPitch - pointTrackingPitch)).toBeGreaterThan(1);
     expect(mid.gimbalPitchAngle).toBeCloseTo(expectedPitch, 3);
   });
 

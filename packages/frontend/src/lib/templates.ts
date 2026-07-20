@@ -478,8 +478,8 @@ function pickPositiveRoot(
   return preferLarger ? positive[1] : positive[0];
 }
 
-/** Gimbal pitch (degrees) that vertically centers the view between ground level and poiHeight, from radiusM away, flying at altitude — unlike computeGimbalPitch, this aims at the object's midpoint, not its top. */
-function computeFramingPitch(
+/** Gimbal pitch (degrees) that vertically centers the view between ground level and poiHeight, from radiusM away, flying at altitude — unlike computeGimbalPitch, this aims at the object's midpoint, not its top. Exported for lib/flightSimulation.ts, which needs the identical formula to keep the 3D flythrough's continuous per-frame pitch consistent with what generateOrbit bakes into the real per-waypoint data. */
+export function computeFramingPitch(
   altitude: number,
   poiHeight: number,
   radiusM: number,

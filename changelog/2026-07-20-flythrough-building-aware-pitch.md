@@ -1,0 +1,3 @@
+### Fixed
+
+- A building orbit's per-waypoint framing fix (previous release) didn't actually show up in the 3D flythrough — the flight simulation has its own smoothing heuristic (`findImpliedPoi`) that recovers "this leg is aimed at a POI" from a leg's static angles and then re-derives pitch continuously using a single-point model, which silently overrode the building-edge-aware pitch with the old point-based approximation during playback. The simulation now recognizes a building-orbit leg directly (via the same template data `generateOrbit` used to build it) and computes its continuous per-frame pitch from the real footprint distance too, instead of re-deriving it the point-based way that doesn't match how the leg was actually generated.

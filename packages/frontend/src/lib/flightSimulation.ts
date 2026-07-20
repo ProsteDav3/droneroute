@@ -1,6 +1,9 @@
 import type { Waypoint, PointOfInterest } from "@droneroute/shared";
 import { bearingTo, resolveHeading } from "@/components/map/CameraFrustum";
 import { estimateWaypointArrivalTimes, haversine } from "@/lib/flightStats";
+import { computeFramingPitch } from "@/lib/templates";
+import { distanceToPolygonBoundaryM } from "@/lib/geo";
+import type { TemplateGroup } from "@/store/missionStore";
 
 /** Gimbal pitch (DJI convention: 0° = level, -90° = straight down) needed to
  * keep a point at `toHeight` centered in frame from `fromHeight`, at the
@@ -154,6 +157,54 @@ function findImpliedPoi(
   });
 }
 
+/** Building footprint + target height for a leg's whole-object framing, when
+ * that leg belongs to an orbit generated around a real building (see
+ * `OrbitParams.buildingVertices` in lib/templates.ts). `undefined` for any
+ * other leg — a manually-drawn orbit, a non-orbit template, or an orbit
+ * that predates that field. */
+interface LegBuildingFraming {
+  buildingVertices: [number, number][];
+  poiHeight: number;
+}
+
+/** Looks up whether `from`'s leg belongs to a building-orbit template group
+ * with real footprint data attached, via the same `templateGroupId` tag
+ * `generateOrbit` stamps on every waypoint it creates. A building's real
+ * footprint isn't circular, so `computeGimbalPitch`/`pitchTo`'s single-point
+ * model (used by `findImpliedPoi` below) doesn't reproduce what
+ * `generateOrbit` actually baked into these waypoints — recomputing pitch
+ * per frame the *same* single-point way this leg's own static data was NOT
+ * generated with would silently re-introduce the exact per-waypoint framing
+ * drift the building-vertices fix in `generateOrbit` exists to remove.
+ * `buildSimulationFrames` uses this instead of `findImpliedPoi`'s
+ * point-tracking whenever it's available, so the flythrough's continuous
+ * per-frame pitch stays consistent with the real per-waypoint data instead
+ * of quietly overriding it. */
+function getLegBuildingFraming(
+  from: Waypoint,
+  templateGroups: Record<string, TemplateGroup>,
+): LegBuildingFraming | undefined {
+  const groupId = from.templateGroupId;
+  if (!groupId) return undefined;
+  const group = templateGroups[groupId];
+  if (!group || group.type !== "orbit") return undefined;
+  const params = group.params as {
+    buildingVertices?: [number, number][];
+    poiHeight?: number;
+    altitudeGimbalLinked?: boolean;
+    poiCenter?: [number, number];
+  };
+  if (params.poiCenter) return undefined; // same precedence as generateOrbit
+  if (!params.altitudeGimbalLinked) return undefined; // manual pitch, don't override
+  if (!params.buildingVertices || params.buildingVertices.length < 2) {
+    return undefined;
+  }
+  return {
+    buildingVertices: params.buildingVertices,
+    poiHeight: params.poiHeight ?? 0,
+  };
+}
+
 /**
  * Builds an animation-ready sequence of camera frames along the mission's
  * flight path, interpolating position, height, gimbal pitch, and heading
@@ -181,12 +232,20 @@ function findImpliedPoi(
  * as the drone would actually take to fly the mission, and a slow/long leg
  * naturally plays back slower than a fast/short one instead of both taking
  * the same wall-clock time regardless of real distance or configured speed.
+ *
+ * `templateGroups` (optional, keyed the same way `missionStore.templateGroups`
+ * is) lets a building-orbit leg use its own real footprint for pitch — see
+ * `getLegBuildingFraming` — instead of `findImpliedPoi`'s single-point
+ * model, which doesn't match what `generateOrbit` bakes into those
+ * waypoints for a non-circular building and would otherwise silently
+ * override it back to the old, less accurate framing during playback.
  */
 export function buildSimulationFrames(
   waypoints: Waypoint[],
   pois: PointOfInterest[],
   framesPerSegment: number,
   autoFlightSpeedMps: number,
+  templateGroups: Record<string, TemplateGroup> = {},
 ): SimulationFrame[] {
   if (waypoints.length === 0) return [];
   if (waypoints.length === 1) {
@@ -219,6 +278,7 @@ export function buildSimulationFrames(
       from.headingMode === "towardPOI" && from.poiId
         ? pois.find((p) => p.id === from.poiId)
         : findImpliedPoi(from, to, pois);
+    const buildingFraming = getLegBuildingFraming(from, templateGroups);
     const legStartS = arrivalTimesS[i];
     const legDurationS = arrivalTimesS[i + 1] - legStartS;
 
@@ -234,17 +294,26 @@ export function buildSimulationFrames(
       const heading = poi
         ? bearingTo(latitude, longitude, poi.latitude, poi.longitude)
         : interpolateHeading(fromHeading, toHeading, t);
-      const gimbalPitchAngle = poi
-        ? pitchTo(
-            latitude,
-            longitude,
+      const gimbalPitchAngle = buildingFraming
+        ? computeFramingPitch(
             height,
-            poi.latitude,
-            poi.longitude,
-            poi.height,
+            buildingFraming.poiHeight,
+            distanceToPolygonBoundaryM(
+              [latitude, longitude],
+              buildingFraming.buildingVertices,
+            ),
           )
-        : from.gimbalPitchAngle +
-          (to.gimbalPitchAngle - from.gimbalPitchAngle) * t;
+        : poi
+          ? pitchTo(
+              latitude,
+              longitude,
+              height,
+              poi.latitude,
+              poi.longitude,
+              poi.height,
+            )
+          : from.gimbalPitchAngle +
+            (to.gimbalPitchAngle - from.gimbalPitchAngle) * t;
 
       frames.push({
         latitude,

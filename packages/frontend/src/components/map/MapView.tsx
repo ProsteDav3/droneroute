@@ -301,6 +301,7 @@ function FlightSimulationCamera({
   const pois = useMissionStore((s) => s.pois);
   const autoFlightSpeed = useMissionStore((s) => s.config.autoFlightSpeed);
   const payloadEnumValue = useMissionStore((s) => s.config.payloadEnumValue);
+  const templateGroups = useMissionStore((s) => s.templateGroups);
 
   const flying = simulationActive && cameraMode === "flythrough";
 
@@ -312,9 +313,10 @@ function FlightSimulationCamera({
             pois,
             FRAMES_PER_SEGMENT,
             autoFlightSpeed,
+            templateGroups,
           )
         : [],
-    [flying, waypoints, pois, autoFlightSpeed],
+    [flying, waypoints, pois, autoFlightSpeed, templateGroups],
   );
 
   const originalViewRef = useRef<{
@@ -1072,6 +1074,7 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
   const addObstacle = useMissionStore((s) => s.addObstacle);
   const addBuilding = useMissionStore((s) => s.addBuilding);
   const config = useMissionStore((s) => s.config);
+  const topSimTemplateGroups = useMissionStore((s) => s.templateGroups);
   const simulationActive = useFlightSimulationStore((s) => s.isActive);
   const simulationCameraMode = useFlightSimulationStore((s) => s.cameraMode);
   const flythroughActive =
@@ -1085,9 +1088,16 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
             pois,
             FRAMES_PER_SEGMENT,
             config.autoFlightSpeed,
+            topSimTemplateGroups,
           )
         : [],
-    [simulationActive, waypoints, pois, config.autoFlightSpeed],
+    [
+      simulationActive,
+      waypoints,
+      pois,
+      config.autoFlightSpeed,
+      topSimTemplateGroups,
+    ],
   );
   const simulationFrame = simulationActive
     ? (() => {

@@ -2,11 +2,7 @@ import { Router } from "express";
 import { randomBytes } from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { getDb } from "../models/db.js";
-import {
-  authMiddleware,
-  optionalAuth,
-  type AuthRequest,
-} from "../middleware/auth.js";
+import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { commentLimiter } from "../middleware/rateLimit.js";
 import { validateMissionComment } from "../services/missionValidation.js";
 import type {

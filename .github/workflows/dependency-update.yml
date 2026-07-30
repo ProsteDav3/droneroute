@@ -39,6 +39,15 @@ jobs:
       - name: Install updated dependencies
         run: npm install
 
+      # When dependency updates include formatter tools (e.g., Prettier), their
+      # behavior may change between versions, causing previously-formatted code
+      # to be reformatted. Applying the formatter here ensures that formatting
+      # changes are applied before the format check gate, so they become part of
+      # the proposed PR and are visible during code review. This prevents spurious
+      # "format check failed" failures when a formatter's minor version changes.
+      - name: Format with updated dependencies
+        if: steps.diff.outputs.changed == 'true'
+        run: npm run fmt
       - name: Check for changes
         id: diff
         run: |

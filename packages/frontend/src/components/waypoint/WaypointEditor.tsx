@@ -326,7 +326,7 @@ export function WaypointEditorInline({
 
       <Separator />
 
-      <ActionEditor waypointIndex={wp.index} />
+      <ActionEditor _waypointIndex={wp.index} />
     </div>
   );
 }

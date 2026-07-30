@@ -108,11 +108,9 @@ export function handleMessage(topic: string, payload: Buffer): void {
   const battery = data.battery as Record<string, unknown> | undefined;
   const batteries = battery?.batteries;
   const positionState = data.position_state as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
   const wirelessLink = data.wireless_link as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
 
   upsert(deviceSn, {
     online: true,

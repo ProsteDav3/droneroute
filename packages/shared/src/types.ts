@@ -1,11 +1,7 @@
 // ── Heading & Turn Modes ─────────────────────────────────
 
 export type HeadingMode =
-  | "followWayline"
-  | "manually"
-  | "fixed"
-  | "smoothTransition"
-  | "towardPOI";
+  "followWayline" | "manually" | "fixed" | "smoothTransition" | "towardPOI";
 
 export type TurnMode =
   | "coordinateTurn"
@@ -18,10 +14,7 @@ export type HeightMode = "EGM96" | "relativeToStartPoint" | "aboveGroundLevel";
 export type FlyToWaylineMode = "safely" | "pointToPoint";
 
 export type FinishAction =
-  | "goHome"
-  | "noAction"
-  | "autoLand"
-  | "gotoFirstWaypoint";
+  "goHome" | "noAction" | "autoLand" | "gotoFirstWaypoint";
 
 export type RCLostAction = "goBack" | "landing" | "hover";
 

@@ -1,4 +1,4 @@
-import archiver from "archiver";
+import { ZipArchive } from "archiver";
 import { PassThrough } from "stream";
 import type { Mission } from "@droneroute/shared";
 import { buildTemplateKml, buildWaylinesWpml } from "../lib/wpml.js";
@@ -6,7 +6,7 @@ import { buildMissionSegments } from "./missionSegments.js";
 
 export function generateKmzBuffer(mission: Mission): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const archive = archiver("zip", { zlib: { level: 9 } });
+    const archive = new ZipArchive({ zlib: { level: 9 } });
     const chunks: Buffer[] = [];
     const passthrough = new PassThrough();
 
@@ -40,7 +40,7 @@ export function generateKmzBuffer(mission: Mission): Promise<Buffer> {
  */
 export function generateMissionSegmentsZip(mission: Mission): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const archive = archiver("zip", { zlib: { level: 9 } });
+    const archive = new ZipArchive({ zlib: { level: 9 } });
     const chunks: Buffer[] = [];
     const passthrough = new PassThrough();
 

@@ -24,6 +24,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
+    "@types/archiver": "^8.0.0",
     "@types/mapbox__mapbox-gl-geocoder": "^5.1.1",
     "concurrently": "^10.0.4",
     "lefthook": "^2.1.10",
@@ -32,6 +33,7 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "@mapbox/mapbox-gl-geocoder": "^5.1.2"
+    "@mapbox/mapbox-gl-geocoder": "^5.1.2",
+    "archiver": "^8.0.0"
   }
 }

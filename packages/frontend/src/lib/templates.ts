@@ -75,13 +75,7 @@ function haversine(
 // ── Template Types ───────────────────────────────────────
 
 export type TemplateType =
-  | "orbit"
-  | "grid"
-  | "facade"
-  | "pencil"
-  | "solar"
-  | "corridor"
-  | "turbine";
+  "orbit" | "grid" | "facade" | "pencil" | "solar" | "corridor" | "turbine";
 
 /**
  * "photo" takes a photo at every waypoint (the original behavior). "video"

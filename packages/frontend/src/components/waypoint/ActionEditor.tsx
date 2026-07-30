@@ -114,15 +114,15 @@ function getDefaultParams(actionType: ActionType): any {
 }
 
 interface ActionEditorProps {
-  waypointIndex: number;
+  _waypointIndex: number;
 }
 
-export function ActionEditor({ waypointIndex }: ActionEditorProps) {
+export function ActionEditor({ _waypointIndex }: ActionEditorProps) {
   const { waypoints, addAction, updateAction, removeAction, updateWaypoint } =
     useMissionStore();
   const clipboardActions = useActionClipboardStore((s) => s.actions);
   const copyToClipboard = useActionClipboardStore((s) => s.copy);
-  const wp = waypoints[waypointIndex];
+  const wp = waypoints[_waypointIndex];
   if (!wp) return null;
 
   const handleAddAction = (type: ActionType) => {
@@ -131,7 +131,7 @@ export function ActionEditor({ waypointIndex }: ActionEditorProps) {
         ? Math.max(...wp.actions.map((a) => a.actionId)) + 1
         : 0;
 
-    addAction(waypointIndex, {
+    addAction(_waypointIndex, {
       actionId: nextId,
       actionType: type,
       params: getDefaultParams(type),
@@ -140,7 +140,7 @@ export function ActionEditor({ waypointIndex }: ActionEditorProps) {
 
   const handlePaste = () => {
     if (!clipboardActions) return;
-    updateWaypoint(waypointIndex, {
+    updateWaypoint(_waypointIndex, {
       actions: cloneActionsForPaste(clipboardActions),
     });
   };
@@ -183,11 +183,11 @@ export function ActionEditor({ waypointIndex }: ActionEditorProps) {
         <ActionItem
           key={action.actionId}
           action={action}
-          waypointIndex={waypointIndex}
+          _waypointIndex={_waypointIndex}
           onUpdate={(updates) =>
-            updateAction(waypointIndex, action.actionId, updates)
+            updateAction(_waypointIndex, action.actionId, updates)
           }
-          onRemove={() => removeAction(waypointIndex, action.actionId)}
+          onRemove={() => removeAction(_waypointIndex, action.actionId)}
         />
       ))}
 
@@ -215,12 +215,12 @@ export function ActionEditor({ waypointIndex }: ActionEditorProps) {
 
 function ActionItem({
   action,
-  waypointIndex,
+  _waypointIndex,
   onUpdate,
   onRemove,
 }: {
   action: WaypointAction;
-  waypointIndex: number;
+  _waypointIndex: number;
   onUpdate: (updates: Partial<WaypointAction>) => void;
   onRemove: () => void;
 }) {

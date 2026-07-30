@@ -163,7 +163,6 @@ export function CameraFrustum({ waypoint, pois, is3D }: CameraFrustumProps) {
 
   // Image plane rectangle outline
   const planeGeojson = useMemo(() => {
-    const coords = corners.map((c) => [c[1], c[0]]);
     // Close the ring and make 4 separate line segments for z-offset
     const features = corners.map((c, i) => {
       const next = corners[(i + 1) % 4];

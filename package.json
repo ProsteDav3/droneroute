@@ -23,12 +23,12 @@
     "typecheck:e2e": "tsc --noEmit -p e2e/tsconfig.json"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
+    "@playwright/test": "^1.62.1",
     "@types/mapbox__mapbox-gl-geocoder": "^5.1.1",
-    "concurrently": "^10.0.3",
-    "lefthook": "^2.1.9",
-    "oxlint": "^1.68.0",
-    "prettier": "^3.5.0",
+    "concurrently": "^10.0.4",
+    "lefthook": "^2.1.10",
+    "oxlint": "^1.76.0",
+    "prettier": "^3.9.6",
     "typescript": "^6.0.3"
   },
   "dependencies": {

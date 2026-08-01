@@ -39,15 +39,16 @@ jobs:
       - name: Install updated dependencies
         run: npm install
 
-      # When dependency updates include formatter tools (e.g., Prettier), their
-      # behavior may change between versions, causing previously-formatted code
-      # to be reformatted. Applying the formatter here ensures that formatting
-      # changes are applied before the format check gate, so they become part of
-      # the proposed PR and are visible during code review. This prevents spurious
-      # "format check failed" failures when a formatter's minor version changes.
-      - name: Format with updated dependencies
-        if: steps.diff.outputs.changed == 'true'
-        run: npm run fmt
+      # Must run before "Format with updated dependencies" below: that step's
+      # `if` condition reads steps.diff.outputs.changed, and a step can only
+      # see an output from a step that has already run. If this stayed after
+      # the format step, the output would not exist yet at evaluation time,
+      # so the condition would always resolve to falsy and formatting would
+      # always be skipped. This diff only looks at package.json,
+      # package-lock.json, and packages/*/package.json, so running it before
+      # `npm run fmt` doesn't change what it detects — formatting source files
+      # isn't a dependency bump, and at this point `npm run fmt` hasn't run
+      # yet anyway.
       - name: Check for changes
         id: diff
         run: |
@@ -57,6 +58,16 @@ jobs:
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
+
+      # When dependency updates include formatter tools (e.g., Prettier), their
+      # behavior may change between versions, causing previously-formatted code
+      # to be reformatted. Applying the formatter here ensures that formatting
+      # changes are applied before the format check gate, so they become part of
+      # the proposed PR and are visible during code review. This prevents spurious
+      # "format check failed" failures when a formatter's minor version changes.
+      - name: Format with updated dependencies
+        if: steps.diff.outputs.changed == 'true'
+        run: npm run fmt
 
       # From here on, run the same quality gates as the main CI workflow
       # (.github/workflows/ci.yml) against the updated dependency tree, so a

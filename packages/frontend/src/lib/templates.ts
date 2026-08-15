@@ -644,6 +644,174 @@ export function objectFitsInFrame(
   );
 }
 
+// ── Fit / ideal ranges (shown under the orbit panel's radius + altitude) ──
+
+/**
+ * How much of the frame's height the object should occupy for the shot to
+ * read well: below the low bound it's a small thing in a lot of sky/ground,
+ * above the high bound one edge is close to being cropped. Brackets the
+ * `FOV_SAFETY_MARGIN` (0.5) target the framing solve aims for, so a freshly
+ * framed orbit always sits inside the band.
+ */
+const IDEAL_FRAME_FRACTION_MIN = 0.35;
+const IDEAL_FRAME_FRACTION_MAX = 0.65;
+
+/** Whole-metre search bounds for the range solves. */
+const RANGE_MIN_M = 1;
+const RANGE_MAX_RADIUS_M = MAX_RADIUS_M;
+const RANGE_MAX_ALTITUDE_M = MAX_DERIVED_ALTITUDE_M;
+
+/**
+ * Fraction of the frame's height an object spanning 0…`objectHeight`
+ * occupies when the camera points at `aimHeight`. Measures from the aim
+ * axis outward, so an off-centre aim (looking at the roof, not the middle)
+ * counts the far edge's full offset — the same asymmetry `objectFitsInFrame`
+ * checks, just as a continuous number instead of a yes/no.
+ */
+function frameFractionUsed(
+  altitude: number,
+  objectHeight: number,
+  radiusM: number,
+  vfovDeg: number,
+  aimHeight: number,
+): number {
+  const angleTo = (height: number) => Math.atan2(altitude - height, radiusM);
+  const axisRad = angleTo(aimHeight);
+  const halfFovRad = ((vfovDeg / 2) * Math.PI) / 180;
+  const farthestEdgeRad = Math.max(
+    Math.abs(angleTo(0) - axisRad),
+    Math.abs(angleTo(objectHeight) - axisRad),
+  );
+  // Both edges must fit, so the binding one is the farther; doubling it is
+  // the symmetric span the frame would need to hold it.
+  return farthestEdgeRad / halfFovRad;
+}
+
+export interface FitRange {
+  /** Smallest value at which the whole object is inside the frame. */
+  fitsFrom: number;
+  /** Largest such value, or `null` when it fits all the way out — the usual
+   *  case: farther/higher makes the object smaller, and smaller always fits. */
+  fitsTo: number | null;
+  /** Band where the object occupies a comfortable share of the frame's height. */
+  idealFrom: number;
+  idealTo: number;
+}
+
+/**
+ * Where, along one free dimension, an object stays inside the frame and
+ * where it fills a comfortable share of it — with `used(x)` giving the
+ * fraction of the frame's height the object takes at position `x`.
+ *
+ * `used` is NOT monotone. Flying above a building and moving the radius
+ * from 0 outward, the object first grows (from directly overhead it's a
+ * thin sliver, then it opens up as the view goes oblique) and only then
+ * shrinks with distance — a single hump. The same happens climbing at a
+ * fixed radius. So the "fits" region is everything outside a hump that
+ * pokes above 1.0, and the "ideal" band is where the hump sits between the
+ * two ideal fractions — and either can be one interval, two, or (when the
+ * hump never rises above a threshold) the whole range. Rather than assume a
+ * shape and bisect into the wrong valley, this samples every whole metre
+ * once and reads the intervals off the sampled curve; a few thousand
+ * atan2 calls per keystroke is nothing next to the map redraw.
+ *
+ * Returns the fitting interval that contains `current` when there is one,
+ * else the first fitting interval — a user already inside a valid region
+ * wants the bounds of *that* region, not of a disconnected one on the far
+ * side of a hump. Same choice for the ideal band, which is additionally
+ * clipped to the reported fitting interval.
+ */
+function rangeAlong(
+  lo: number,
+  hi: number,
+  current: number,
+  used: (x: number) => number,
+): FitRange | null {
+  const fits: boolean[] = [];
+  const ideal: boolean[] = [];
+  for (let x = lo; x <= hi; x++) {
+    const u = used(x);
+    fits.push(u <= 1);
+    ideal.push(u >= IDEAL_FRAME_FRACTION_MIN && u <= IDEAL_FRAME_FRACTION_MAX);
+  }
+  const intervals = (flags: boolean[]): [number, number][] => {
+    const out: [number, number][] = [];
+    let start: number | null = null;
+    flags.forEach((on, i) => {
+      if (on && start === null) start = i;
+      if (!on && start !== null) {
+        out.push([lo + start, lo + i - 1]);
+        start = null;
+      }
+    });
+    if (start !== null) out.push([lo + start, hi]);
+    return out;
+  };
+  const pick = (
+    list: [number, number][],
+    within?: [number, number],
+  ): [number, number] | null => {
+    const candidates = within
+      ? list.filter(([a, b]) => b >= within[0] && a <= within[1])
+      : list;
+    if (candidates.length === 0) return null;
+    return (
+      candidates.find(([a, b]) => current >= a && current <= b) ?? candidates[0]
+    );
+  };
+
+  const fitInterval = pick(intervals(fits));
+  if (!fitInterval) return null;
+  const idealInterval = pick(intervals(ideal), fitInterval);
+  const [fitsFrom, fitsToRaw] = fitInterval;
+  const clip = (v: number) => Math.min(fitsToRaw, Math.max(fitsFrom, v));
+  return {
+    fitsFrom,
+    fitsTo: fitsToRaw === hi ? null : fitsToRaw,
+    idealFrom: idealInterval ? clip(idealInterval[0]) : fitsFrom,
+    idealTo: idealInterval ? clip(idealInterval[1]) : fitsFrom,
+  };
+}
+
+/**
+ * Radius range over which an object spanning 0…`objectHeight`, aimed at
+ * `aimHeight`, stays inside the camera's frame at a fixed `altitude` — plus
+ * the sub-range where it fills a comfortable share of the frame. What the
+ * orbit panel prints under the radius field so the user can see, before
+ * typing, how far in they can go and where the shot reads best. `null` when
+ * there's no object to frame. See `rangeAlong` for the shape of the answer.
+ */
+export function fitRadiusRange(
+  altitude: number,
+  objectHeight: number,
+  vfovDeg: number,
+  aimHeight: number,
+  currentRadiusM: number = RANGE_MIN_M,
+): FitRange | null {
+  if (objectHeight <= 0) return null;
+  return rangeAlong(RANGE_MIN_M, RANGE_MAX_RADIUS_M, currentRadiusM, (r) =>
+    frameFractionUsed(altitude, objectHeight, r, vfovDeg, aimHeight),
+  );
+}
+
+/**
+ * Altitude counterpart of `fitRadiusRange`, at a fixed `radiusM`. Used
+ * under the altitude field — the number a pilot flying at an
+ * obstacle-dictated height wants to know first.
+ */
+export function fitAltitudeRange(
+  radiusM: number,
+  objectHeight: number,
+  vfovDeg: number,
+  aimHeight: number,
+  currentAltitude: number = RANGE_MIN_M,
+): FitRange | null {
+  if (objectHeight <= 0 || radiusM <= 0) return null;
+  return rangeAlong(RANGE_MIN_M, RANGE_MAX_ALTITUDE_M, currentAltitude, (a) =>
+    frameFractionUsed(a, objectHeight, radiusM, vfovDeg, aimHeight),
+  );
+}
+
 /**
  * Altitude (and centering gimbal pitch) needed so an object spanning ground
  * level (0m) to `poiHeight` fits inside `vfovDeg`, viewed from `radiusM`

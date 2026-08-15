@@ -7,6 +7,8 @@ import {
   computeOrbitAimPitch,
   computeRadiusForPitch,
   aimPitchOutOfRange,
+  fitRadiusRange,
+  fitAltitudeRange,
   MAX_GIMBAL_PITCH_DEG,
   MIN_GIMBAL_PITCH_DEG,
   objectFitsInFrame,
@@ -2013,5 +2015,94 @@ describe("gimbal pitch bounds", () => {
     expect(aimPitchOutOfRange(19, 60, 10, 30)).toBe(true);
     // A normal look-down orbit is well inside the range.
     expect(aimPitchOutOfRange(50, 20, 40, 10)).toBe(false);
+  });
+});
+
+describe("fit ranges", () => {
+  const VFOV = 56.8;
+
+  it("radius: fits from a minimum outward, no upper bound", () => {
+    // 60m building aimed at its middle, flying at 40m: needs ~59m of standoff
+    // (measured by scanning objectFitsInFrame), then fits forever after —
+    // farther away always makes the object smaller.
+    const r = fitRadiusRange(40, 60, VFOV, 30, 120)!;
+    expect(r.fitsFrom).toBeGreaterThanOrEqual(58);
+    expect(r.fitsFrom).toBeLessThanOrEqual(60);
+    expect(r.fitsTo).toBeNull();
+    // Just inside/outside the boundary must agree with the fit check.
+    expect(objectFitsInFrame(40, 60, r.fitsFrom, VFOV, 30)).toBe(true);
+    expect(objectFitsInFrame(40, 60, r.fitsFrom - 2, VFOV, 30)).toBe(false);
+  });
+
+  it("radius: already fits at any distance when flying comfortably above", () => {
+    const r = fitRadiusRange(80, 60, VFOV, 30, 120)!;
+    expect(r.fitsFrom).toBeLessThanOrEqual(1);
+    expect(r.fitsTo).toBeNull();
+  });
+
+  it("radius: the ideal band sits around the oblique hump, not at the overhead sliver", () => {
+    // Flying at 80m over a 60m building, the object's share of the frame is
+    // NOT monotone in radius: ~6% from directly overhead, peaking ~87% near
+    // 40m out, then shrinking with distance. The ideal 35–65% band therefore
+    // lives on the far side of that hump (roughly 75–160m), and a solver
+    // that bisects from the near edge lands on a one-metre sliver at r=1
+    // instead. Verified by hand against the sampled curve.
+    const r = fitRadiusRange(80, 60, VFOV, 30, 120)!;
+    expect(r.idealFrom).toBeGreaterThan(60);
+    expect(r.idealFrom).toBeLessThan(90);
+    expect(r.idealTo).toBeGreaterThan(140);
+    expect(r.idealTo).toBeLessThan(180);
+    // And the user's current 120m is inside it — the framing they got.
+    expect(120).toBeGreaterThanOrEqual(r.idealFrom);
+    expect(120).toBeLessThanOrEqual(r.idealTo);
+  });
+
+  it("altitude: a tight radius needs a minimum altitude, then fits forever", () => {
+    // 60m building from only 30m out: needs ~77m altitude.
+    const a = fitAltitudeRange(30, 60, VFOV, 30, 100)!;
+    expect(a.fitsFrom).toBeGreaterThanOrEqual(76);
+    expect(a.fitsFrom).toBeLessThanOrEqual(78);
+    expect(a.fitsTo).toBeNull();
+    expect(objectFitsInFrame(a.fitsFrom, 60, 30, VFOV, 30)).toBe(true);
+    expect(objectFitsInFrame(a.fitsFrom - 2, 60, 30, VFOV, 30)).toBe(false);
+  });
+
+  it("altitude: fits at any altitude when the radius is generous", () => {
+    const a = fitAltitudeRange(120, 60, VFOV, 30, 48)!;
+    expect(a.fitsFrom).toBeLessThanOrEqual(1);
+    expect(a.fitsTo).toBeNull();
+  });
+
+  it("ideal band brackets the framing target and is ordered", () => {
+    // The framing solve targets 50% of the FOV; the ideal band is 35–65%,
+    // so a freshly framed orbit must sit inside it.
+    const framed = computeFramedForRadius(120, 60, VFOV, undefined, 30)!;
+    const r = fitRadiusRange(framed.altitude, 60, VFOV, 30, 120)!;
+    expect(r.idealFrom).toBeLessThan(r.idealTo);
+    expect(120).toBeGreaterThanOrEqual(r.idealFrom);
+    expect(120).toBeLessThanOrEqual(r.idealTo);
+
+    const a = fitAltitudeRange(120, 60, VFOV, 30, framed.altitude)!;
+    expect(a.idealFrom).toBeLessThan(a.idealTo);
+    expect(framed.altitude).toBeGreaterThanOrEqual(a.idealFrom);
+    expect(framed.altitude).toBeLessThanOrEqual(a.idealTo);
+  });
+
+  it("ideal band never reaches outside the fitting range", () => {
+    for (const [alt, obj, aim] of [
+      [40, 60, 30],
+      [80, 60, 60],
+      [15, 20, 10],
+      [200, 60, 30],
+    ]) {
+      const r = fitRadiusRange(alt, obj, VFOV, aim, 100)!;
+      expect(r.idealFrom).toBeGreaterThanOrEqual(r.fitsFrom);
+      if (r.fitsTo !== null) expect(r.idealTo).toBeLessThanOrEqual(r.fitsTo);
+    }
+  });
+
+  it("returns null ranges when there is no object to frame", () => {
+    expect(fitRadiusRange(50, 0, VFOV, 0)).toBeNull();
+    expect(fitAltitudeRange(50, 0, VFOV, 0)).toBeNull();
   });
 });

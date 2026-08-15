@@ -111,6 +111,38 @@ test.describe("Orbit aim height and altitude lock", () => {
     await expect(field(page, "Náklon gimbalu")).toHaveValue(shownPitch);
   });
 
+  test("shows fit and ideal ranges under radius and altitude, and flags a value outside them", async ({
+    page,
+  }) => {
+    await drawOrbit(page);
+
+    // No object yet -> nothing to frame -> no hints.
+    await expect(page.getByText(/vejde se/)).toHaveCount(0);
+
+    await field(page, "Výška objektu").fill("60");
+    await field(page, "Výška objektu").blur();
+
+    // Both hints appear once there's an object, and read as "fits from N ·
+    // ideally A–B" — the shape the user asked for.
+    const hints = page.getByText(/vejde se/);
+    await expect(hints).toHaveCount(2);
+    await expect(hints.first()).toContainText("✓");
+    await expect(hints.first()).toContainText(/ideálně \d+–\d+/);
+
+    // Lock the altitude and drop it low; a 60m building from a small radius
+    // then no longer fits, and the radius hint must say so — amber, with a
+    // cross — instead of staying a calm grey.
+    await page.getByRole("button", { name: /Zamkne výšku letu/ }).click();
+    await field(page, "Výška letu").fill("20");
+    await field(page, "Výška letu").blur();
+    await field(page, "Radius").fill("10");
+    await field(page, "Radius").blur();
+
+    const radiusHint = page.getByText(/vejde se/).first();
+    await expect(radiusHint).toContainText("✗");
+    await expect(radiusHint).toHaveClass(/text-amber-400/);
+  });
+
   test("stays usable at 375px wide, with no console errors", async ({
     page,
   }) => {

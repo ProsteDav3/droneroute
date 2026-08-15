@@ -646,8 +646,9 @@ export function OrbitFields({
       <div className="col-span-2">
         <CaptureModeToggle
           value={orbitParams.captureMode === "video" ? "video" : "photo"}
-          onChange={(mode) =>
-            onOrbitChange({ ...orbitParams, captureMode: mode })
+          cinema={{ enabled: !!orbitParams.cinema }}
+          onChange={({ mode, cinema }) =>
+            onOrbitChange({ ...orbitParams, captureMode: mode, cinema })
           }
         />
       </div>

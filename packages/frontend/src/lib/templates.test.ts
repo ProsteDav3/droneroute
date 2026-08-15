@@ -7,6 +7,7 @@ import {
   computeOrbitAimPitch,
   computeRadiusForPitch,
   aimPitchOutOfRange,
+  CINEMA_SPEED_MPS,
   fitRadiusRange,
   fitAltitudeRange,
   MAX_GIMBAL_PITCH_DEG,
@@ -1673,7 +1674,7 @@ describe("capture mode (photo/video)", () => {
     expect(distRootToTip).toBeCloseTo(50, 0);
   });
 
-  it("generateTurbineInspection: heading is fixed and points back toward the hub", () => {
+  it("generateTurbineInspection: heading is smoothTransition and points back toward the hub", () => {
     const result = generateTurbineInspection({
       ...DEFAULT_TURBINE_PARAMS,
       hubCenter: CENTER,
@@ -1685,7 +1686,7 @@ describe("capture mode (photo/video)", () => {
     } satisfies TurbineParams);
 
     for (const wp of result.waypoints) {
-      expect(wp.headingMode).toBe("fixed");
+      expect(wp.headingMode).toBe("smoothTransition");
       const expectedHeading = bearing(
         wp.latitude,
         wp.longitude,
@@ -2104,5 +2105,89 @@ describe("fit ranges", () => {
   it("returns null ranges when there is no object to frame", () => {
     expect(fitRadiusRange(50, 0, VFOV, 0)).toBeNull();
     expect(fitAltitudeRange(50, 0, VFOV, 0)).toBeNull();
+  });
+});
+
+describe("target-facing templates use a heading mode the aircraft honours", () => {
+  // DJI WPML: "fixed" means "keep the yaw the aircraft had leaving the
+  // previous waypoint after its action" — waypointHeadingAngle is IGNORED in
+  // that mode and only read for "smoothTransition". Emitting fixed + a bearing
+  // therefore did nothing on the aircraft: it flew the whole orbit with its
+  // nose wherever it happened to point on arrival at waypoint 1 (observed on
+  // an M4T). smoothTransition is the mode whose contract is "yaw to this
+  // angle at the waypoint, transition evenly to the next" — supported on
+  // every model in the spec, and it is what a hand-planned Pilot 2 route
+  // with per-waypoint headings writes.
+  it("orbit: every waypoint faces the centre via smoothTransition", () => {
+    const result = generateOrbit({
+      ...DEFAULT_ORBIT_PARAMS,
+      center: [41.25, 0.93],
+      radiusM: 50,
+      numPoints: 8,
+    } satisfies OrbitParams);
+    for (const wp of result.waypoints) {
+      expect(wp.headingMode).toBe("smoothTransition");
+      expect(wp.useGlobalHeadingParam).toBe(false);
+      const expected = bearing(wp.latitude, wp.longitude, 41.25, 0.93);
+      const normalized = expected > 180 ? expected - 360 : expected;
+      expect(wp.headingAngle).toBe(Math.round(normalized));
+    }
+  });
+
+  it("facade: every waypoint faces the wall via smoothTransition", () => {
+    const result = generateFacade({
+      ...DEFAULT_FACADE_PARAMS,
+      point1: [41.25, 0.93],
+      point2: [41.25, 0.931],
+    } satisfies FacadeParams);
+    expect(result.waypoints.length).toBeGreaterThan(0);
+    for (const wp of result.waypoints) {
+      expect(wp.headingMode).toBe("smoothTransition");
+      expect(typeof wp.headingAngle).toBe("number");
+    }
+  });
+});
+
+describe("orbit cinema mode", () => {
+  it("caps every waypoint at CINEMA_SPEED_MPS while still recording start-to-finish", () => {
+    const result = generateOrbit({
+      ...DEFAULT_ORBIT_PARAMS,
+      center: [41.25, 0.93],
+      radiusM: 50,
+      numPoints: 6,
+      captureMode: "video",
+      cinema: true,
+    } satisfies OrbitParams);
+
+    for (const wp of result.waypoints) {
+      expect(wp.speed).toBe(CINEMA_SPEED_MPS);
+      expect(wp.useGlobalSpeed).toBe(false);
+    }
+    expect(CINEMA_SPEED_MPS).toBeLessThanOrEqual(3);
+    // Still a continuous video: one startRecord at the first waypoint, one
+    // stopRecord at the last, nothing in between.
+    expect(result.waypoints[0].actions.map((a) => a.actionType)).toEqual([
+      "startRecord",
+    ]);
+    expect(
+      result.waypoints[result.waypoints.length - 1].actions.map(
+        (a) => a.actionType,
+      ),
+    ).toEqual(["stopRecord"]);
+    for (const wp of result.waypoints.slice(1, -1)) {
+      expect(wp.actions).toEqual([]);
+    }
+  });
+
+  it("leaves the normal orbit speed alone when cinema is off", () => {
+    const result = generateOrbit({
+      ...DEFAULT_ORBIT_PARAMS,
+      center: [41.25, 0.93],
+      radiusM: 50,
+      captureMode: "video",
+    } satisfies OrbitParams);
+    for (const wp of result.waypoints) {
+      expect(wp.speed).toBeGreaterThan(CINEMA_SPEED_MPS);
+    }
   });
 });

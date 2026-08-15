@@ -343,7 +343,7 @@ export function GridFields({
       <div>
         <CaptureModeToggle
           value={gridParams.captureMode === "video" ? "video" : "photo"}
-          onChange={(mode) =>
+          onChange={({ mode }) =>
             onGridChange({
               ...gridParams,
               captureMode: mode,

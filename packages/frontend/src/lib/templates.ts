@@ -85,6 +85,12 @@ export type TemplateType =
  */
 export type CaptureMode = "photo" | "video";
 
+/** Ground speed a cinema-paced orbit is capped at — slow enough for a smooth reveal, still comfortably above hover. */
+export const CINEMA_SPEED_MPS = 3;
+
+/** Normal survey pace for a template's waypoints. */
+const TEMPLATE_SPEED_MPS = 5;
+
 export interface OrbitParams {
   center: [number, number]; // [lat, lng]
   radiusM: number;
@@ -155,6 +161,15 @@ export interface OrbitParams {
   poiCenter?: [number, number];
   /** Unset means no capture actions at all — matches every orbit generated before this field existed. `DEFAULT_ORBIT_PARAMS` sets "photo" for newly created orbits. */
   captureMode?: CaptureMode;
+  /**
+   * "Cinema" pacing: caps every waypoint at `CINEMA_SPEED_MPS` so a video
+   * orbit reads as a slow, deliberate reveal instead of the brisk 5 m/s
+   * survey pace. A separate flag rather than a third capture mode on
+   * purpose — half a dozen panels and generators branch on
+   * `captureMode === "video"` / `"photo"`, and a third value would slip
+   * through every one of them and quietly record nothing.
+   */
+  cinema?: boolean;
   /**
    * The building footprint this orbit was recommended for, if any (set by
    * `orbitParamsForBuilding`). A real building's footprint isn't circular,
@@ -1624,6 +1639,7 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     gimbalPitchDeg,
     poiCenter,
     captureMode,
+    cinema,
     buildingVertices,
   } = params;
   const [cLat, cLng] = center;
@@ -1724,10 +1740,14 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
       latitude: lat,
       longitude: lng,
       height: altitude,
-      speed: 5,
+      speed: cinema ? CINEMA_SPEED_MPS : TEMPLATE_SPEED_MPS,
       useGlobalSpeed: false,
       useGlobalHeadingParam: false,
-      headingMode: "fixed",
+      // smoothTransition, NOT fixed: DJI reads waypointHeadingAngle only in
+      // smoothTransition — "fixed" means "keep the yaw you arrived with", so
+      // a bearing paired with it did nothing and the aircraft flew the whole
+      // orbit nose-first wherever it happened to point on reaching WP1.
+      headingMode: "smoothTransition",
       headingAngle: Math.round(normalizedHeading),
       gimbalPitchAngle,
       turnMode: "toPointAndPassWithContinuityCurvature",
@@ -1964,7 +1984,8 @@ export function generateFacade(params: FacadeParams): TemplateResult {
         speed: 3,
         useGlobalSpeed: false,
         useGlobalHeadingParam: false,
-        headingMode: "fixed",
+        // smoothTransition, not fixed — see generateOrbit for why.
+        headingMode: "smoothTransition",
         headingAngle: Math.round(normalizedHeading),
         gimbalPitchAngle: gimbalPitch,
         turnMode: "toPointAndStopWithContinuityCurvature",
@@ -2325,7 +2346,8 @@ export function generateTurbineInspection(
           speed,
           useGlobalSpeed: false,
           useGlobalHeadingParam: false,
-          headingMode: "fixed" as const,
+          // smoothTransition, not fixed — see generateOrbit for why.
+          headingMode: "smoothTransition" as const,
           headingAngle: Math.round(normalizedHeading),
           gimbalPitchAngle,
           turnMode: "toPointAndPassWithContinuityCurvature" as const,

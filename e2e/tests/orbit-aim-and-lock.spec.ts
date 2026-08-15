@@ -191,6 +191,54 @@ test.describe("Orbit aim height and altitude lock", () => {
     expect(consoleErrors).toEqual([]);
   });
 
+  test("cinema video is offered, selectable, and reflected in the flight-time estimate", async ({
+    page,
+  }) => {
+    await drawOrbit(page);
+
+    const cinema = page.getByRole("button", { name: "Cinema video" });
+    await expect(cinema).toBeVisible();
+
+    // Reading the flight-time estimate off the sidebar before/after: 3 m/s
+    // over the same loop must take longer than the 5 m/s default. The
+    // sidebar prints "Nm Ss celkem"; parse it to seconds.
+    const totalTime = async () => {
+      const text = await page
+        .getByText(/celkem/)
+        .first()
+        .textContent();
+      const m = /(?:(\d+)m\s*)?(\d+)s/.exec(text ?? "");
+      if (!m) throw new Error(`no time in "${text}"`);
+      return Number(m[1] ?? 0) * 60 + Number(m[2]);
+    };
+
+    await page.getByRole("button", { name: "Použít" }).last().click();
+    await expect(page.getByText(/^Body trasy \(\d+\)$/)).not.toHaveText(
+      "Body trasy (0)",
+      { timeout: 10_000 },
+    );
+    const normalSeconds = await totalTime();
+
+    // Re-open the template for editing and switch to cinema pacing.
+    await page.keyboard.press("Control+z");
+    await expect(page.getByText(/^Body trasy \(\d+\)$/)).toHaveText(
+      "Body trasy (0)",
+    );
+    await drawOrbit(page);
+    await page.getByRole("button", { name: "Cinema video" }).click();
+    await expect(
+      page.getByRole("button", { name: "Cinema video" }),
+    ).toHaveClass(/text-\[#33cfff\]/);
+    await page.getByRole("button", { name: "Použít" }).last().click();
+    await expect(page.getByText(/^Body trasy \(\d+\)$/)).not.toHaveText(
+      "Body trasy (0)",
+      { timeout: 10_000 },
+    );
+    const cinemaSeconds = await totalTime();
+
+    expect(cinemaSeconds).toBeGreaterThan(normalSeconds);
+  });
+
   test("applies the orbit and generates waypoints", async ({ page }) => {
     await drawOrbit(page);
 

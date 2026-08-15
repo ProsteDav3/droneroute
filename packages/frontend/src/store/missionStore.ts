@@ -1044,13 +1044,20 @@ export const useMissionStore = create<MissionState>()(
             ...(groupId ? { templateGroupId: groupId } : {}),
           }));
 
-          // If orbit template created a POI, link the waypoints to it
+          // Link a template's waypoints to the single POI it created, so the
+          // waypoint editor / 3D flythrough / KMZ round-trip know what they
+          // were aimed at. The heading MODE stays as the template set it
+          // (smoothTransition + a per-waypoint bearing): an earlier revision
+          // rewrote it to towardPOI here, and that is the exact mode that
+          // proved to do nothing on a Matrice 4T in the field — the aircraft
+          // flew a whole orbit nose-first without ever turning to the POI.
+          // The bearings smoothTransition carries are honoured on every model
+          // in the WPML spec, and are what a hand-planned Pilot 2 route with
+          // per-waypoint headings writes.
           if (fullPois.length === 1) {
             const poiId = fullPois[0].id;
             for (const wp of fullWaypoints) {
-              if (wp.headingMode === "fixed") {
-                // Convert to towardPOI mode for orbit waypoints
-                wp.headingMode = "towardPOI";
+              if (wp.headingMode === "smoothTransition" && !wp.poiId) {
                 wp.poiId = poiId;
               }
             }
@@ -1110,11 +1117,12 @@ export const useMissionStore = create<MissionState>()(
             templateGroupId: groupId,
           }));
 
+          // Same POI linking as appendWaypoints — mode left as the template
+          // set it (see the comment there).
           if (fullPois.length === 1) {
             const poiId = fullPois[0].id;
             for (const wp of fullWaypoints) {
-              if (wp.headingMode === "fixed") {
-                wp.headingMode = "towardPOI";
+              if (wp.headingMode === "smoothTransition" && !wp.poiId) {
                 wp.poiId = poiId;
               }
             }

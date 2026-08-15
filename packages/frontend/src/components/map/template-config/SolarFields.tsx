@@ -153,7 +153,7 @@ export function SolarFields({
       <div className="col-span-2">
         <CaptureModeToggle
           value={solarParams.captureMode === "video" ? "video" : "photo"}
-          onChange={(mode) =>
+          onChange={({ mode }) =>
             onSolarChange({
               ...solarParams,
               captureMode: mode,

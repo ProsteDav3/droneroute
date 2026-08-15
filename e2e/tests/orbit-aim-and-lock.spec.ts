@@ -132,13 +132,16 @@ test.describe("Orbit aim height and altitude lock", () => {
     await page.setViewportSize({ width: 375, height: 720 });
     await drawOrbit(page);
 
-    await expect(field(page, "Výška objektu")).toBeVisible();
-    await expect(field(page, "Mířit na výšku")).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: /Zamkne výšku letu/ }),
-    ).toBeVisible();
+    // Visible is not the same as reachable: the floating map toolbar sits at
+    // the right edge and the panel is only ~340px wide, so at this width they
+    // share space. Typing into the fields forces Playwright's actionability
+    // check, which fails if anything covers them — a plain visibility
+    // assertion would pass right through an overlap.
+    await field(page, "Výška objektu").fill("20");
+    await expect(field(page, "Mířit na výšku")).toHaveValue("10");
+    await field(page, "Mířit na výšku").fill("15");
+    await expect(field(page, "Mířit na výšku")).toHaveValue("15");
 
-    // The lock has to be reachable, not just rendered somewhere off-panel.
     await page.getByRole("button", { name: /Zamkne výšku letu/ }).click();
     await expect(
       page.getByRole("button", { name: /Výška letu je zamčená/ }),

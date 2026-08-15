@@ -1640,7 +1640,6 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     poiCenter,
     captureMode,
     cinema,
-    buildingVertices,
   } = params;
   const [cLat, cLng] = center;
   // Independent camera aim point (see OrbitParams.poiCenter). Falls back to

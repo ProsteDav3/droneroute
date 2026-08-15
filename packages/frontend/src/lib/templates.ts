@@ -105,8 +105,35 @@ export interface OrbitParams {
    * way around the circle.
    */
   endAngleDeg: number;
-  /** Real height of the point the camera should look at (e.g. a rooftop). */
+  /**
+   * Real height of the object being orbited, measured from ground level —
+   * the input to the "does the whole thing fit in shot" framing solve. NOT
+   * where the camera points; that's `aimHeight`.
+   */
   poiHeight: number;
+  /**
+   * Exact height the camera points at. Defaults to half of `poiHeight` (the
+   * middle of the object) but is taken literally once set, so a 20m building
+   * can be shot looking at its roof, its middle, or its base.
+   *
+   * `undefined` means an orbit saved before this field existed: those keep
+   * `computeFramingPitch`'s ground-to-top bisector so their baked pitch
+   * doesn't shift underneath a mission that's already been flown or handed
+   * to a pilot. See `computeOrbitAimPitch`.
+   */
+  aimHeight?: number;
+  /**
+   * Holds the flight altitude still while the rest of the linked framing
+   * keeps updating — for flying at a height dictated by obstacles rather
+   * than by framing, where changing the radius should only re-aim the
+   * gimbal. Only meaningful while `altitudeGimbalLinked` is true (nothing
+   * recalculates otherwise, so there's nothing to hold back).
+   *
+   * Locking the altitude gives up the whole-object framing guarantee, since
+   * altitude is what that solve moves — `objectFitsInFrame` exists so the
+   * panel can warn instead of silently cropping the subject.
+   */
+  altitudeLocked?: boolean;
   /** Current gimbal pitch (degrees, negative = looking down) applied to every waypoint. */
   gimbalPitchDeg: number;
   /**
@@ -486,6 +513,97 @@ export function computeFramingPitch(
 }
 
 /**
+ * Gimbal pitch an orbit should fly: pointed exactly at `aimHeight`, or at
+ * the middle of the object when the orbit doesn't carry one.
+ *
+ * Deliberately ONE rule, not two. `computeFramingPitch`'s ground-to-top
+ * bisector centers the object's angular extent slightly better, but it
+ * doesn't correspond to any single height — so a panel showing "aim height:
+ * 10 m" beside a bisector-derived pitch is stating something untrue, and
+ * every inverse solve (pitch -> altitude, pitch -> radius) then disagrees
+ * with the displayed angle by a degree or two. At a 200m radius that degree
+ * is metres of altitude, which is how retyping an unchanged pitch used to
+ * move the aircraft. A field that means what it says is worth more than the
+ * fractional framing gain.
+ *
+ * `objectHeight` stays the *object's* height throughout — it feeds the
+ * framing solve ("does the whole thing fit in shot"), a separate question
+ * from where the camera points.
+ */
+export function computeOrbitAimPitch(
+  altitude: number,
+  objectHeight: number,
+  radiusM: number,
+  aimHeight: number | undefined,
+): number {
+  return computeGimbalPitch(
+    altitude,
+    aimHeight ?? defaultAimHeight(objectHeight),
+    radiusM,
+  );
+}
+
+/** Aim height a fresh orbit starts at: the middle of the object. */
+export function defaultAimHeight(objectHeight: number): number {
+  return objectHeight / 2;
+}
+
+/**
+ * Radius that puts the aim point at `gimbalPitchDeg` while holding
+ * `altitude` — the inverse of `computeOrbitAimPitch` used when the altitude
+ * is locked, where the radius is the only dimension left free to move.
+ *
+ * A level or upward pitch, or a camera at/below the aim point, has no finite
+ * downward-looking solution; rather than diverge, those clamp to the maximum
+ * radius. Callers must re-derive the pitch from the returned (clamped)
+ * radius so the displayed angle never disagrees with the flown geometry —
+ * the same round-trip `computeAltitudeForPitch`'s callers already do.
+ */
+export function computeRadiusForPitch(
+  gimbalPitchDeg: number,
+  altitude: number,
+  aimHeight: number,
+): number {
+  const drop = altitude - aimHeight;
+  if (drop <= 0) return MAX_RADIUS_M;
+  // Just shy of level, so a level/upward request produces a huge (then
+  // clamped) radius instead of a division by zero or a negative one.
+  const clampedPitch = Math.max(-89, Math.min(-0.1, gimbalPitchDeg));
+  const radius = drop / Math.tan((-clampedPitch * Math.PI) / 180);
+  return Math.max(MIN_RADIUS_M, Math.min(MAX_RADIUS_M, Math.round(radius)));
+}
+
+/**
+ * Whether an object spanning ground level (0m) to `objectHeight` stays
+ * inside the camera's vertical FOV, given where the camera is actually
+ * pointed. Checks both edges against the frame's half-FOV rather than just
+ * comparing total span, since an off-center aim (looking at the roof rather
+ * than halfway up) pushes one edge out well before the object outgrows the
+ * frame outright.
+ *
+ * Needed because locking the altitude gives up the framing solve's guarantee
+ * — altitude is precisely what that solve moves to keep the object in shot —
+ * so the panel has to be able to say when a locked altitude/radius pair no
+ * longer fits, instead of silently cropping the subject.
+ */
+export function objectFitsInFrame(
+  altitude: number,
+  objectHeight: number,
+  radiusM: number,
+  vfovDeg: number,
+  aimHeight: number,
+): boolean {
+  if (objectHeight <= 0 || radiusM <= 0) return true;
+  const angleTo = (height: number) => Math.atan2(altitude - height, radiusM);
+  const axisRad = angleTo(aimHeight);
+  const halfFovRad = ((vfovDeg / 2) * Math.PI) / 180;
+  return (
+    Math.abs(angleTo(0) - axisRad) <= halfFovRad &&
+    Math.abs(angleTo(objectHeight) - axisRad) <= halfFovRad
+  );
+}
+
+/**
  * Altitude (and centering gimbal pitch) needed so an object spanning ground
  * level (0m) to `poiHeight` fits inside `vfovDeg`, viewed from `radiusM`
  * away horizontally. Targets `FOV_SAFETY_MARGIN` of the camera's FOV when
@@ -505,6 +623,7 @@ export function computeFramedForRadius(
   poiHeight: number,
   vfovDeg: number,
   prevAltitude?: number,
+  aimHeight?: number,
 ): { altitude: number; gimbalPitchDeg: number } | null {
   if (poiHeight <= 0 || radiusM <= 0) return null;
   const desiredSpanRad = (vfovDeg * FOV_SAFETY_MARGIN * Math.PI) / 180;
@@ -528,7 +647,12 @@ export function computeFramedForRadius(
   );
   return {
     altitude: clampedAltitude,
-    gimbalPitchDeg: computeFramingPitch(clampedAltitude, poiHeight, radiusM),
+    gimbalPitchDeg: computeOrbitAimPitch(
+      clampedAltitude,
+      poiHeight,
+      radiusM,
+      aimHeight,
+    ),
   };
 }
 
@@ -555,6 +679,7 @@ export function computeFramedForAltitude(
   poiHeight: number,
   vfovDeg: number,
   prevRadius?: number,
+  aimHeight?: number,
 ): { radiusM: number; gimbalPitchDeg: number } | null {
   if (poiHeight <= 0 || altitude <= 0) return null;
   const desiredSpanRad = (vfovDeg * FOV_SAFETY_MARGIN * Math.PI) / 180;
@@ -585,7 +710,12 @@ export function computeFramedForAltitude(
   );
   return {
     radiusM: clampedRadius,
-    gimbalPitchDeg: computeFramingPitch(altitude, poiHeight, clampedRadius),
+    gimbalPitchDeg: computeOrbitAimPitch(
+      altitude,
+      poiHeight,
+      clampedRadius,
+      aimHeight,
+    ),
   };
 }
 
@@ -1092,6 +1222,7 @@ function ensureAltitudeAboveBuilding(
   framed: { altitude: number; gimbalPitchDeg: number },
   radiusM: number,
   poiHeight: number,
+  aimHeight: number | undefined,
 ): { altitude: number; gimbalPitchDeg: number } {
   if (framed.altitude >= poiHeight * MIN_ALTITUDE_ABOVE_BUILDING_FACTOR) {
     return framed;
@@ -1099,7 +1230,12 @@ function ensureAltitudeAboveBuilding(
   const altitude = Math.round(poiHeight * MIN_ALTITUDE_ABOVE_BUILDING_FACTOR);
   return {
     altitude,
-    gimbalPitchDeg: computeFramingPitch(altitude, poiHeight, radiusM),
+    gimbalPitchDeg: computeOrbitAimPitch(
+      altitude,
+      poiHeight,
+      radiusM,
+      aimHeight,
+    ),
   };
 }
 
@@ -1111,10 +1247,22 @@ function framingForBuildingSeed(
   seed: BuildingOrbitSeed,
   poiHeight: number,
   vfovDeg: number,
+  aimHeight: number | undefined,
 ): { altitude: number; gimbalPitchDeg: number } {
-  const framed = computeFramedForRadius(seed.radiusM, poiHeight, vfovDeg);
+  const framed = computeFramedForRadius(
+    seed.radiusM,
+    poiHeight,
+    vfovDeg,
+    undefined,
+    aimHeight,
+  );
   if (framed) {
-    return ensureAltitudeAboveBuilding(framed, seed.radiusM, poiHeight);
+    return ensureAltitudeAboveBuilding(
+      framed,
+      seed.radiusM,
+      poiHeight,
+      aimHeight,
+    );
   }
   const gimbalPitchDeg = DEFAULT_ORBIT_PARAMS.gimbalPitchDeg;
   return {
@@ -1156,12 +1304,14 @@ export function orbitParamsForBuilding(
     seed,
     building.height,
     resolvedVfovDeg,
+    defaultAimHeight(building.height),
   );
   return {
     ...DEFAULT_ORBIT_PARAMS,
     center: seed.center,
     radiusM: seed.radiusM,
     poiHeight: building.height,
+    aimHeight: defaultAimHeight(building.height),
     gimbalPitchDeg,
     altitude,
     buildingVertices: building.vertices,
@@ -1188,6 +1338,7 @@ export function recomputeBuildingOrbitForArc(
   vfovDeg: number,
   startAngleDeg: number,
   endAngleDeg: number,
+  aimHeight?: number,
 ): {
   center: [number, number];
   radiusM: number;
@@ -1205,6 +1356,7 @@ export function recomputeBuildingOrbitForArc(
     seed,
     poiHeight,
     vfovDeg,
+    aimHeight,
   );
   return {
     center: seed.center,
@@ -1259,6 +1411,7 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     startAngleDeg,
     endAngleDeg,
     poiHeight,
+    aimHeight,
     gimbalPitchDeg,
     poiCenter,
     captureMode,
@@ -1282,7 +1435,11 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
       name: poiName,
       latitude: aimLat,
       longitude: aimLng,
-      height: poiHeight,
+      // The POI marks what the camera looks at, so it belongs at the aim
+      // height — `poiHeight` is the object's full height, which is a
+      // framing input, not a target. Orbits saved before the aim height
+      // existed keep their original placement.
+      height: aimHeight ?? poiHeight,
     });
   }
 
@@ -1335,19 +1492,17 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     const normalizedHeading =
       headingAngle > 180 ? headingAngle - 360 : headingAngle;
     const lockedPoiDistanceM = haversine(lat, lng, aimLat, aimLng);
+    // A locked POI points exactly at the aim height, whether or not the
+    // target is a building — that's what the aim height is for. The two
+    // branches below only cover orbits saved before the field existed: a
+    // building aimed at its ground-to-roof midpoint, anything else exactly
+    // at poiHeight, which is what each did before and must keep doing.
     const gimbalPitchAngle = poiCenter
-      ? buildingVertices
-        ? // The locked target is a whole building, not one exact point —
-          // aim at the ground-to-roof midpoint (same as the rest of a
-          // building orbit) instead of computeGimbalPitch's "look exactly
-          // at poiHeight," which reads as an oddly shallow, near-level
-          // angle when the flight altitude isn't dramatically above the
-          // building (e.g. altitude=52m over a 40m building: aiming
-          // exactly at the roof gives ~-6°, barely tilted down at all,
-          // instead of the ~-15° a whole-object framing gives at the same
-          // distance).
-          computeFramingPitch(altitude, poiHeight, lockedPoiDistanceM)
-        : computeGimbalPitch(altitude, poiHeight, lockedPoiDistanceM)
+      ? aimHeight !== undefined
+        ? computeGimbalPitch(altitude, aimHeight, lockedPoiDistanceM)
+        : buildingVertices
+          ? computeFramingPitch(altitude, poiHeight, lockedPoiDistanceM)
+          : computeGimbalPitch(altitude, poiHeight, lockedPoiDistanceM)
       : gimbalPitchDeg;
 
     waypoints.push({

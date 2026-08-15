@@ -536,16 +536,57 @@ export function computeOrbitAimPitch(
   radiusM: number,
   aimHeight: number | undefined,
 ): number {
-  return computeGimbalPitch(
+  return clampGimbalPitch(
+    computeGimbalPitch(
+      altitude,
+      aimHeight ?? defaultAimHeight(objectHeight),
+      radiusM,
+    ),
+  );
+}
+
+/**
+ * Whether pointing at `aimHeight` from this geometry needs a gimbal angle
+ * the aircraft can't reach — flying below a tall subject's aim point asks
+ * the camera to look steeply upward, well past what a drone gimbal does.
+ * The pitch is clamped in that case, so the camera no longer points where
+ * the panel says it should; callers are expected to say so rather than
+ * quietly exporting an angle the aircraft will refuse.
+ */
+export function aimPitchOutOfRange(
+  altitude: number,
+  objectHeight: number,
+  radiusM: number,
+  aimHeight: number | undefined,
+): boolean {
+  const exact = computeGimbalPitch(
     altitude,
     aimHeight ?? defaultAimHeight(objectHeight),
     radiusM,
   );
+  return exact !== clampGimbalPitch(exact);
 }
 
 /** Aim height a fresh orbit starts at: the middle of the object. */
 export function defaultAimHeight(objectHeight: number): number {
   return objectHeight / 2;
+}
+
+/**
+ * Gimbal travel the orbit panel offers, and the bounds every derived pitch
+ * is held to. A solve that aims below the aircraft is unbounded in
+ * principle — flying under a tall subject's aim point asks for a steep
+ * upward angle no gimbal delivers — and an angle outside this range would
+ * otherwise reach the exported WPML, where the aircraft simply refuses it.
+ */
+export const MIN_GIMBAL_PITCH_DEG = -120;
+export const MAX_GIMBAL_PITCH_DEG = 45;
+
+function clampGimbalPitch(gimbalPitchDeg: number): number {
+  return Math.max(
+    MIN_GIMBAL_PITCH_DEG,
+    Math.min(MAX_GIMBAL_PITCH_DEG, gimbalPitchDeg),
+  );
 }
 
 /**
@@ -1499,7 +1540,12 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     // at poiHeight, which is what each did before and must keep doing.
     const gimbalPitchAngle = poiCenter
       ? aimHeight !== undefined
-        ? computeGimbalPitch(altitude, aimHeight, lockedPoiDistanceM)
+        ? computeOrbitAimPitch(
+            altitude,
+            poiHeight,
+            lockedPoiDistanceM,
+            aimHeight,
+          )
         : buildingVertices
           ? computeFramingPitch(altitude, poiHeight, lockedPoiDistanceM)
           : computeGimbalPitch(altitude, poiHeight, lockedPoiDistanceM)

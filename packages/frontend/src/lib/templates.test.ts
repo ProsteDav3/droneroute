@@ -6,6 +6,9 @@ import {
   computeFramingPitch,
   computeOrbitAimPitch,
   computeRadiusForPitch,
+  aimPitchOutOfRange,
+  MAX_GIMBAL_PITCH_DEG,
+  MIN_GIMBAL_PITCH_DEG,
   objectFitsInFrame,
   computeAltitudeForPitch,
   computeFramedForRadius,
@@ -1989,5 +1992,26 @@ describe("objectFitsInFrame", () => {
   it("reports a miss when the object is far too tall for the frame", () => {
     // 60 m of building seen from 8 m away cannot fit in a 63 degree FOV.
     expect(objectFitsInFrame(30, 60, 8, DEFAULT_WIDE_VFOV_DEG, 30)).toBe(false);
+  });
+});
+
+describe("gimbal pitch bounds", () => {
+  it("never derives a pitch outside the range the panel offers", () => {
+    // Flying below the aim point (a 60m subject aimed at 30m, from 19m up
+    // and 10m out) wants roughly +48 degrees — past the +45 the field
+    // itself declares, and past what the aircraft would accept in WPML.
+    expect(computeOrbitAimPitch(19, 60, 10, 30)).toBe(MAX_GIMBAL_PITCH_DEG);
+    expect(computeOrbitAimPitch(19, 60, 10, 30)).toBeLessThanOrEqual(
+      MAX_GIMBAL_PITCH_DEG,
+    );
+    expect(computeOrbitAimPitch(400, 5, 1, 0)).toBeGreaterThanOrEqual(
+      MIN_GIMBAL_PITCH_DEG,
+    );
+  });
+
+  it("reports when the aim can no longer be met", () => {
+    expect(aimPitchOutOfRange(19, 60, 10, 30)).toBe(true);
+    // A normal look-down orbit is well inside the range.
+    expect(aimPitchOutOfRange(50, 20, 40, 10)).toBe(false);
   });
 });

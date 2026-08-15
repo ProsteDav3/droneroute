@@ -14,12 +14,15 @@ import {
   computeAltitudeForPitch,
   computeFramedForRadius,
   computeFramedForAltitude,
+  aimPitchOutOfRange,
   computeOrbitAimPitch,
   computeRadiusForPitch,
   defaultAimHeight,
   objectFitsInFrame,
   recomputeBuildingOrbitForArc,
   DEFAULT_WIDE_VFOV_DEG,
+  MIN_GIMBAL_PITCH_DEG,
+  MAX_GIMBAL_PITCH_DEG,
   type OrbitParams,
 } from "@/lib/templates";
 import type { WideCameraFov } from "@/lib/solarCamera";
@@ -71,6 +74,19 @@ export function OrbitFields({
       vfovDeg,
       shownAimHeight,
     );
+
+  /**
+   * Flying below the aim point asks the camera to look steeply upward, past
+   * anything a drone gimbal reaches. The pitch gets clamped there, which
+   * means it no longer points where this panel says — worth saying out loud
+   * rather than exporting an angle the aircraft will refuse.
+   */
+  const aimUnreachable = aimPitchOutOfRange(
+    orbitParams.altitude,
+    orbitParams.poiHeight,
+    orbitParams.radiusM,
+    orbitParams.aimHeight,
+  );
 
   /**
    * Narrowing a building orbit's arc to one side (an obstacle or neighboring
@@ -488,8 +504,8 @@ export function OrbitFields({
               ),
             });
           }}
-          min={-120}
-          max={45}
+          min={MIN_GIMBAL_PITCH_DEG}
+          max={MAX_GIMBAL_PITCH_DEG}
           step={1}
           fallback={-45}
           className="h-7 text-xs"
@@ -503,6 +519,13 @@ export function OrbitFields({
                 ? "Propojeno — úprava radiusu, výšky letu nebo výšky objektu přepočítá zbylé hodnoty tak, aby byl celý objekt v záběru vybrané kamery."
                 : "Propojeno — úprava radiusu, výšky letu nebo výšky objektu přepočítá zbylé hodnoty tak, aby byl celý objekt v záběru. FOV konkrétní kamery není známé (vyberte dron v nastavení mise pro přesnější výpočet), použit typický širokoúhlý objektiv."}
         </div>
+        {aimUnreachable && (
+          <div className="text-[10px] text-amber-400 mt-1">
+            Kamera by musela mířit strmě vzhůru — dron letí pod bodem zaměření.
+            Náklon je omezen na {MAX_GIMBAL_PITCH_DEG}°, takže nemíří přesně na
+            zadanou výšku. Zvyšte výšku letu nebo snižte výšku míření.
+          </div>
+        )}
         {objectCropped && (
           <div className="text-[10px] text-amber-400 mt-1">
             Objekt vysoký {toDisplayHeight(orbitParams.poiHeight, unitSystem)}{" "}

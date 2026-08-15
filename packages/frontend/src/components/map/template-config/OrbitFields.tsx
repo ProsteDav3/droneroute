@@ -11,10 +11,13 @@ import {
   fromDisplayDistance,
 } from "@/lib/units";
 import {
-  computeGimbalPitch,
   computeAltitudeForPitch,
   computeFramedForRadius,
   computeFramedForAltitude,
+  computeOrbitAimPitch,
+  computeRadiusForPitch,
+  defaultAimHeight,
+  objectFitsInFrame,
   recomputeBuildingOrbitForArc,
   DEFAULT_WIDE_VFOV_DEG,
   type OrbitParams,
@@ -40,6 +43,35 @@ export function OrbitFields({
   heightModeText,
   setFlyToTarget,
 }: OrbitFieldsProps) {
+  const vfovDeg = wideFov?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG;
+  const linked = orbitParams.altitudeGimbalLinked;
+  const altitudeLocked = !!orbitParams.altitudeLocked;
+  /** What the panel shows in "Mířit na výšku": the explicit value, or the
+   *  automatic middle of the object until the user overrides it. */
+  const shownAimHeight =
+    orbitParams.aimHeight ?? defaultAimHeight(orbitParams.poiHeight);
+  const aimIsAuto = orbitParams.aimHeight === undefined;
+
+  /** Pitch for a candidate geometry, honoring the current aim height. */
+  const pitchFor = (altitude: number, poiHeight: number, radiusM: number) =>
+    computeOrbitAimPitch(altitude, poiHeight, radiusM, orbitParams.aimHeight);
+
+  /**
+   * Locking the altitude trades the whole-object framing guarantee away —
+   * altitude is exactly what that solve moves to keep the subject in shot —
+   * so the panel checks the real geometry and says so rather than letting a
+   * cropped building through unannounced.
+   */
+  const objectCropped =
+    orbitParams.poiHeight > 0 &&
+    !objectFitsInFrame(
+      orbitParams.altitude,
+      orbitParams.poiHeight,
+      orbitParams.radiusM,
+      vfovDeg,
+      shownAimHeight,
+    );
+
   /**
    * Narrowing a building orbit's arc to one side (an obstacle or neighboring
    * structure blocks the rest) should also shrink the radius back down —
@@ -53,15 +85,19 @@ export function OrbitFields({
   const applyArcChange = (startAngleDeg: number, endAngleDeg: number) => {
     if (
       orbitParams.buildingVertices &&
-      orbitParams.altitudeGimbalLinked &&
+      linked &&
+      // Re-deriving the framing moves the altitude, which is precisely what
+      // the lock exists to prevent.
+      !altitudeLocked &&
       !orbitParams.poiCenter
     ) {
       const reframed = recomputeBuildingOrbitForArc(
         orbitParams.buildingVertices,
         orbitParams.poiHeight,
-        wideFov?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
+        vfovDeg,
         startAngleDeg,
         endAngleDeg,
+        orbitParams.aimHeight,
       );
       onOrbitChange({
         ...orbitParams,
@@ -99,36 +135,53 @@ export function OrbitFields({
         </Label>
         <NumericInput
           value={toDisplayDistance(orbitParams.radiusM, unitSystem)}
+          ariaLabel="Radius"
           onChange={(v) => {
             const radiusM = fromDisplayDistance(v, unitSystem);
-            if (orbitParams.altitudeGimbalLinked) {
-              const framed = computeFramedForRadius(
-                radiusM,
-                orbitParams.poiHeight,
-                wideFov?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
-                orbitParams.altitude,
-              );
-              onOrbitChange(
-                framed
-                  ? {
-                      ...orbitParams,
-                      radiusM,
-                      altitude: framed.altitude,
-                      gimbalPitchDeg: framed.gimbalPitchDeg,
-                    }
-                  : {
-                      ...orbitParams,
-                      radiusM,
-                      gimbalPitchDeg: computeGimbalPitch(
-                        orbitParams.altitude,
-                        orbitParams.poiHeight,
-                        radiusM,
-                      ),
-                    },
-              );
-            } else {
+            if (!linked) {
               onOrbitChange({ ...orbitParams, radiusM });
+              return;
             }
+            // The locked case is the whole point of the lock: hold the
+            // altitude, re-aim the gimbal, let the framing take care of
+            // itself (objectCropped warns when it can't).
+            if (altitudeLocked) {
+              onOrbitChange({
+                ...orbitParams,
+                radiusM,
+                gimbalPitchDeg: pitchFor(
+                  orbitParams.altitude,
+                  orbitParams.poiHeight,
+                  radiusM,
+                ),
+              });
+              return;
+            }
+            const framed = computeFramedForRadius(
+              radiusM,
+              orbitParams.poiHeight,
+              vfovDeg,
+              orbitParams.altitude,
+              orbitParams.aimHeight,
+            );
+            onOrbitChange(
+              framed
+                ? {
+                    ...orbitParams,
+                    radiusM,
+                    altitude: framed.altitude,
+                    gimbalPitchDeg: framed.gimbalPitchDeg,
+                  }
+                : {
+                    ...orbitParams,
+                    radiusM,
+                    gimbalPitchDeg: pitchFor(
+                      orbitParams.altitude,
+                      orbitParams.poiHeight,
+                      radiusM,
+                    ),
+                  },
+            );
           }}
           min={5}
           step={5}
@@ -148,44 +201,84 @@ export function OrbitFields({
         />
       </div>
       <div>
-        <Label
-          className="text-[10px]"
-          title={`Jak vysoko dron letí, ${heightModeText} (referenční výška této mise).`}
-        >
-          Výška letu ({heightLabel(unitSystem)})
-        </Label>
+        <div className="flex items-center justify-between">
+          <Label
+            className="text-[10px]"
+            title={`Jak vysoko dron letí, ${heightModeText} (referenční výška této mise).`}
+          >
+            Výška letu ({heightLabel(unitSystem)})
+          </Label>
+          <button
+            type="button"
+            disabled={!linked}
+            onClick={() =>
+              onOrbitChange({ ...orbitParams, altitudeLocked: !altitudeLocked })
+            }
+            title={
+              !linked
+                ? "Výška se přepočítává jen v propojeném režimu — zamykat tu není co."
+                : altitudeLocked
+                  ? "Výška letu je zamčená — úprava radiusu přepočítá jen náklon gimbalu. Kliknutím odemknete."
+                  : "Zamkne výšku letu (např. kvůli překážkám). Úprava radiusu pak přepočítá jen náklon gimbalu, ne výšku."
+            }
+            className="text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground"
+          >
+            {altitudeLocked ? (
+              <Lock className="h-3 w-3 text-amber-400" />
+            ) : (
+              <Unlock className="h-3 w-3" />
+            )}
+          </button>
+        </div>
         <NumericInput
           value={toDisplayHeight(orbitParams.altitude, unitSystem)}
+          ariaLabel="Výška letu"
           onChange={(v) => {
             const altitude = fromDisplayHeight(v, unitSystem);
-            if (orbitParams.altitudeGimbalLinked) {
-              const framed = computeFramedForAltitude(
-                altitude,
-                orbitParams.poiHeight,
-                wideFov?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
-                orbitParams.radiusM,
-              );
-              onOrbitChange(
-                framed
-                  ? {
-                      ...orbitParams,
-                      altitude,
-                      radiusM: framed.radiusM,
-                      gimbalPitchDeg: framed.gimbalPitchDeg,
-                    }
-                  : {
-                      ...orbitParams,
-                      altitude,
-                      gimbalPitchDeg: computeGimbalPitch(
-                        altitude,
-                        orbitParams.poiHeight,
-                        orbitParams.radiusM,
-                      ),
-                    },
-              );
-            } else {
+            if (!linked) {
               onOrbitChange({ ...orbitParams, altitude });
+              return;
             }
+            // Typing an altitude is an explicit instruction — the lock only
+            // stops the framing solve from moving it behind the user's back,
+            // it doesn't make the field read-only.
+            if (altitudeLocked) {
+              onOrbitChange({
+                ...orbitParams,
+                altitude,
+                gimbalPitchDeg: pitchFor(
+                  altitude,
+                  orbitParams.poiHeight,
+                  orbitParams.radiusM,
+                ),
+              });
+              return;
+            }
+            const framed = computeFramedForAltitude(
+              altitude,
+              orbitParams.poiHeight,
+              vfovDeg,
+              orbitParams.radiusM,
+              orbitParams.aimHeight,
+            );
+            onOrbitChange(
+              framed
+                ? {
+                    ...orbitParams,
+                    altitude,
+                    radiusM: framed.radiusM,
+                    gimbalPitchDeg: framed.gimbalPitchDeg,
+                  }
+                : {
+                    ...orbitParams,
+                    altitude,
+                    gimbalPitchDeg: pitchFor(
+                      altitude,
+                      orbitParams.poiHeight,
+                      orbitParams.radiusM,
+                    ),
+                  },
+            );
           }}
           min={5}
           step={5}
@@ -196,42 +289,112 @@ export function OrbitFields({
       <div>
         <Label
           className="text-[10px]"
-          title="Skutečná výška bodu, na který má kamera mířit (např. střecha) — stejná reference jako výška letu."
+          title="Skutečná výška orbitovaného objektu od země (např. budova) — určuje, co se musí vejít do záběru. Kam kamera míří, řídí pole vedle."
         >
-          Výška POI ({heightLabel(unitSystem)})
+          Výška objektu ({heightLabel(unitSystem)})
         </Label>
         <NumericInput
           value={toDisplayHeight(orbitParams.poiHeight, unitSystem)}
+          ariaLabel="Výška objektu"
           onChange={(v) => {
             const poiHeight = fromDisplayHeight(v, unitSystem);
-            if (orbitParams.altitudeGimbalLinked) {
-              const framed = computeFramedForRadius(
-                orbitParams.radiusM,
-                poiHeight,
-                wideFov?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
-                orbitParams.altitude,
-              );
-              onOrbitChange(
-                framed
-                  ? {
-                      ...orbitParams,
-                      poiHeight,
-                      altitude: framed.altitude,
-                      gimbalPitchDeg: framed.gimbalPitchDeg,
-                    }
-                  : {
-                      ...orbitParams,
-                      poiHeight,
-                      gimbalPitchDeg: computeGimbalPitch(
-                        orbitParams.altitude,
-                        poiHeight,
-                        orbitParams.radiusM,
-                      ),
-                    },
-              );
-            } else {
+            if (!linked) {
               onOrbitChange({ ...orbitParams, poiHeight });
+              return;
             }
+            if (altitudeLocked) {
+              onOrbitChange({
+                ...orbitParams,
+                poiHeight,
+                gimbalPitchDeg: pitchFor(
+                  orbitParams.altitude,
+                  poiHeight,
+                  orbitParams.radiusM,
+                ),
+              });
+              return;
+            }
+            const framed = computeFramedForRadius(
+              orbitParams.radiusM,
+              poiHeight,
+              vfovDeg,
+              orbitParams.altitude,
+              orbitParams.aimHeight,
+            );
+            onOrbitChange(
+              framed
+                ? {
+                    ...orbitParams,
+                    poiHeight,
+                    altitude: framed.altitude,
+                    gimbalPitchDeg: framed.gimbalPitchDeg,
+                  }
+                : {
+                    ...orbitParams,
+                    poiHeight,
+                    gimbalPitchDeg: pitchFor(
+                      orbitParams.altitude,
+                      poiHeight,
+                      orbitParams.radiusM,
+                    ),
+                  },
+            );
+          }}
+          min={0}
+          step={1}
+          fallback={0}
+          className="h-7 text-xs"
+        />
+      </div>
+      <div>
+        <div className="flex items-center justify-between">
+          <Label
+            className="text-[10px]"
+            title="Přesná výška, na kterou kamera míří. Výchozí je polovina objektu; zadanou hodnotu bere doslova, takže u 20m budovy zamíříte na střechu (20) i na patu (0)."
+          >
+            Mířit na výšku ({heightLabel(unitSystem)})
+          </Label>
+          {!aimIsAuto && (
+            <button
+              type="button"
+              onClick={() =>
+                onOrbitChange({
+                  ...orbitParams,
+                  aimHeight: undefined,
+                  gimbalPitchDeg: linked
+                    ? computeOrbitAimPitch(
+                        orbitParams.altitude,
+                        orbitParams.poiHeight,
+                        orbitParams.radiusM,
+                        undefined,
+                      )
+                    : orbitParams.gimbalPitchDeg,
+                })
+              }
+              title="Zpět na automatiku — polovinu výšky objektu."
+              className="text-[9px] text-muted-foreground hover:text-foreground"
+            >
+              auto
+            </button>
+          )}
+        </div>
+        <NumericInput
+          value={toDisplayHeight(shownAimHeight, unitSystem)}
+          ariaLabel="Mířit na výšku"
+          onChange={(v) => {
+            const aimHeight = fromDisplayHeight(v, unitSystem);
+            onOrbitChange({
+              ...orbitParams,
+              aimHeight,
+              gimbalPitchDeg: linked
+                ? computeOrbitAimPitch(
+                    orbitParams.altitude,
+                    orbitParams.poiHeight,
+                    orbitParams.radiusM,
+                    aimHeight,
+                  )
+                : orbitParams.gimbalPitchDeg,
+            });
           }}
           min={0}
           step={1}
@@ -271,28 +434,59 @@ export function OrbitFields({
         </div>
         <NumericInput
           value={orbitParams.gimbalPitchDeg}
+          ariaLabel="Náklon gimbalu"
           onChange={(v) => {
-            if (orbitParams.altitudeGimbalLinked) {
-              const altitude = computeAltitudeForPitch(
+            if (!linked) {
+              onOrbitChange({ ...orbitParams, gimbalPitchDeg: v });
+              return;
+            }
+            // Asking for the angle that's already set means "leave it
+            // alone". Without this the field's whole-degree granularity
+            // moves the aircraft on a no-op edit: at a 200m radius one
+            // degree spans several metres of altitude, so re-solving lands
+            // on the middle of that degree's band rather than back where it
+            // started.
+            if (v === orbitParams.gimbalPitchDeg) return;
+            // Every branch re-derives the pitch from the value it just
+            // solved for, so the displayed angle never diverges from the
+            // geometry actually stored — the solve can clamp (altitude
+            // floor/ceiling, radius bounds), and an unreachable request has
+            // to read back as what will really be flown.
+            if (altitudeLocked) {
+              const radiusM = computeRadiusForPitch(
                 v,
-                orbitParams.poiHeight,
-                orbitParams.radiusM,
+                orbitParams.altitude,
+                shownAimHeight,
               );
-              // Re-derive pitch from the (possibly floor/ceiling-clamped)
-              // altitude so the displayed pitch never silently diverges
-              // from what the stored altitude actually produces.
               onOrbitChange({
                 ...orbitParams,
-                altitude,
-                gimbalPitchDeg: computeGimbalPitch(
-                  altitude,
+                radiusM,
+                gimbalPitchDeg: pitchFor(
+                  orbitParams.altitude,
                   orbitParams.poiHeight,
-                  orbitParams.radiusM,
+                  radiusM,
                 ),
               });
-            } else {
-              onOrbitChange({ ...orbitParams, gimbalPitchDeg: v });
+              return;
             }
+            // Solve against the aim height, not the object's full height:
+            // the pitch shown everywhere else in this panel points at the
+            // aim height, so solving against the roof made retyping the
+            // very same angle shove the drone several metres upward.
+            const altitude = computeAltitudeForPitch(
+              v,
+              shownAimHeight,
+              orbitParams.radiusM,
+            );
+            onOrbitChange({
+              ...orbitParams,
+              altitude,
+              gimbalPitchDeg: pitchFor(
+                altitude,
+                orbitParams.poiHeight,
+                orbitParams.radiusM,
+              ),
+            });
           }}
           min={-120}
           max={45}
@@ -301,12 +495,22 @@ export function OrbitFields({
           className="h-7 text-xs"
         />
         <div className="text-[10px] text-muted-foreground mt-0.5">
-          {orbitParams.altitudeGimbalLinked
-            ? wideFov
-              ? "Propojeno — úprava radiusu, výšky letu nebo výšky POI přepočítá zbylé hodnoty tak, aby byl celý objekt v záběru vybrané kamery."
-              : "Propojeno — úprava radiusu, výšky letu nebo výšky POI přepočítá zbylé hodnoty tak, aby byl celý objekt v záběru. FOV konkrétní kamery není známé (vyberte dron v nastavení mise pro přesnější výpočet), použit typický širokoúhlý objektiv."
-            : "Uzamčeno — výška a náklon gimbalu se už vzájemně automaticky neaktualizují."}
+          {!linked
+            ? "Uzamčeno — výška a náklon gimbalu se už vzájemně automaticky neaktualizují."
+            : altitudeLocked
+              ? "Výška letu zamčená — úprava radiusu přepočítá jen náklon gimbalu. Kamera pořád míří na zadanou výšku, ale vejití celého objektu do záběru už zaručit nelze (viz upozornění níže)."
+              : wideFov
+                ? "Propojeno — úprava radiusu, výšky letu nebo výšky objektu přepočítá zbylé hodnoty tak, aby byl celý objekt v záběru vybrané kamery."
+                : "Propojeno — úprava radiusu, výšky letu nebo výšky objektu přepočítá zbylé hodnoty tak, aby byl celý objekt v záběru. FOV konkrétní kamery není známé (vyberte dron v nastavení mise pro přesnější výpočet), použit typický širokoúhlý objektiv."}
         </div>
+        {objectCropped && (
+          <div className="text-[10px] text-amber-400 mt-1">
+            Objekt vysoký {toDisplayHeight(orbitParams.poiHeight, unitSystem)}{" "}
+            {heightLabel(unitSystem)} se při této výšce letu a radiusu do záběru
+            celý nevejde. Zvětšete radius, změňte výšku letu, nebo zamiřte
+            jinam.
+          </div>
+        )}
       </div>
       <div>
         <Label className="text-[10px]">Počáteční úhel (°)</Label>

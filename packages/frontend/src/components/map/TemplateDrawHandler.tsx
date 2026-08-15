@@ -756,6 +756,9 @@ export function TemplateDrawHandler() {
               if (
                 orbitParams.buildingVertices &&
                 orbitParams.altitudeGimbalLinked &&
+                // Re-deriving the framing moves the altitude — exactly what
+                // the lock exists to prevent (see OrbitFields).
+                !orbitParams.altitudeLocked &&
                 !orbitParams.poiCenter
               ) {
                 const reframed = recomputeBuildingOrbitForArc(
@@ -764,6 +767,7 @@ export function TemplateDrawHandler() {
                   vfovDeg,
                   newStartAngleDeg,
                   newEndAngleDeg,
+                  orbitParams.aimHeight,
                 );
                 setOrbitParams({
                   ...orbitParams,

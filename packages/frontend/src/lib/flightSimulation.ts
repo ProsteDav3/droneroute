@@ -213,7 +213,12 @@ function legLockedPoiIsBuilding(
   const params = group.params as {
     poiCenter?: [number, number];
     buildingVertices?: [number, number][];
+    aimHeight?: number;
   };
+  // An orbit with an explicit aim height puts its POI at that exact height
+  // (see generateOrbit), so plain point-tracking already aims where the real
+  // mission aims — the bisector below would tilt the preview away from it.
+  if (params.aimHeight !== undefined) return false;
   return (
     !!params.poiCenter &&
     !!params.buildingVertices &&

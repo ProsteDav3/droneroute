@@ -11,6 +11,13 @@ interface NumericInputProps {
   fallback: number;
   integer?: boolean;
   className?: string;
+  /**
+   * Accessible name for the input. The panels lay a `<Label>` out above the
+   * field rather than wiring `htmlFor`/`id`, so without this a screen reader
+   * announces a bare spinbutton with no idea which of a dozen numeric
+   * fields it is.
+   */
+  ariaLabel?: string;
 }
 
 /**
@@ -31,6 +38,7 @@ export function NumericInput({
   fallback,
   integer,
   className,
+  ariaLabel,
 }: NumericInputProps) {
   const [localValue, setLocalValue] = useState(String(value));
   const [isFocused, setIsFocused] = useState(false);
@@ -72,6 +80,7 @@ export function NumericInput({
   return (
     <Input
       type="number"
+      aria-label={ariaLabel}
       value={localValue}
       onChange={handleChange}
       onFocus={() => setIsFocused(true)}

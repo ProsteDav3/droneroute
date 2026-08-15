@@ -4,6 +4,9 @@ import {
   DEFAULT_ORBIT_PARAMS,
   computeGimbalPitch,
   computeFramingPitch,
+  computeOrbitAimPitch,
+  computeRadiusForPitch,
+  objectFitsInFrame,
   computeAltitudeForPitch,
   computeFramedForRadius,
   computeFramedForAltitude,
@@ -364,14 +367,17 @@ describe("computeFramedForRadius / computeFramedForAltitude", () => {
     expect(span).toBeGreaterThan(VFOV * SAFETY_MARGIN - 0.5);
   });
 
-  it("gimbal pitch centers the vertical span (equal angle to top and bottom of the object)", () => {
+  it("points the gimbal at the middle of the object's height", () => {
+    // Was the ground-to-top angle bisector, which centers the object's
+    // angular extent a touch better but corresponds to no single height —
+    // so the panel's aim-height field couldn't state it truthfully and
+    // every inverse solve disagreed with the angle on screen. See
+    // computeOrbitAimPitch.
     const result = computeFramedForRadius(40, 25, VFOV);
     expect(result).not.toBeNull();
     const { altitude, gimbalPitchDeg } = result!;
-    const angleBottom = (Math.atan2(altitude, 40) * 180) / Math.PI;
-    const angleTop = (Math.atan2(altitude - 25, 40) * 180) / Math.PI;
-    const midAngle = (angleBottom + angleTop) / 2;
-    expect(gimbalPitchDeg).toBeCloseTo(-midAngle, 0);
+    const midHeightAngle = (Math.atan2(altitude - 12.5, 40) * 180) / Math.PI;
+    expect(gimbalPitchDeg).toBeCloseTo(-midHeightAngle, 0);
   });
 
   it("returns null when poiHeight is 0 (no vertical extent to frame)", () => {
@@ -1834,5 +1840,154 @@ describe("capture mode (photo/video)", () => {
         params: { payloadPositionIndex: 0 },
       },
     ]);
+  });
+});
+
+describe("orbit aim height", () => {
+  it("aims at the middle of the object when no aim height is set", () => {
+    for (const [altitude, objectHeight, radiusM] of [
+      [10, 5, 50],
+      [52, 40, 60],
+      [120, 8, 15],
+    ]) {
+      expect(
+        computeOrbitAimPitch(altitude, objectHeight, radiusM, undefined),
+      ).toBe(computeGimbalPitch(altitude, objectHeight / 2, radiusM));
+    }
+  });
+
+  it("round-trips against the altitude solve, so retyping a shown pitch is a no-op", () => {
+    // The defect this guards: the panel displayed one aiming rule (the
+    // ground-to-top bisector) and solved with another (aim at a height), so
+    // typing back the angle already on screen moved the aircraft — metres of
+    // it at a long radius. One rule everywhere, or this stops holding.
+    for (const [objectHeight, radiusM, aimHeight] of [
+      [20, 215, 10],
+      [40, 60, 20],
+      [5, 50, 2.5],
+    ]) {
+      const altitude = 80;
+      const shown = computeOrbitAimPitch(
+        altitude,
+        objectHeight,
+        radiusM,
+        aimHeight,
+      );
+      const solved = computeAltitudeForPitch(shown, aimHeight, radiusM);
+      expect(
+        computeOrbitAimPitch(solved, objectHeight, radiusM, aimHeight),
+      ).toBe(shown);
+    }
+  });
+
+  it("points exactly at the aim height when one is set", () => {
+    // 10 m above the aim point, 10 m out = 45 degrees down.
+    expect(computeOrbitAimPitch(20, 20, 10, 10)).toBe(-45);
+    // Aiming at the roof of the same object is shallower than aiming halfway.
+    expect(computeOrbitAimPitch(30, 20, 40, 20)).toBe(-14);
+    expect(computeOrbitAimPitch(30, 20, 40, 10)).toBe(-27);
+  });
+
+  it("seeds a building orbit's aim height at half the building's height", () => {
+    const params = orbitParamsForBuilding({
+      vertices: [
+        [41.25, 0.93],
+        [41.2502, 0.93],
+        [41.2502, 0.9302],
+        [41.25, 0.9302],
+      ],
+      height: 20,
+    });
+    expect(params.poiHeight).toBe(20);
+    expect(params.aimHeight).toBe(10);
+  });
+
+  it("aims a locked POI at the aim height even for a building orbit", () => {
+    // Previously a locked POI on a building used the ground-to-roof bisector
+    // instead of the requested point; with an explicit aim height the
+    // building/non-building split goes away.
+    const result = generateOrbit({
+      ...DEFAULT_ORBIT_PARAMS,
+      center: [41.25, 0.93],
+      radiusM: 40,
+      altitude: 30,
+      poiHeight: 20,
+      aimHeight: 10,
+      poiCenter: [41.25, 0.93],
+      buildingVertices: [
+        [41.25, 0.93],
+        [41.2502, 0.93],
+        [41.2502, 0.9302],
+      ],
+    } satisfies OrbitParams);
+
+    for (const wp of result.waypoints) {
+      expect(wp.gimbalPitchAngle).toBe(computeOrbitAimPitch(30, 20, 40, 10));
+    }
+  });
+
+  it("puts a created POI at the aim height, not the object's full height", () => {
+    const result = generateOrbit({
+      ...DEFAULT_ORBIT_PARAMS,
+      center: [41.25, 0.93],
+      radiusM: 40,
+      poiHeight: 20,
+      aimHeight: 10,
+      createPoi: true,
+    } satisfies OrbitParams);
+
+    expect(result.pois[0].height).toBe(10);
+  });
+});
+
+describe("computeRadiusForPitch", () => {
+  it("solves the radius that puts the aim point at the requested pitch", () => {
+    // 20 m above the aim point at -45 degrees means 20 m out.
+    expect(computeRadiusForPitch(-45, 30, 10)).toBe(20);
+  });
+
+  it("round-trips with computeOrbitAimPitch", () => {
+    for (const pitch of [-10, -30, -45, -60, -80]) {
+      const radiusM = computeRadiusForPitch(pitch, 60, 10);
+      expect(computeOrbitAimPitch(60, 20, radiusM, 10)).toBe(pitch);
+    }
+  });
+
+  it("clamps instead of diverging when the camera is at or below the aim point", () => {
+    expect(computeRadiusForPitch(-30, 10, 10)).toBe(2000);
+    expect(computeRadiusForPitch(-30, 5, 20)).toBe(2000);
+  });
+
+  it("clamps a level or upward pitch to the maximum radius", () => {
+    expect(computeRadiusForPitch(0, 50, 10)).toBe(2000);
+    expect(computeRadiusForPitch(15, 50, 10)).toBe(2000);
+  });
+
+  it("never returns a radius below the minimum", () => {
+    expect(computeRadiusForPitch(-89, 500, 0)).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe("objectFitsInFrame", () => {
+  it("fits when framed for the radius and aimed at the middle", () => {
+    const framed = computeFramedForRadius(40, 20, DEFAULT_WIDE_VFOV_DEG);
+    expect(framed).not.toBeNull();
+    expect(
+      objectFitsInFrame(framed!.altitude, 20, 40, DEFAULT_WIDE_VFOV_DEG, 10),
+    ).toBe(true);
+  });
+
+  it("still fits when aimed at the roof instead of the middle", () => {
+    // The framing solve targets half the vertical FOV, so shifting the aim
+    // by half the object's angular span still leaves it inside the frame.
+    const framed = computeFramedForRadius(40, 20, DEFAULT_WIDE_VFOV_DEG);
+    expect(
+      objectFitsInFrame(framed!.altitude, 20, 40, DEFAULT_WIDE_VFOV_DEG, 20),
+    ).toBe(true);
+  });
+
+  it("reports a miss when the object is far too tall for the frame", () => {
+    // 60 m of building seen from 8 m away cannot fit in a 63 degree FOV.
+    expect(objectFitsInFrame(30, 60, 8, DEFAULT_WIDE_VFOV_DEG, 30)).toBe(false);
   });
 });

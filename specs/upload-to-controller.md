@@ -38,6 +38,8 @@ server to have a DJI Cloud platform configured and support self-hosted
 
 Re-uploading a mission with the same name overwrites the existing wayline in place, instead of piling up a new timestamped duplicate on every retry.
 
+The DJI Cloud platform only accepts wayline names up to 64 characters, so a longer one is shortened from the middle before upload — both ends are kept, so you can still tell which mission it is and, for segment uploads, which leg (`…-seg-3-of-11`) you're looking at.
+
 ### Managing the wayline library
 
 The web app's **DJI Cloud — wayline knihovna** panel (in the sidebar, below the fleet status panel, when your server has DJI Cloud configured) lists every file currently in the workspace's wayline library and lets you delete ones you no longer need — handy for cleaning up old missions or duplicates created before the overwrite behavior above existed.

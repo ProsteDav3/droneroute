@@ -464,14 +464,45 @@ async function findExistingWaylineByName(
  * both fail outright on the first offending entry) — so this has to reject
  * the same characters DJI does, not just filesystem-unsafe ones.
  */
+/**
+ * DJI Cloud stores wayline names in a `wayline_file.name VARCHAR(64)` column
+ * and does NOT truncate an over-long one — its INSERT fails outright
+ * (`MysqlDataTruncation: Data too long for column 'name'`), surfaced as a
+ * generic `code: -1` upload rejection. Confirmed against a live platform:
+ * 64 characters upload fine, 65 fails.
+ */
+const MAX_WAYLINE_NAME_LENGTH = 64;
+
+/**
+ * Shortens an over-long wayline name by dropping characters from its MIDDLE,
+ * keeping both ends. Cutting the tail instead would be actively wrong here:
+ * the tail is what carries the discriminator that keeps sibling uploads
+ * apart — `-seg-3-of-11` for a segment upload, the timestamp for the
+ * duplicate-name fallback — so an end-truncated mission with a long name
+ * would collapse all of its segments onto one identical name. The head is
+ * worth keeping too, since that's the part that identifies which mission a
+ * wayline belongs to in Pilot 2's library.
+ */
+function fitWaylineNameLength(name: string): string {
+  if (name.length <= MAX_WAYLINE_NAME_LENGTH) return name;
+
+  // Half the budget each side. Dropping whole dash-separated words instead
+  // would read better, but the discriminator itself is dash-separated
+  // (`-20260815-083910`), so word-dropping eats half the timestamp — the one
+  // thing that must survive. Cutting characters keeps it whole.
+  const tailLength = Math.ceil((MAX_WAYLINE_NAME_LENGTH - 1) / 2);
+  const headLength = MAX_WAYLINE_NAME_LENGTH - 1 - tailLength;
+  const head = name.slice(0, headLength).replace(/-+$/, "");
+  const tail = name.slice(name.length - tailLength).replace(/^-+/, "");
+  return `${head}-${tail}`;
+}
+
 function sanitizeWaylineName(name: string): string {
-  return (
-    name
-      .replace(/[<>:"/\\|?*._]/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 80) || "mission"
-  );
+  const sanitized = name
+    .replace(/[<>:"/\\|?*._]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return fitWaylineNameLength(sanitized) || "mission";
 }
 
 async function uploadOne(
@@ -515,7 +546,9 @@ async function uploadOne(
     }
   }
 
-  const retryName = `${baseName}-${timestampSuffix()}`;
+  // Re-fit: the timestamp makes the name longer, and the platform's 64-char
+  // column rejects (never truncates) anything over the limit.
+  const retryName = fitWaylineNameLength(`${baseName}-${timestampSuffix()}`);
   const fallback = await uploadFile(
     cfg,
     token,

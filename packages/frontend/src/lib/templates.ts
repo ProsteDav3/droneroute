@@ -1103,103 +1103,74 @@ function clampOrbitCenterForPoiMinStandoff(
   return destinationPoint(poiLat, poiLng, targetDist, bearingDeg);
 }
 
-/** How much farther the flight circle's farthest point from a locked POI may
- * be than its nearest point — e.g. 1.6 means the subject may look up to 60%
- * smaller in frame at the far end of the arc than at the near end. Circle
- * geometry (near = |radiusM - offsetM|, far = radiusM + offsetM, for offsetM
- * = distance from the POI to the flight circle's own center) makes this
- * ratio worst exactly when the POI sits close to the circle's own edge
- * (offsetM near radiusM, where near approaches 0) and best when the offset
- * is small relative to the radius (POI near the circle's own center, where
- * near and far both approach radiusM) — dragging the circle far *outside*
- * the POI can mathematically also reach a good ratio again at very large
- * offsets, but that defeats the point of orbiting close to the subject, so
- * this only bounds the practical small-offset side. */
-const MAX_POI_DISTANCE_RATIO = 1.6;
-
-/** The largest distance a flight circle's own center may sit from a locked
- * POI, at a given `radiusM`, while keeping the near/far distance ratio at or
- * under `MAX_POI_DISTANCE_RATIO` — see its doc comment for the geometry.
- * Solving `(radiusM + offsetM) / (radiusM - offsetM) <= MAX_POI_DISTANCE_RATIO`
- * for `offsetM`. */
-export function maxPoiOffsetForRatioM(radiusM: number): number {
-  return (
-    (radiusM * (MAX_POI_DISTANCE_RATIO - 1)) / (MAX_POI_DISTANCE_RATIO + 1)
-  );
-}
-
 /**
- * The actual reachable distance a flight circle's own center may sit from a
- * locked POI, combining `maxPoiOffsetForRatioM`'s ratio-based cap with
- * `clampOrbitCenterForPoiMinStandoff`'s own inner boundary
- * (`radiusM - minStandoffM`, the closest the plain clearance clamp itself
- * ever allows the center to land — its "POI outside the circle" solution
- * always sits at `radiusM + minStandoffM`, which is always farther from the
- * POI than `radiusM` itself, and therefore always farther than any ratio cap
- * worth imposing — see `maxPoiOffsetForRatioM`'s doc comment — so once a
- * ratio cap applies at all, that outer solution is never actually reachable
- * and can be ignored). For a large building whose minimum standoff already
- * exceeds this ratio cap's own boundary, the clearance clamp's inner
- * boundary is the *tighter* of the two and wins — using the ratio cap alone
- * here would draw a guide ring, and clamp a drag, past a point the
- * clearance requirement itself already forbids reaching, silently trapping
- * the drag well short of the visible ring. */
-export function effectivePoiOffsetCapM(
+ * How much a locked POI's apparent size changes over the flight: the
+ * nearest and farthest waypoint distances to it, and their ratio, measured
+ * on the waypoints the aircraft actually flies (same placement as
+ * `generateOrbit`: a closed loop of `numPoints` evenly spaced, or an open
+ * arc from `startAngleDeg` to `endAngleDeg` inclusive).
+ *
+ * This is information, not a limit. An arc that starts and ends just short
+ * of the subject and swings round its far side is a perfectly good
+ * composition — the subject is simply larger at the ends than in the middle
+ * — and its ratio is inherently well above the 1.6 the old drag clamp
+ * enforced. Measuring on the flown waypoints also gets an open arc right:
+ * the circle's own nearest point is irrelevant if the arc's gap faces the
+ * POI and that point is never visited.
+ */
+export function poiDistanceSwing(
+  center: [number, number],
+  poi: [number, number],
   radiusM: number,
-  minStandoffM: number,
-): number {
-  return Math.min(
-    maxPoiOffsetForRatioM(radiusM),
-    Math.max(radiusM - minStandoffM, 0),
-  );
+  startAngleDeg: number,
+  endAngleDeg: number,
+  numPoints: number,
+): { nearM: number; farM: number; ratio: number } {
+  const closedLoop = endAngleDeg - startAngleDeg >= 360;
+  const divisor = closedLoop ? numPoints : Math.max(1, numPoints - 1);
+  const sweep = closedLoop
+    ? 360
+    : (((endAngleDeg - startAngleDeg) % 360) + 360) % 360;
+  let nearM = Infinity;
+  let farM = 0;
+  for (let i = 0; i < numPoints; i++) {
+    const angleDeg = startAngleDeg + (sweep * i) / divisor;
+    const [lat, lng] = destinationPoint(
+      center[0],
+      center[1],
+      radiusM,
+      angleDeg,
+    );
+    const d = haversine(lat, lng, poi[0], poi[1]);
+    if (d < nearM) nearM = d;
+    if (d > farM) farM = d;
+  }
+  return { nearM, farM, ratio: nearM > 0 ? farM / nearM : Infinity };
 }
 
 /**
- * `clampOrbitCenterForPoiMinStandoff` alone only prevents the circle from
- * getting too *close* to a locked POI — it doesn't stop the opposite
- * problem, dragging the circle's center so far from the POI (relative to
- * its own radius) that the subject's apparent size swings wildly over the
- * course of the arc (see `maxPoiOffsetForRatioM`). This layers that second,
- * optional cap on top: when `maxOffsetM` is passed (typically only when the
- * POI came from a real building, where that framing consistency matters
- * most — see `TemplateDrawHandler`), clamps to the single reachable inner
- * boundary that satisfies BOTH constraints at once (see
- * `effectivePoiOffsetCapM`), rather than running the two clamps as separate
- * passes — running them separately let the min-standoff clamp's own "snap to
- * its nearest boundary" behavior silently override a `maxOffsetM` value that
- * turned out to sit farther out than that boundary, making the ratio cap
- * unreachable in practice for a large building. Omitting `maxOffsetM` (the
- * default `Infinity`) preserves the exact prior clearance-only behavior,
- * including its own inside/outside choice.
+ * Keeps a dragged orbit centre from putting the flight circle too close to a
+ * locked POI to fit the subject in frame — see
+ * `clampOrbitCenterForPoiMinStandoff`. That is the only hard limit on the
+ * drag now. An earlier revision also capped how FAR the centre could sit from
+ * the POI (a fixed 1.6 near/far distance ratio, meant to keep the subject's
+ * apparent size steady) — but that forbade a perfectly good composition, an
+ * arc that starts and ends just short of the subject and swings round its
+ * far side, where the subject is simply larger at the ends. The panel now
+ * reports that swing (`poiDistanceSwing`) instead of preventing it.
  */
 export function clampOrbitCenterForPoiClearance(
   candidateCenter: [number, number],
   poiCenter: [number, number],
   radiusM: number,
   minStandoffM: number,
-  maxOffsetM = Infinity,
 ): [number, number] {
-  if (!Number.isFinite(maxOffsetM)) {
-    return clampOrbitCenterForPoiMinStandoff(
-      candidateCenter,
-      poiCenter,
-      radiusM,
-      minStandoffM,
-    );
-  }
-
-  const effectiveMaxOffsetM = Math.min(
-    maxOffsetM,
-    Math.max(radiusM - minStandoffM, 0),
+  return clampOrbitCenterForPoiMinStandoff(
+    candidateCenter,
+    poiCenter,
+    radiusM,
+    minStandoffM,
   );
-
-  const [poiLat, poiLng] = poiCenter;
-  const [cLat, cLng] = candidateCenter;
-  const dist = haversine(poiLat, poiLng, cLat, cLng);
-  if (dist <= effectiveMaxOffsetM) return candidateCenter;
-
-  const bearingDeg = dist > 0 ? bearing(poiLat, poiLng, cLat, cLng) : 0;
-  return destinationPoint(poiLat, poiLng, effectiveMaxOffsetM, bearingDeg);
 }
 
 /** How many bearings to sample around a candidate circle when checking how

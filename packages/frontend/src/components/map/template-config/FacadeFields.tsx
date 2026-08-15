@@ -217,7 +217,7 @@ export function FacadeFields({
       <div>
         <CaptureModeToggle
           value={facadeParams.captureMode === "video" ? "video" : "photo"}
-          onChange={(mode) =>
+          onChange={({ mode }) =>
             onFacadeChange({
               ...facadeParams,
               captureMode: mode,

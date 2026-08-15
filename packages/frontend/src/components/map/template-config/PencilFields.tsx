@@ -112,7 +112,7 @@ export function PencilFields({
       <div>
         <CaptureModeToggle
           value={pencilParams.captureMode === "video" ? "video" : "photo"}
-          onChange={(mode) =>
+          onChange={({ mode }) =>
             onPencilChange({ ...pencilParams, captureMode: mode })
           }
         />

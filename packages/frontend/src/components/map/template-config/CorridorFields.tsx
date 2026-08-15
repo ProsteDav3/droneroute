@@ -135,7 +135,7 @@ export function CorridorFields({
       <div>
         <CaptureModeToggle
           value={corridorParams.captureMode === "video" ? "video" : "photo"}
-          onChange={(mode) =>
+          onChange={({ mode }) =>
             onCorridorChange({ ...corridorParams, captureMode: mode })
           }
         />

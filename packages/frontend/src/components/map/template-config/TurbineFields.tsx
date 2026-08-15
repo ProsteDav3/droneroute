@@ -219,7 +219,7 @@ export function TurbineFields({
       <div>
         <CaptureModeToggle
           value={turbineParams.captureMode === "video" ? "video" : "photo"}
-          onChange={(mode) =>
+          onChange={({ mode }) =>
             onTurbineChange({ ...turbineParams, captureMode: mode })
           }
         />

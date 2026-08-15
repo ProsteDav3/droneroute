@@ -65,7 +65,14 @@ export function NumericInput({
     setIsFocused(false);
     const clamped = clamp(localValue);
     setLocalValue(String(clamped));
-    onChange(clamped);
+    // Only report a change if the value actually changed. Blurring an
+    // untouched field used to fire onChange(value) anyway — harmless for a
+    // plain number, but a field whose "unset" state means "automatic" (the
+    // orbit panel's aim height: undefined = follow the middle of the object)
+    // got silently pinned to whatever it happened to display, just by being
+    // tabbed through. That is how a user's orbit ended up with aimHeight 9
+    // baked in and re-applying the template couldn't move it.
+    if (clamped !== value) onChange(clamped);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

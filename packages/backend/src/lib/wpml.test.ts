@@ -79,6 +79,47 @@ describe("buildTemplateKml", () => {
     );
   });
 
+  it("writes waypointHeadingAngle 0 (not the computed bearing) for towardPOI in template.kml — a non-zero angle there breaks POI tracking on the Matrice 4T", () => {
+    // Field result, five variants of one orbit flown back to back on an M4T:
+    // towardPOI with the real bearing written into template.kml's
+    // waypointHeadingAngle -> aircraft never turned to the POI (identical to
+    // the originally reported flight). Same file with that angle forced to 0
+    // -> aircraft tracked the POI, and the per-waypoint gimbal pitch was
+    // honoured too. Pilot 2 regenerates waylines.wpml from template.kml on
+    // download from the cloud, and a non-zero angle beside towardPOI is
+    // enough to derail it. The angle is meaningless in that mode anyway
+    // (spec: it is only read for smoothTransition), so 0 loses nothing.
+    const wp = waypoint({
+      useGlobalHeadingParam: false,
+      headingMode: "towardPOI",
+      poiId: "poi-1",
+    });
+    const kml = buildTemplateKml(
+      mission(
+        [wp],
+        [
+          {
+            id: "poi-1",
+            name: "Target",
+            latitude: 41.26,
+            longitude: 0.94,
+            height: 10,
+          },
+        ],
+      ),
+    );
+    const block =
+      /<wpml:waypointHeadingParam>[\s\S]*?<\/wpml:waypointHeadingParam>/.exec(
+        kml.slice(kml.indexOf("<Placemark>")),
+      )![0];
+    expect(block).toContain(
+      "<wpml:waypointHeadingMode>towardPOI</wpml:waypointHeadingMode>",
+    );
+    expect(block).toContain(
+      "<wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>",
+    );
+  });
+
   it("emits no heading override for towardPOI mode when the referenced POI can't be found", () => {
     const wp = waypoint({
       useGlobalHeadingParam: false,

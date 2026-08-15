@@ -27,23 +27,6 @@ function escapeXml(str: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Compute bearing (degrees, 0=N, CW) from point A to point B */
-function computeBearing(
-  lat1: number,
-  lon1: number,
-  lat2: number,
-  lon2: number,
-): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const toDeg = (r: number) => (r * 180) / Math.PI;
-  const dLon = toRad(lon2 - lon1);
-  const y = Math.sin(dLon) * Math.cos(toRad(lat2));
-  const x =
-    Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
-    Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
-  return ((toDeg(Math.atan2(y, x)) % 360) + 360) % 360;
-}
-
 /** Great-circle distance in meters between two lat/lng points. */
 function haversineM(
   lat1: number,
@@ -268,14 +251,18 @@ function resolveHeading(
   if (mode === "towardPOI") {
     const poi = findPoi(pois, wp.poiId);
     if (!poi) return null;
+    // Angle is 0 on purpose, NOT the computed bearing. Field-verified on a
+    // Matrice 4T with five variants of one orbit flown back to back: with
+    // the real bearing written here the aircraft never turned to the POI
+    // (the originally reported flight); with this forced to 0 and nothing
+    // else changed, it tracked the POI and honoured per-waypoint gimbal
+    // pitch as well. Pilot 2 regenerates waylines.wpml from template.kml on
+    // download from the cloud, and a non-zero angle beside towardPOI is
+    // enough to derail it. The angle is meaningless in this mode anyway —
+    // the spec only reads it for smoothTransition — so 0 costs nothing.
     return {
       mode,
-      angle: computeBearing(
-        wp.latitude,
-        wp.longitude,
-        poi.latitude,
-        poi.longitude,
-      ),
+      angle: 0,
       poiPoint: `${poi.latitude},${poi.longitude},${poi.height}`,
     };
   }

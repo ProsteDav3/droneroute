@@ -75,6 +75,67 @@ describe("missionStore — template groups (edit-after-apply)", () => {
     expect(templateGroups[groupId!]).toEqual({ type: "orbit", params });
   });
 
+  it("appendWaypoints binds a template's smoothTransition waypoints to the one POI it created as towardPOI", () => {
+    // Field-verified on a Matrice 4T: towardPOI (with template.kml's heading
+    // angle at 0, see the WPML writer) is the ONLY variant where the aircraft
+    // both turned to the POI and honoured per-waypoint gimbal pitch.
+    // smoothTransition alone turned the nose but left the gimbal where it
+    // was. So a template that made a POI must hand its waypoints to it.
+    const params: OrbitParams = {
+      ...DEFAULT_ORBIT_PARAMS,
+      center: [50, 14],
+      radiusM: 70,
+    };
+    useMissionStore.getState().appendWaypoints(
+      [
+        {
+          ...baseWaypoint(50, 14),
+          useGlobalHeadingParam: false,
+          headingMode: "smoothTransition",
+          headingAngle: 90,
+        },
+        {
+          ...baseWaypoint(50.001, 14),
+          useGlobalHeadingParam: false,
+          headingMode: "smoothTransition",
+          headingAngle: 180,
+        },
+      ],
+      [{ name: "Střed orbitu", latitude: 50, longitude: 14, height: 5 }],
+      { type: "orbit", params },
+    );
+
+    const { waypoints, pois } = useMissionStore.getState();
+    expect(pois).toHaveLength(1);
+    for (const wp of waypoints) {
+      expect(wp.headingMode).toBe("towardPOI");
+      expect(wp.poiId).toBe(pois[0].id);
+    }
+  });
+
+  it("appendWaypoints leaves a template's headings alone when it created no POI", () => {
+    // Nothing to aim at -> keep the smoothTransition bearings, which at
+    // least turn the nose (T1 in the field test).
+    useMissionStore.getState().appendWaypoints(
+      [
+        {
+          ...baseWaypoint(50, 14),
+          useGlobalHeadingParam: false,
+          headingMode: "smoothTransition",
+          headingAngle: 90,
+        },
+      ],
+      [],
+      {
+        type: "orbit",
+        params: { ...DEFAULT_ORBIT_PARAMS, center: [50, 14], radiusM: 70 },
+      },
+    );
+    const { waypoints } = useMissionStore.getState();
+    expect(waypoints[0].headingMode).toBe("smoothTransition");
+    expect(waypoints[0].poiId).toBeUndefined();
+  });
+
   it("replaceTemplateGroup swaps out only that group's waypoints/POIs, leaving unrelated ones untouched", () => {
     const store = useMissionStore.getState();
 

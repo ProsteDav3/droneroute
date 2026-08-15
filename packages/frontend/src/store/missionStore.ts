@@ -1044,20 +1044,21 @@ export const useMissionStore = create<MissionState>()(
             ...(groupId ? { templateGroupId: groupId } : {}),
           }));
 
-          // Link a template's waypoints to the single POI it created, so the
-          // waypoint editor / 3D flythrough / KMZ round-trip know what they
-          // were aimed at. The heading MODE stays as the template set it
-          // (smoothTransition + a per-waypoint bearing): an earlier revision
-          // rewrote it to towardPOI here, and that is the exact mode that
-          // proved to do nothing on a Matrice 4T in the field — the aircraft
-          // flew a whole orbit nose-first without ever turning to the POI.
-          // The bearings smoothTransition carries are honoured on every model
-          // in the WPML spec, and are what a hand-planned Pilot 2 route with
-          // per-waypoint headings writes.
+          // Hand a template's waypoints to the single POI it created, as
+          // towardPOI. Field-verified on a Matrice 4T with five variants of
+          // one orbit flown back to back: towardPOI — with template.kml's
+          // waypointHeadingAngle at 0, which the WPML writer now guarantees
+          // — was the ONLY variant where the aircraft both turned to the POI
+          // and honoured per-waypoint gimbal pitch. smoothTransition alone
+          // (what the generators emit) turned the nose but left the gimbal
+          // where it was; fixed turned nothing. So: template made a POI ->
+          // its waypoints track that POI. No POI -> keep the bearings, which
+          // at least turn the nose.
           if (fullPois.length === 1) {
             const poiId = fullPois[0].id;
             for (const wp of fullWaypoints) {
-              if (wp.headingMode === "smoothTransition" && !wp.poiId) {
+              if (wp.headingMode === "smoothTransition") {
+                wp.headingMode = "towardPOI";
                 wp.poiId = poiId;
               }
             }
@@ -1117,12 +1118,12 @@ export const useMissionStore = create<MissionState>()(
             templateGroupId: groupId,
           }));
 
-          // Same POI linking as appendWaypoints — mode left as the template
-          // set it (see the comment there).
+          // Same towardPOI hand-off as appendWaypoints (see the comment there).
           if (fullPois.length === 1) {
             const poiId = fullPois[0].id;
             for (const wp of fullWaypoints) {
-              if (wp.headingMode === "smoothTransition" && !wp.poiId) {
+              if (wp.headingMode === "smoothTransition") {
+                wp.headingMode = "towardPOI";
                 wp.poiId = poiId;
               }
             }

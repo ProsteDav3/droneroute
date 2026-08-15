@@ -16,6 +16,8 @@ import {
   computeFramedForAltitude,
   aimPitchOutOfRange,
   computeOrbitAimPitch,
+  fitAltitudeRange,
+  fitRadiusRange,
   computeRadiusForPitch,
   defaultAimHeight,
   objectFitsInFrame,
@@ -23,6 +25,7 @@ import {
   DEFAULT_WIDE_VFOV_DEG,
   MIN_GIMBAL_PITCH_DEG,
   MAX_GIMBAL_PITCH_DEG,
+  type FitRange,
   type OrbitParams,
 } from "@/lib/templates";
 import type { WideCameraFov } from "@/lib/solarCamera";
@@ -87,6 +90,34 @@ export function OrbitFields({
     orbitParams.radiusM,
     orbitParams.aimHeight,
   );
+
+  /**
+   * What the radius and altitude fields print underneath themselves: how far
+   * in / how low the whole object still fits, and where it fills a
+   * comfortable share of the frame — each computed for the OTHER value as it
+   * stands right now, so the user can see before typing where a change will
+   * land. Only meaningful when there's an object to frame.
+   */
+  const radiusRange =
+    orbitParams.poiHeight > 0
+      ? fitRadiusRange(
+          orbitParams.altitude,
+          orbitParams.poiHeight,
+          vfovDeg,
+          shownAimHeight,
+          orbitParams.radiusM,
+        )
+      : null;
+  const altitudeRange =
+    orbitParams.poiHeight > 0
+      ? fitAltitudeRange(
+          orbitParams.radiusM,
+          orbitParams.poiHeight,
+          vfovDeg,
+          shownAimHeight,
+          orbitParams.altitude,
+        )
+      : null;
 
   /**
    * Narrowing a building orbit's arc to one side (an obstacle or neighboring
@@ -204,6 +235,12 @@ export function OrbitFields({
           fallback={5}
           className="h-7 text-xs"
         />
+        <FitRangeHint
+          range={radiusRange}
+          current={orbitParams.radiusM}
+          toDisplay={(m) => toDisplayDistance(m, unitSystem)}
+          unit={distanceLabel(unitSystem)}
+        />
       </div>
       <div>
         <Label className="text-[10px]">Body</Label>
@@ -300,6 +337,12 @@ export function OrbitFields({
           step={5}
           fallback={30}
           className="h-7 text-xs"
+        />
+        <FitRangeHint
+          range={altitudeRange}
+          current={orbitParams.altitude}
+          toDisplay={(m) => toDisplayHeight(m, unitSystem)}
+          unit={heightLabel(unitSystem)}
         />
       </div>
       <div>
@@ -608,6 +651,48 @@ export function OrbitFields({
           }
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * One line under a radius/altitude field: the bound past which the whole
+ * object no longer fits in frame, and the band where it fills a comfortable
+ * share of it. Turns amber when the current value is outside the fitting
+ * range — the same condition the object-cropped warning fires on, surfaced
+ * right where the number being edited lives.
+ */
+function FitRangeHint({
+  range,
+  current,
+  toDisplay,
+  unit,
+}: {
+  range: FitRange | null;
+  current: number;
+  toDisplay: (metres: number) => number;
+  unit: string;
+}) {
+  if (!range) return null;
+  const outside =
+    current < range.fitsFrom ||
+    (range.fitsTo !== null && current > range.fitsTo);
+  const fitsText =
+    range.fitsTo === null
+      ? `vejde se od ${toDisplay(range.fitsFrom)} ${unit}`
+      : `vejde se ${toDisplay(range.fitsFrom)}–${toDisplay(range.fitsTo)} ${unit}`;
+  const idealText =
+    range.idealTo > range.idealFrom
+      ? ` · ideálně ${toDisplay(range.idealFrom)}–${toDisplay(range.idealTo)} ${unit}`
+      : "";
+  return (
+    <div
+      className={`text-[10px] mt-0.5 ${outside ? "text-amber-400" : "text-muted-foreground"}`}
+      title="Rozsah, ve kterém je celý objekt v záběru kamery (při ostatních hodnotách tak, jak jsou teď). „Ideálně“ = objekt zabírá zhruba 35–65 % výšky záběru: ani ztracený v prostoru, ani na hraně oříznutí."
+    >
+      {outside ? "✗ " : "✓ "}
+      {fitsText}
+      {idealText}
     </div>
   );
 }

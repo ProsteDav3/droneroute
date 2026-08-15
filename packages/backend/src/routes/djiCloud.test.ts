@@ -48,6 +48,13 @@ const validBody = {
   pois: [],
 };
 
+// Long enough that appending a segment discriminator (`-seg-1-of-2`) pushes
+// the wayline name past DJI Cloud's 64-character `wayline_file.name` column —
+// the real-world case that broke: a mission auto-named from a street address.
+const LONG_NAME = "336, 285 04 Petrovice II, Central Bohemian, Czech Republic";
+
+const baseNameOf = (filename: string) => filename.replace(/\.kmz$/i, "");
+
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status: 200,
@@ -239,6 +246,73 @@ describe("POST /api/dji-cloud/upload", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
+  it("keeps a long name within DJI Cloud's 64-character wayline_file.name column", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: "" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/upload")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...validBody, name: LONG_NAME });
+
+    expect(res.status).toBe(200);
+    expect(res.body.waylineName.length).toBeLessThanOrEqual(64);
+
+    const file = fetchMock.mock.calls[1][1].body.get("file");
+    expect(baseNameOf(file.name).length).toBeLessThanOrEqual(64);
+  });
+
+  it("fits a name with no separators at all", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: "" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/upload")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...validBody, name: "x".repeat(120) });
+
+    expect(res.status).toBe(200);
+    expect(res.body.waylineName.length).toBeLessThanOrEqual(64);
+  });
+
+  it("keeps the timestamped fallback name within the 64-character limit too", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: -1,
+          message: "The filename already exists.",
+          data: "",
+        }),
+      )
+      .mockResolvedValueOnce(waylinesListEmpty())
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: "" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/upload")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...validBody, name: LONG_NAME });
+
+    expect(res.status).toBe(200);
+    // The fallback appends a timestamp, so it must re-fit — not grow past 64.
+    expect(res.body.waylineName).toMatch(/\d{8}-\d{6}$/);
+    expect(res.body.waylineName.length).toBeLessThanOrEqual(64);
+  });
+
   it("returns 502 with a generic message (upstream detail stays server-side) when every attempt fails", async () => {
     const rejected = () =>
       jsonResponse({ code: -1, message: "Storage unavailable.", data: "" });
@@ -333,6 +407,39 @@ describe("POST /api/dji-cloud/upload-segments", () => {
     const seg2 = fetchMock.mock.calls[2][1].body.get("file");
     expect(seg1.name).toContain("seg-1-of-2");
     expect(seg2.name).toContain("seg-2-of-2");
+  });
+
+  it("fits every segment name into DJI Cloud's 64-character limit while keeping its discriminator", async () => {
+    // A mission auto-named from a street address is already ~58 characters;
+    // `-seg-N-of-M` pushes each segment past the platform's
+    // `wayline_file.name` VARCHAR(64), which fails the INSERT server-side and
+    // aborts the whole upload on the very first leg. Truncating must not cost
+    // the `seg-N-of-M` discriminator either, or every leg would collide on
+    // one name.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(uploadOk())
+      .mockResolvedValueOnce(uploadOk());
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .post("/api/dji-cloud/upload-segments")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...threeWpBody, name: LONG_NAME });
+
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(2);
+
+    const names = [1, 2].map((i) =>
+      baseNameOf(fetchMock.mock.calls[i][1].body.get("file").name),
+    );
+    for (const name of names) {
+      expect(name.length).toBeLessThanOrEqual(64);
+    }
+    expect(names[0]).toContain("seg-1-of-2");
+    expect(names[1]).toContain("seg-2-of-2");
+    expect(names[0]).not.toBe(names[1]);
   });
 
   it("returns 502 with no partial count when the very first segment fails (nothing uploaded)", async () => {

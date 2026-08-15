@@ -69,6 +69,50 @@ test.describe("Orbit aim height and altitude lock", () => {
     );
   });
 
+  test("merely focusing and leaving the aim-height field does not pin it — it keeps following the object", async ({
+    page,
+  }) => {
+    // The bug this guards: NumericInput reported onChange on blur even when
+    // nothing was typed, so tabbing through "Mířit na výšku" silently turned
+    // automatic (half the object) into an explicit value. A user's orbit
+    // ended up with the aim pinned to the object's full height and no way
+    // to see why re-applying the template wouldn't move it.
+    await drawOrbit(page);
+
+    await field(page, "Výška objektu").fill("20");
+    await field(page, "Výška objektu").blur();
+    await expect(field(page, "Mířit na výšku")).toHaveValue("10");
+    // Still automatic: no "auto" reset button is offered.
+    await expect(
+      page.getByRole("button", { name: "auto", exact: true }),
+    ).toHaveCount(0);
+
+    // Click into the aim field and leave without typing.
+    await field(page, "Mířit na výšku").focus();
+    await field(page, "Mířit na výšku").blur();
+    await expect(
+      page.getByRole("button", { name: "auto", exact: true }),
+    ).toHaveCount(0);
+
+    // Proof it is still following: change the object height and the aim
+    // must track to the new middle. A pinned value would have stayed at 10.
+    await field(page, "Výška objektu").fill("30");
+    await field(page, "Výška objektu").blur();
+    await expect(field(page, "Mířit na výšku")).toHaveValue("15");
+
+    // Typing a value DOES pin it — and "auto" then brings it back.
+    await field(page, "Mířit na výšku").fill("30");
+    await field(page, "Mířit na výšku").blur();
+    await expect(
+      page.getByRole("button", { name: "auto", exact: true }),
+    ).toBeVisible();
+    await field(page, "Výška objektu").fill("40");
+    await field(page, "Výška objektu").blur();
+    await expect(field(page, "Mířit na výšku")).toHaveValue("30");
+    await page.getByRole("button", { name: "auto", exact: true }).click();
+    await expect(field(page, "Mířit na výšku")).toHaveValue("20");
+  });
+
   test("locking the altitude makes a radius change move only the gimbal", async ({
     page,
   }) => {

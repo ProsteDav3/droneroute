@@ -1640,7 +1640,6 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     poiCenter,
     captureMode,
     cinema,
-    buildingVertices,
   } = params;
   const [cLat, cLng] = center;
   // Independent camera aim point (see OrbitParams.poiCenter). Falls back to
@@ -1661,10 +1660,13 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
       latitude: aimLat,
       longitude: aimLng,
       // The POI marks what the camera looks at, so it belongs at the aim
-      // height — `poiHeight` is the object's full height, which is a
-      // framing input, not a target. Orbits saved before the aim height
-      // existed keep their original placement.
-      height: aimHeight ?? poiHeight,
+      // height — `poiHeight` is the object's full height, a framing input,
+      // not a target. Same default as the gimbal solve (the middle of the
+      // object): an earlier revision fell back to `poiHeight` here, which
+      // put the POI on the roof while the panel said the camera aimed at
+      // the middle. Field-observed on a Matrice 4T — the aircraft tracks
+      // the POI point in the file, so it looked at the roof.
+      height: aimHeight ?? defaultAimHeight(poiHeight),
     });
   }
 
@@ -1722,17 +1724,13 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     // branches below only cover orbits saved before the field existed: a
     // building aimed at its ground-to-roof midpoint, anything else exactly
     // at poiHeight, which is what each did before and must keep doing.
+    // One aiming rule for a locked POI, the same one the created POI's height
+    // and the panel's gimbal solve use: aim at `aimHeight`, defaulting to the
+    // middle of the object. Earlier revisions branched here — bisector for a
+    // building, exactly `poiHeight` (the roof) otherwise — and the roof case
+    // is what flew: pitch -38 at a 9 m object where the middle is -48.
     const gimbalPitchAngle = poiCenter
-      ? aimHeight !== undefined
-        ? computeOrbitAimPitch(
-            altitude,
-            poiHeight,
-            lockedPoiDistanceM,
-            aimHeight,
-          )
-        : buildingVertices
-          ? computeFramingPitch(altitude, poiHeight, lockedPoiDistanceM)
-          : computeGimbalPitch(altitude, poiHeight, lockedPoiDistanceM)
+      ? computeOrbitAimPitch(altitude, poiHeight, lockedPoiDistanceM, aimHeight)
       : gimbalPitchDeg;
 
     waypoints.push({

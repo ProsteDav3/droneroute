@@ -3,7 +3,6 @@ import {
   generateOrbit,
   DEFAULT_ORBIT_PARAMS,
   computeGimbalPitch,
-  computeFramingPitch,
   computeOrbitAimPitch,
   computeRadiusForPitch,
   aimPitchOutOfRange,
@@ -259,7 +258,7 @@ describe("generateOrbit", () => {
       );
     });
 
-    it("poiCenter takes precedence over buildingVertices for the aim point, but buildingVertices still switches the pitch formula to whole-object framing", () => {
+    it("poiCenter takes precedence over buildingVertices for the aim point, and pitch aims at the middle of the object from that point", () => {
       const poiCenter = destinationPoint(CENTER[0], CENTER[1], 40, 0);
       const result = generateOrbit({
         ...DEFAULT_ORBIT_PARAMS,
@@ -273,16 +272,17 @@ describe("generateOrbit", () => {
         buildingVertices,
       } satisfies OrbitParams);
 
+      // One aiming rule for a locked POI, building or not: point the camera
+      // at the aim height (default: the middle of the object) from the real
+      // distance to poiCenter. An earlier revision used the ground-to-roof
+      // bisector when buildingVertices was set, which put the created POI
+      // and the pitch on different targets and, in the field, aimed at the
+      // roof.
+      expect(result.pois[0].height).toBe(12.5);
       result.waypoints.forEach((wp) => {
-        // poiCenter still wins for the aim *point* — pitch is computed from
-        // distance to poiCenter, not the building's own edges. But since
-        // buildingVertices is also set, the target is treated as a whole
-        // building (computeFramingPitch, ground-to-roof midpoint) rather
-        // than one exact point (computeGimbalPitch) — see generateOrbit's
-        // own comment on why that distinction matters.
-        const expected = computeFramingPitch(
+        const expected = computeGimbalPitch(
           20,
-          25,
+          12.5,
           haversineDistance(
             wp.latitude,
             wp.longitude,
@@ -290,7 +290,7 @@ describe("generateOrbit", () => {
             poiCenter[1],
           ),
         );
-        expect(wp.gimbalPitchAngle).toBeCloseTo(expected, 3);
+        expect(wp.gimbalPitchAngle).toBe(expected);
       });
     });
   });
@@ -2188,6 +2188,65 @@ describe("orbit cinema mode", () => {
     } satisfies OrbitParams);
     for (const wp of result.waypoints) {
       expect(wp.speed).toBeGreaterThan(CINEMA_SPEED_MPS);
+    }
+  });
+});
+
+describe("orbit POI height matches where the gimbal aims", () => {
+  // The POI written into the file (waypointPoiPoint) is what the aircraft
+  // actually tracks; the per-waypoint gimbal pitch is computed for the same
+  // aim height. If they disagree — POI at the roof, pitch aimed at the middle
+  // — the two mechanisms fight and the flown result aims at the roof.
+  // Field-observed on a Matrice 4T: an orbit with a locked POI and object
+  // height 9 wrote poi height 9 and pitch -38 (roof), where the middle would
+  // be 4.5 / -48.
+  it("puts the created POI at the middle of the object when no aim height is set", () => {
+    const r = generateOrbit({
+      ...DEFAULT_ORBIT_PARAMS,
+      center: [49.8261, 15.08897],
+      radiusM: 17,
+      altitude: 20,
+      poiHeight: 9,
+      poiCenter: [49.82599, 15.08924],
+      createPoi: true,
+    } satisfies OrbitParams);
+    expect(r.pois[0].height).toBe(4.5);
+  });
+
+  it("puts the created POI exactly at an explicit aim height", () => {
+    const r = generateOrbit({
+      ...DEFAULT_ORBIT_PARAMS,
+      center: [49.8261, 15.08897],
+      radiusM: 17,
+      altitude: 20,
+      poiHeight: 9,
+      aimHeight: 9,
+      poiCenter: [49.82599, 15.08924],
+      createPoi: true,
+    } satisfies OrbitParams);
+    expect(r.pois[0].height).toBe(9);
+  });
+
+  it("POI height and per-waypoint pitch agree on the aim point for a locked POI", () => {
+    const r = generateOrbit({
+      ...DEFAULT_ORBIT_PARAMS,
+      center: [49.8261, 15.08897],
+      radiusM: 17,
+      altitude: 20,
+      poiHeight: 9,
+      poiCenter: [49.82599, 15.08924],
+      createPoi: true,
+    } satisfies OrbitParams);
+    const poi = r.pois[0];
+    for (const wp of r.waypoints) {
+      const d = haversineDistance(
+        wp.latitude,
+        wp.longitude,
+        poi.latitude,
+        poi.longitude,
+      );
+      const expected = computeGimbalPitch(wp.height, poi.height, d);
+      expect(wp.gimbalPitchAngle).toBe(expected);
     }
   });
 });

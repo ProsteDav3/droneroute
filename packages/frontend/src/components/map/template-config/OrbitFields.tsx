@@ -21,6 +21,7 @@ import {
   computeRadiusForPitch,
   defaultAimHeight,
   objectFitsInFrame,
+  poiDistanceSwing,
   recomputeBuildingOrbitForArc,
   DEFAULT_WIDE_VFOV_DEG,
   MIN_GIMBAL_PITCH_DEG,
@@ -90,6 +91,26 @@ export function OrbitFields({
     orbitParams.radiusM,
     orbitParams.aimHeight,
   );
+
+  /**
+   * With a locked POI the flight circle can sit anywhere the clearance
+   * allows — including an arc that starts and ends just short of the
+   * subject and swings round its far side, where the subject is plainly
+   * larger at the ends than in the middle. That is a composition choice,
+   * not an error, so instead of clamping the drag (as an earlier revision
+   * did, at a fixed 1.6 ratio that forbade exactly that shot) the panel
+   * measures the swing over the waypoints actually flown and says so.
+   */
+  const swing = orbitParams.poiCenter
+    ? poiDistanceSwing(
+        orbitParams.center,
+        orbitParams.poiCenter,
+        orbitParams.radiusM,
+        orbitParams.startAngleDeg,
+        orbitParams.endAngleDeg,
+        orbitParams.numPoints,
+      )
+    : null;
 
   /**
    * What the radius and altitude fields print underneath themselves: how far
@@ -643,6 +664,18 @@ export function OrbitFields({
           Uzamknout POI
         </label>
       </div>
+      {swing && Number.isFinite(swing.ratio) && (
+        <div
+          className={`col-span-2 text-[10px] ${swing.ratio > 2 ? "text-amber-400" : "text-muted-foreground"}`}
+          title="Nejmenší a největší vzdálenost letových bodů od cíle kamery. Čím větší rozdíl, tím víc se mění velikost objektu v záběru během letu — u oblouku, který začíná a končí těsně u objektu a obletí ho z druhé strany, je to záměr."
+        >
+          Vzdálenost od cíle{" "}
+          {Math.round(toDisplayDistance(swing.nearM, unitSystem))}–
+          {Math.round(toDisplayDistance(swing.farM, unitSystem))}{" "}
+          {distanceLabel(unitSystem)} · velikost v záběru se změní{" "}
+          {swing.ratio.toFixed(1)}×
+        </div>
+      )}
       <div className="col-span-2">
         <CaptureModeToggle
           value={orbitParams.captureMode === "video" ? "video" : "photo"}

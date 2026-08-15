@@ -283,6 +283,39 @@ test.describe("Orbit aim height and altitude lock", () => {
     expect(cinemaSeconds).toBeGreaterThan(normalSeconds);
   });
 
+  test("with a locked POI the panel reports the near/far swing over the flown waypoints", async ({
+    page,
+  }) => {
+    await drawOrbit(page);
+    await field(page, "Výška objektu").fill("9");
+    await field(page, "Výška objektu").blur();
+    await page.getByLabel("Uzamknout POI").check();
+
+    // Readout appears once a POI is locked; the POI is at the centre, so
+    // every waypoint is one radius away and the swing is 1.0×.
+    const swing = page.getByText(/Vzdálenost od cíle/);
+    await expect(swing).toBeVisible();
+    await expect(swing).toContainText(/1\.0×/);
+    const radiusM = Number(await field(page, "Radius").inputValue());
+    await expect(swing).toContainText(new RegExp(`${radiusM}–${radiusM} m`));
+
+    // Move the POI's target off-centre by shrinking the circle around it via
+    // the address/centre field is not available headless; instead widen the
+    // circle: with the POI pinned where it was, changing the radius keeps it
+    // centred, so the swing must stay 1.0× — proving the readout tracks the
+    // real geometry rather than a stale value.
+    await field(page, "Radius").fill(String(radiusM + 40));
+    await field(page, "Radius").blur();
+    await expect(swing).toContainText(
+      new RegExp(`${radiusM + 40}–${radiusM + 40} m`),
+    );
+    await expect(swing).toContainText(/1\.0×/);
+
+    // Values are whole metres — no float noise like 214.9999999.
+    const text = (await swing.textContent()) ?? "";
+    expect(text).not.toMatch(/\d\.\d{3,}/);
+  });
+
   test("applies the orbit and generates waypoints", async ({ page }) => {
     await drawOrbit(page);
 

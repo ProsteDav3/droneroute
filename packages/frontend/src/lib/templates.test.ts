@@ -35,8 +35,7 @@ import {
   destinationPoint,
   minStandoffForFovM,
   minStandoffForBuildingPoiClearanceM,
-  maxPoiOffsetForRatioM,
-  effectivePoiOffsetCapM,
+  poiDistanceSwing,
   clampOrbitCenterForPoiClearance,
 } from "./templates";
 import type {
@@ -1165,109 +1164,6 @@ describe("minStandoffForBuildingPoiClearanceM", () => {
   });
 });
 
-describe("maxPoiOffsetForRatioM / clampOrbitCenterForPoiClearance's optional offset cap", () => {
-  it("keeps the worst-case near/far distance ratio at or under the configured maximum", () => {
-    const radiusM = 145;
-    const offsetM = maxPoiOffsetForRatioM(radiusM);
-    const near = radiusM - offsetM;
-    const far = radiusM + offsetM;
-    expect(far / near).toBeLessThanOrEqual(1.6 + 1e-9);
-  });
-
-  it("leaves the clearance-clamped result untouched when no maxOffsetM is given (existing behavior preserved)", () => {
-    const poi: [number, number] = CENTER;
-    const radiusM = 300;
-    const candidate = destinationPoint(poi[0], poi[1], radiusM - 10, 45);
-    const minStandoffM = minStandoffForFovM(25, 55);
-
-    const withoutCap = clampOrbitCenterForPoiClearance(
-      candidate,
-      poi,
-      radiusM,
-      minStandoffM,
-    );
-    const withInfiniteCap = clampOrbitCenterForPoiClearance(
-      candidate,
-      poi,
-      radiusM,
-      minStandoffM,
-      Infinity,
-    );
-    expect(withoutCap).toEqual(withInfiniteCap);
-  });
-
-  it("pulls an already clearance-satisfying center back toward the POI when it's offset too far relative to the radius", () => {
-    const poi: [number, number] = CENTER;
-    const radiusM = 145;
-    // Offset the candidate well past what a 1.6 ratio allows, but still
-    // outside the plain clearance minimum (so only the new cap should act).
-    const minStandoffM = 20;
-    const offsetM = 80;
-    const candidate = destinationPoint(poi[0], poi[1], offsetM, 90);
-
-    const clamped = clampOrbitCenterForPoiClearance(
-      candidate,
-      poi,
-      radiusM,
-      minStandoffM,
-      maxPoiOffsetForRatioM(radiusM),
-    );
-
-    const clampedDist = haversineDistance(
-      poi[0],
-      poi[1],
-      clamped[0],
-      clamped[1],
-    );
-    expect(clampedDist).toBeCloseTo(maxPoiOffsetForRatioM(radiusM), 0);
-    expect(clampedDist).toBeLessThan(offsetM);
-  });
-
-  it("reaches a distance meaningfully greater than zero when the clearance minimum is large enough to be the tighter bound (regression: the two caps used to be applied as separate passes, silently trapping the drag at the clearance clamp's own boundary well short of the visible ratio-cap ring)", () => {
-    const poi: [number, number] = CENTER;
-    const radiusM = 145;
-    // A real building-derived minStandoff (~115m) that exceeds
-    // radiusM * (1 - fraction-for-1.6-ratio) ~= 111.5m, making the plain
-    // clearance clamp's own inner boundary (radiusM - minStandoffM = 30.2m)
-    // tighter than the ratio cap (maxPoiOffsetForRatioM(145) ~= 33.5m).
-    const minStandoffM = 115;
-    const candidate = destinationPoint(poi[0], poi[1], 33, 90);
-
-    const clamped = clampOrbitCenterForPoiClearance(
-      candidate,
-      poi,
-      radiusM,
-      minStandoffM,
-      maxPoiOffsetForRatioM(radiusM),
-    );
-
-    const clampedDist = haversineDistance(
-      poi[0],
-      poi[1],
-      clamped[0],
-      clamped[1],
-    );
-    // Must land at the effective (tighter) bound, not collapse to some
-    // unrelated smaller distance from an earlier separate pass.
-    expect(clampedDist).toBeCloseTo(
-      effectivePoiOffsetCapM(radiusM, minStandoffM),
-      0,
-    );
-    expect(clampedDist).toBeGreaterThan(25);
-  });
-
-  it("effectivePoiOffsetCapM matches whichever of the two constraints is tighter", () => {
-    const radiusM = 145;
-    // Small minStandoff: the ratio cap is tighter.
-    expect(effectivePoiOffsetCapM(radiusM, 20)).toBeCloseTo(
-      maxPoiOffsetForRatioM(radiusM),
-      1,
-    );
-    // Large minStandoff: the clearance clamp's own inner boundary is tighter.
-    expect(effectivePoiOffsetCapM(radiusM, 115)).toBeCloseTo(radiusM - 115, 1);
-  });
-});
-
 describe("capture mode (photo/video)", () => {
   it("generateOrbit: video mode puts startRecord only on the first waypoint and stopRecord only on the last", () => {
     const result = generateOrbit({
@@ -2248,5 +2144,36 @@ describe("orbit POI height matches where the gimbal aims", () => {
       const expected = computeGimbalPitch(wp.height, poi.height, d);
       expect(wp.gimbalPitchAngle).toBe(expected);
     }
+  });
+});
+
+describe("poiDistanceSwing — how much a locked POI's apparent size changes over the flown arc", () => {
+  // Replaces the hard "max offset" clamp: an arc that starts and ends just
+  // short of the subject and swings round its far side is a legitimate
+  // composition, and its near/far ratio is inherently well above the old
+  // 1.6 cap. Rather than forbid the drag, measure the swing on the waypoints
+  // actually flown and let the panel say what it means.
+  const CENTER_: [number, number] = [49.8261, 15.08897];
+  it("is 1.0 when the POI is at the centre of a full circle", () => {
+    const s = poiDistanceSwing(CENTER_, CENTER_, 26, 0, 360, 12);
+    expect(s.ratio).toBeCloseTo(1, 3);
+    expect(s.nearM).toBeCloseTo(26, 0);
+    expect(s.farM).toBeCloseTo(26, 0);
+  });
+  it("only counts flown waypoints: an arc whose gap faces the POI reports a far larger near distance than the circle's own nearest point", () => {
+    // POI 20 m from centre toward bearing 0; arc 45..315 leaves the gap at 0.
+    const poi = destinationPoint(CENTER_[0], CENTER_[1], 20, 0);
+    const full = poiDistanceSwing(CENTER_, poi, 26, 0, 360, 12);
+    const arc = poiDistanceSwing(CENTER_, poi, 26, 45, 315, 12);
+    expect(full.nearM).toBeLessThan(8); // circle passes ~6 m from the POI
+    expect(arc.nearM).toBeGreaterThan(15); // nearest FLOWN point is an endpoint, ~18 m
+    expect(arc.ratio).toBeLessThan(full.ratio);
+  });
+  it("uses the actual waypoint count, so a coarse arc's endpoints are what count", () => {
+    const poi = destinationPoint(CENTER_[0], CENTER_[1], 20, 0);
+    const a12 = poiDistanceSwing(CENTER_, poi, 26, 45, 315, 12);
+    const a4 = poiDistanceSwing(CENTER_, poi, 26, 45, 315, 4);
+    // both start/end at the same bearings, so nearest is identical
+    expect(a4.nearM).toBeCloseTo(a12.nearM, 3);
   });
 });

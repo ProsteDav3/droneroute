@@ -18,8 +18,6 @@ import {
   computeGimbalPitch,
   minStandoffForFovM,
   minStandoffForBuildingPoiClearanceM,
-  maxPoiOffsetForRatioM,
-  effectivePoiOffsetCapM,
   clampOrbitCenterForPoiClearance,
   recomputeBuildingOrbitForArc,
   DEFAULT_ORBIT_PARAMS,
@@ -814,44 +812,6 @@ export function TemplateDrawHandler() {
                   />
                 </Source>
               )}
-              {/* Outer bound on how far the center handle can be dragged
-                  from a building's locked POI — only shown for a
-                  building-derived POI, since that's the only case
-                  maxPoiOffsetForRatioM's cap applies to (see its own doc
-                  comment). Distinct color/dash from the inner minimum-
-                  clearance ring above so the two aren't mistaken for each
-                  other. Uses effectivePoiOffsetCapM (not the ratio cap
-                  alone) so this ring always matches where a drag can
-                  actually reach — for a large building, the plain
-                  clearance minimum below can itself be the tighter of the
-                  two boundaries. */}
-              {orbitParams.buildingVertices && (
-                <Source
-                  id="orbit-poi-max-offset-guide"
-                  type="geojson"
-                  data={buildGuideRingGeojson(
-                    orbitParams.poiCenter,
-                    effectivePoiOffsetCapM(
-                      orbitParams.radiusM,
-                      poiClearanceStandoffM(
-                        orbitParams.poiHeight,
-                        orbitParams.buildingVertices,
-                      ),
-                    ),
-                  )}
-                >
-                  <Layer
-                    id="orbit-poi-max-offset-guide-layer"
-                    type="line"
-                    paint={{
-                      "line-color": "#fbbf24",
-                      "line-width": 2.5,
-                      "line-opacity": 0.9,
-                      "line-dasharray": [1, 3],
-                    }}
-                  />
-                </Source>
-              )}
             </>
           )}
           <OrbitCenterHandle
@@ -867,9 +827,6 @@ export function TemplateDrawHandler() {
                         orbitParams.poiHeight,
                         orbitParams.buildingVertices,
                       ),
-                      orbitParams.buildingVertices
-                        ? maxPoiOffsetForRatioM(orbitParams.radiusM)
-                        : undefined,
                     )
                   : newCenter;
               setOrbitParams({ ...orbitParams, center: clampedCenter });

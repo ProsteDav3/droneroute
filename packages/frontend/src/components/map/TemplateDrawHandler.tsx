@@ -16,8 +16,7 @@ import {
   destinationPoint,
   bearing,
   computeGimbalPitch,
-  minStandoffForFovM,
-  minStandoffForBuildingPoiClearanceM,
+  orbitMinStandoffM,
   clampOrbitCenterForPoiClearance,
   recomputeBuildingOrbitForArc,
   DEFAULT_ORBIT_PARAMS,
@@ -305,22 +304,13 @@ export function TemplateDrawHandler() {
   const [gridParams, setGridParams] = useState<GridParams | null>(null);
   const [facadeParams, setFacadeParams] = useState<FacadeParams | null>(null);
 
-  /** The locked-POI clearance minimum: when the POI sits inside a real
-   * building footprint, the flight circle also needs to stay far enough back
-   * to frame the building's own worst-case (widest) side, not just clear the
-   * point target vertically — see `minStandoffForBuildingPoiClearanceM`. A
-   * bare POI with no building has no such horizontal constraint. */
+  /** The locked-POI clearance minimum — same number the config panel's own
+   * guard uses (see `orbitStandoffViolation`), so the drag clamp and the
+   * warning can never disagree about how much room the subject needs. */
   const poiClearanceStandoffM = (
     poiHeight: number,
     buildingVertices?: [number, number][],
-  ) =>
-    buildingVertices
-      ? minStandoffForBuildingPoiClearanceM(
-          buildingVertices,
-          poiHeight,
-          vfovDeg,
-        )
-      : minStandoffForFovM(poiHeight, vfovDeg);
+  ) => orbitMinStandoffM(poiHeight, vfovDeg, buildingVertices);
 
   const resetState = useCallback(() => {
     setDragging(false);

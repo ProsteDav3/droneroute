@@ -36,6 +36,7 @@ import {
   minStandoffForFovM,
   minStandoffForBuildingPoiClearanceM,
   poiDistanceSwing,
+  orbitStandoffViolation,
   clampOrbitCenterForPoiClearance,
 } from "./templates";
 import type {
@@ -2175,5 +2176,148 @@ describe("poiDistanceSwing — how much a locked POI's apparent size changes ove
     const a4 = poiDistanceSwing(CENTER_, poi, 26, 45, 315, 4);
     // both start/end at the same bearings, so nearest is identical
     expect(a4.nearM).toBeCloseTo(a12.nearM, 3);
+  });
+});
+
+describe("orbitStandoffViolation — guards the nearest FLOWN waypoint, not the radius", () => {
+  const VFOV = 56.8;
+  const center: [number, number] = [49.826099451597734, 15.088971112134274];
+  // The user's own case: locked POI 23 m from the centre, radius 17, full
+  // circle -> waypoint 12 passes 5.9 m from the cottage and flies over it.
+  // The old check compared the RADIUS (17 m) against the minimum and passed.
+  const poi: [number, number] = [49.82599267824013, 15.089243863310132];
+
+  it("catches a waypoint that comes closer than the object needs, even though the radius looks fine", () => {
+    const v = orbitStandoffViolation(
+      {
+        center,
+        poiCenter: poi,
+        radiusM: 17,
+        startAngleDeg: 0,
+        endAngleDeg: 360,
+        numPoints: 12,
+        poiHeight: 9,
+      },
+      VFOV,
+    );
+    expect(v).not.toBeNull();
+    expect(v!.nearestM).toBeCloseTo(5.9, 0);
+    expect(v!.requiredM).toBeGreaterThan(v!.nearestM);
+    // 1-based waypoint number, so it reads like the panel's own labels
+    expect(v!.waypointNumber).toBeGreaterThanOrEqual(1);
+    expect(v!.waypointNumber).toBeLessThanOrEqual(12);
+  });
+
+  it("is null when every flown waypoint keeps its distance", () => {
+    expect(
+      orbitStandoffViolation(
+        {
+          center,
+          poiCenter: poi,
+          radiusM: 60,
+          startAngleDeg: 0,
+          endAngleDeg: 360,
+          numPoints: 12,
+          poiHeight: 9,
+        },
+        VFOV,
+      ),
+    ).toBeNull();
+  });
+
+  it("judges an open arc on its flown points: the same geometry passes once the gap faces the POI", () => {
+    // Circle's own nearest point is still 5.9 m away, but that bearing is
+    // never flown when the arc's gap faces the POI.
+    const bad = orbitStandoffViolation(
+      {
+        center,
+        poiCenter: poi,
+        radiusM: 17,
+        startAngleDeg: 0,
+        endAngleDeg: 360,
+        numPoints: 12,
+        poiHeight: 9,
+      },
+      VFOV,
+    );
+    const good = orbitStandoffViolation(
+      {
+        center,
+        poiCenter: poi,
+        radiusM: 17,
+        startAngleDeg: 200,
+        endAngleDeg: 200 + 240,
+        numPoints: 12,
+        poiHeight: 9,
+      },
+      VFOV,
+    );
+    expect(bad).not.toBeNull();
+    expect(good).toBeNull();
+  });
+
+  it("uses the building's own width too, so a long building needs more room than its height alone implies", () => {
+    const wide: [number, number][] = [
+      destinationPoint(poi[0], poi[1], 35, 90),
+      destinationPoint(poi[0], poi[1], 35, 270),
+      destinationPoint(poi[0], poi[1], 4, 0),
+    ];
+    const withoutBuilding = orbitStandoffViolation(
+      {
+        center: poi,
+        poiCenter: poi,
+        radiusM: 20,
+        startAngleDeg: 0,
+        endAngleDeg: 360,
+        numPoints: 12,
+        poiHeight: 9,
+      },
+      VFOV,
+    );
+    const withBuilding = orbitStandoffViolation(
+      {
+        center: poi,
+        poiCenter: poi,
+        radiusM: 20,
+        startAngleDeg: 0,
+        endAngleDeg: 360,
+        numPoints: 12,
+        poiHeight: 9,
+        buildingVertices: wide,
+      },
+      VFOV,
+    );
+    expect(withoutBuilding).toBeNull();
+    expect(withBuilding).not.toBeNull();
+  });
+
+  it("is null when there is no locked POI or no object to frame", () => {
+    expect(
+      orbitStandoffViolation(
+        {
+          center,
+          radiusM: 5,
+          startAngleDeg: 0,
+          endAngleDeg: 360,
+          numPoints: 12,
+          poiHeight: 9,
+        },
+        VFOV,
+      ),
+    ).toBeNull();
+    expect(
+      orbitStandoffViolation(
+        {
+          center,
+          poiCenter: poi,
+          radiusM: 1,
+          startAngleDeg: 0,
+          endAngleDeg: 360,
+          numPoints: 12,
+          poiHeight: 0,
+        },
+        VFOV,
+      ),
+    ).toBeNull();
   });
 });

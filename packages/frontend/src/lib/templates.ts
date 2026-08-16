@@ -1104,6 +1104,92 @@ function clampOrbitCenterForPoiMinStandoff(
 }
 
 /**
+ * The closest a waypoint may come to a locked camera target and still show
+ * the whole subject — vertical extent for a bare POI, and for a real
+ * building also its widest silhouette from the bearings actually flown.
+ * Shared by the panel's guard and the centre-drag clamp so both judge by
+ * the same number.
+ */
+export function orbitMinStandoffM(
+  poiHeight: number,
+  vfovDeg: number,
+  buildingVertices?: [number, number][],
+): number {
+  return buildingVertices
+    ? minStandoffForBuildingPoiClearanceM(buildingVertices, poiHeight, vfovDeg)
+    : minStandoffForFovM(poiHeight, vfovDeg);
+}
+
+/**
+ * The waypoint that comes closest to a locked camera target when that is
+ * closer than the subject needs — i.e. the aircraft would be so close (or
+ * so nearly overhead) that the subject no longer fits in shot.
+ *
+ * Checks the waypoints ACTUALLY FLOWN, which is the whole point: the panel
+ * used to compare `radiusM` — the distance from the orbit's own centre —
+ * against the minimum, so a POI locked off-centre could have a waypoint
+ * pass 5.9 m from a cottage that needs 9.4 m while the check happily saw
+ * "17 m, fine" and said nothing. That is how a waypoint ended up flying
+ * over the building with the roof filling the frame. The centre-drag clamp
+ * did use the right number, but only fired while dragging the centre —
+ * changing the radius, the arc or the waypoint count afterwards re-broke it
+ * with nothing looking.
+ *
+ * `null` when there is nothing to judge (no locked POI, no object height)
+ * or when every flown waypoint keeps its distance.
+ */
+export function orbitStandoffViolation(
+  params: {
+    center: [number, number];
+    poiCenter?: [number, number];
+    radiusM: number;
+    startAngleDeg: number;
+    endAngleDeg: number;
+    numPoints: number;
+    poiHeight: number;
+    buildingVertices?: [number, number][];
+  },
+  vfovDeg: number,
+): { waypointNumber: number; nearestM: number; requiredM: number } | null {
+  const {
+    center,
+    poiCenter,
+    radiusM,
+    startAngleDeg,
+    endAngleDeg,
+    numPoints,
+    poiHeight,
+    buildingVertices,
+  } = params;
+  if (!poiCenter || poiHeight <= 0 || numPoints < 1) return null;
+  const requiredM = orbitMinStandoffM(poiHeight, vfovDeg, buildingVertices);
+
+  const closedLoop = endAngleDeg - startAngleDeg >= 360;
+  const divisor = closedLoop ? numPoints : Math.max(1, numPoints - 1);
+  const sweep = closedLoop
+    ? 360
+    : (((endAngleDeg - startAngleDeg) % 360) + 360) % 360;
+  let worstIndex = -1;
+  let nearestM = Infinity;
+  for (let i = 0; i < numPoints; i++) {
+    const angleDeg = startAngleDeg + (sweep * i) / divisor;
+    const [lat, lng] = destinationPoint(
+      center[0],
+      center[1],
+      radiusM,
+      angleDeg,
+    );
+    const d = haversine(lat, lng, poiCenter[0], poiCenter[1]);
+    if (d < nearestM) {
+      nearestM = d;
+      worstIndex = i;
+    }
+  }
+  if (nearestM >= requiredM) return null;
+  return { waypointNumber: worstIndex + 1, nearestM, requiredM };
+}
+
+/**
  * How much a locked POI's apparent size changes over the flight: the
  * nearest and farthest waypoint distances to it, and their ratio, measured
  * on the waypoints the aircraft actually flies (same placement as

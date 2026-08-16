@@ -19,6 +19,12 @@ const BASE_URL = `http://localhost:${FRONTEND_PORT}`;
 const backendEnv = {
   ...process.env,
   SELF_HOSTED: "true",
+  // The whole suite hits one loopback IP; a full run legitimately exceeds
+  // the production 100-req/min budget, and the last specs to run then get
+  // 429s that look like app failures (a mission list rendering "Příliš
+  // mnoho požadavků" instead of its fixtures). Adding any new spec used to
+  // push the suite over that edge.
+  DISABLE_RATE_LIMIT: "1",
   JWT_SECRET: "e2e-test-jwt-secret-not-for-production-use",
   DB_PATH: ":memory:",
   PORT: String(BACKEND_PORT),

@@ -20,6 +20,7 @@ import {
   type TurbineParams,
 } from "@/lib/templates";
 import { WIDE_CAMERA_FOV } from "@/lib/solarCamera";
+import { orbitStandoffViolation, DEFAULT_WIDE_VFOV_DEG } from "@/lib/templates";
 import type { PointOfInterest } from "@droneroute/shared";
 import { OrbitFields } from "./template-config/OrbitFields";
 import { GridFields } from "./template-config/GridFields";
@@ -114,6 +115,21 @@ export function TemplateConfigPanel({
   // Apply, not at save/export time.
   const MAX_WAYPOINTS = 5000;
   const exceedsWaypointLimit = waypointCount > MAX_WAYPOINTS;
+
+  /**
+   * A waypoint that comes closer to the locked camera target than the
+   * subject needs would fly (nearly) over it and show its roof instead of
+   * the whole building — a mission that cannot produce the shot it was set
+   * up for, so Apply is blocked until it's fixed. Judged on the waypoints
+   * actually flown; see `orbitStandoffViolation` for why the old
+   * radius-based check missed exactly this.
+   */
+  const standoffViolation = orbitParams
+    ? orbitStandoffViolation(
+        orbitParams,
+        wideFov?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
+      )
+    : null;
 
   // "Save as preset" — reusable across missions, e.g. the same recurring
   // orbit around a fixed site. Works generically for whichever template
@@ -404,6 +420,16 @@ export function TemplateConfigPanel({
         </div>
       )}
 
+      {standoffViolation && (
+        <div className="text-[10px] text-amber-400 mb-2">
+          Bod trasy {standoffViolation.waypointNumber} je jen{" "}
+          {Math.round(standoffViolation.nearestM)} m od cíle kamery — objekt se
+          do záběru celý nevejde (potřeba aspoň{" "}
+          {Math.round(standoffViolation.requiredM)} m). Zvětšete radius, nebo
+          posuňte střed orbitu dál od cíle.
+        </div>
+      )}
+
       {/* Save as reusable preset */}
       {currentParams &&
         (savingPreset ? (
@@ -467,7 +493,7 @@ export function TemplateConfigPanel({
         <Button
           size="sm"
           onClick={onApply}
-          disabled={exceedsWaypointLimit}
+          disabled={exceedsWaypointLimit || standoffViolation !== null}
           className="flex-1 h-7 text-xs bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50"
         >
           <Check className="h-3 w-3 mr-1" />

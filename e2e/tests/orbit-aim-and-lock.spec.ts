@@ -316,6 +316,37 @@ test.describe("Orbit aim height and altitude lock", () => {
     expect(text).not.toMatch(/\d\.\d{3,}/);
   });
 
+  test("blocks Apply when a waypoint would come closer to the locked target than the object needs", async ({
+    page,
+  }) => {
+    await drawOrbit(page);
+    await field(page, "Výška objektu").fill("30");
+    await field(page, "Výška objektu").blur();
+    await page.getByLabel("Uzamknout POI").check();
+
+    const apply = page.getByRole("button", { name: "Použít" }).last();
+    const warning = page.getByText(/od cíle kamery/);
+    await expect(apply).toBeEnabled();
+    await expect(warning).toHaveCount(0);
+
+    // Shrink the circle until the waypoints are inside the standoff a 30 m
+    // object needs. The POI is at the centre here, so every waypoint sits at
+    // exactly the radius — an unambiguous way to cross the threshold.
+    await field(page, "Radius").fill("8");
+    await field(page, "Radius").blur();
+
+    await expect(warning).toBeVisible();
+    await expect(warning).toContainText(/Bod trasy \d+ je jen \d+ m/);
+    await expect(warning).toContainText(/potřeba aspoň \d+ m/);
+    await expect(apply).toBeDisabled();
+
+    // Backing off releases it again.
+    await field(page, "Radius").fill("120");
+    await field(page, "Radius").blur();
+    await expect(warning).toHaveCount(0);
+    await expect(apply).toBeEnabled();
+  });
+
   test("applies the orbit and generates waypoints", async ({ page }) => {
     await drawOrbit(page);
 

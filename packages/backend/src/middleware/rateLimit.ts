@@ -2,12 +2,21 @@ import rateLimit from "express-rate-limit";
 import { SqliteRateLimitStore } from "./sqliteRateLimitStore.js";
 
 /**
- * Disable rate limiting under `vitest` (NODE_ENV=test), where every request
- * originates from the same loopback IP and a full route suite legitimately
- * fires more calls than the production per-minute budget allows — otherwise
- * tests spuriously 429. Has no effect on any real deployment.
+ * Disable rate limiting for automated test runs, where every request
+ * originates from the same loopback IP and a full suite legitimately fires
+ * more calls than the production per-minute budget allows — otherwise tests
+ * spuriously 429.
+ *
+ * Two ways in: `NODE_ENV=test` (vitest sets it), and an explicit
+ * `DISABLE_RATE_LIMIT=1` for the Playwright harness, which runs the real
+ * production build and must NOT claim `NODE_ENV=test` — that would also
+ * silence the backend logs the CI job relies on when a run fails. Neither
+ * is set by any deployment; the flag is opt-in and named for what it does,
+ * so it can't be switched on by accident the way a general-purpose env
+ * value could.
  */
-const skipInTests = () => process.env.NODE_ENV === "test";
+const skipInTests = () =>
+  process.env.NODE_ENV === "test" || process.env.DISABLE_RATE_LIMIT === "1";
 
 /**
  * Each limiter gets its own `SqliteRateLimitStore` instance (own `prefix`,

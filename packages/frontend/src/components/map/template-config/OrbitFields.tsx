@@ -289,9 +289,9 @@ export function OrbitFields({
           <div className="flex items-center justify-between">
             <Label
               className="text-[10px]"
-              title="Vzdálenost středu oblouku od středu orbitu. Menší než radius = ovál přitažený k objektu uprostřed letu, začátek i konec oblouku zůstanou přesně tam, kde jsou. U posunutého POI je právě střed oblouku nejdál od objektu."
+              title="Vzdálenost od cíle, kterou dron drží po většinu oblouku — objekt tak zůstane v záběru pořád stejně velký. Rozevře se až u samotného začátku a konce, které zůstanou přesně tam, kde jsou. Táhnout jde i fialovým úchytem na mapě."
             >
-              Střed oblouku ({distanceLabel(unitSystem)})
+              Držet vzdálenost od cíle ({distanceLabel(unitSystem)})
             </Label>
             {orbitParams.evenDistanceM !== undefined && (
               <button
@@ -323,7 +323,7 @@ export function OrbitFields({
             step={5}
             fallback={toDisplayDistance(orbitParams.radiusM, unitSystem)}
             className="h-7 text-xs"
-            ariaLabel="Střed oblouku"
+            ariaLabel="Držet vzdálenost od cíle"
           />
           {orbitParams.evenDistanceM !== undefined &&
             orbitParams.evenDistanceM !== orbitParams.radiusM && (

@@ -118,6 +118,11 @@ function buildActionXml(action: WaypointAction): string {
               <wpml:payloadPositionIndex>${(action.params as any).payloadPositionIndex ?? 0}</wpml:payloadPositionIndex>`;
       break;
     case "gimbalRotate": {
+      // Yaw is opt-in (see GimbalRotateParams.gimbalYawRotateEnable): it is
+      // an absolute compass command, and enabling it unconditionally pinned
+      // the camera to a fixed direction on routes that track a target — the
+      // shot framed the subject at the start and drifted off it for the rest
+      // of the flight.
       const p = action.params as any;
       paramsXml = `
               <wpml:gimbalHeadingYawBase>north</wpml:gimbalHeadingYawBase>
@@ -126,7 +131,7 @@ function buildActionXml(action: WaypointAction): string {
               <wpml:gimbalPitchRotateAngle>${p.gimbalPitchRotateAngle ?? 0}</wpml:gimbalPitchRotateAngle>
               <wpml:gimbalRollRotateEnable>0</wpml:gimbalRollRotateEnable>
               <wpml:gimbalRollRotateAngle>${p.gimbalRollRotateAngle ?? 0}</wpml:gimbalRollRotateAngle>
-              <wpml:gimbalYawRotateEnable>1</wpml:gimbalYawRotateEnable>
+              <wpml:gimbalYawRotateEnable>${p.gimbalYawRotateEnable ? 1 : 0}</wpml:gimbalYawRotateEnable>
               <wpml:gimbalYawRotateAngle>${p.gimbalYawRotateAngle ?? 0}</wpml:gimbalYawRotateAngle>
               <wpml:gimbalRotateTimeEnable>0</wpml:gimbalRotateTimeEnable>
               <wpml:gimbalRotateTime>0</wpml:gimbalRotateTime>

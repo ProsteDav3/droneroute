@@ -67,6 +67,20 @@ export interface StopRecordParams {
 export interface GimbalRotateParams {
   gimbalPitchRotateAngle: number; // -120 to 45
   gimbalYawRotateAngle: number; // -180 to 180
+  /**
+   * Whether the yaw angle above is actually commanded. Absent/false means the
+   * action only tilts the camera and leaves its left-right aim to the
+   * aircraft.
+   *
+   * This has to be opt-in. A yaw command is absolute (relative to north), so
+   * on a route that tracks a target it fights the tracking: the aircraft
+   * turns toward the POI while the gimbal is held at a fixed compass
+   * direction. Field-observed on a Matrice 4T over the Congress Centre — the
+   * camera framed the target at the start of the orbit and then drifted off
+   * it and never came back, because the export enabled yaw unconditionally.
+   * The flight-verified file has it disabled.
+   */
+  gimbalYawRotateEnable?: boolean;
   gimbalRollRotateAngle: number; // typically 0
   gimbalRotateMode: "absoluteAngle";
   payloadPositionIndex: number;

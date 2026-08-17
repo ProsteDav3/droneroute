@@ -2756,3 +2756,32 @@ describe("orbit drives the gimbal and focuses, the way the field tests settled i
     ).toBe(false);
   });
 });
+
+describe("an orbit's opening gimbal command never touches yaw", () => {
+  it("omits the yaw enable, so the gimbal keeps following the aircraft onto the target", () => {
+    // The aircraft yaws toward the POI for the whole orbit. A gimbal yaw
+    // command is absolute (relative to north), so enabling it pins the camera
+    // to one compass direction and the subject slides out of frame after the
+    // first waypoint — field-observed over the Congress Centre.
+    const { waypoints } = generateOrbit({
+      ...DEFAULT_ORBIT_PARAMS,
+      center: CENTER,
+      radiusM: 100,
+      numPoints: 8,
+      altitude: 60,
+      poiHeight: 50,
+      aimHeight: 25,
+      poiCenter: destinationPoint(CENTER[0], CENTER[1], 40, 90),
+      startAngleDeg: 17,
+      endAngleDeg: 287,
+      captureMode: "video",
+    } as OrbitParams);
+
+    const rotate = waypoints[0].actions.find(
+      (a) => a.actionType === "gimbalRotate",
+    )!;
+    const params = rotate.params as unknown as Record<string, unknown>;
+    expect(params.gimbalYawRotateEnable).toBeFalsy();
+    expect(params).toHaveProperty("gimbalPitchRotateAngle");
+  });
+});

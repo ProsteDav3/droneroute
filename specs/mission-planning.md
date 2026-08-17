@@ -36,7 +36,7 @@ At each waypoint, you can tell the drone to:
 
 - **Take a photo**.
 - **Start or stop recording** video.
-- **Rotate the gimbal** to a specific angle.
+- **Rotate the gimbal** to a specific angle. The tilt is always commanded; the left-right direction only if you tick the checkbox next to it. That direction is an absolute compass bearing, so on a route that tracks a POI it overrides the tracking and holds the camera one way for the rest of the flight — leave it off unless a fixed direction is what you actually want.
 - **Smooth gimbal movement** (gradual interpolation to a new angle).
 - **Rotate the drone** (yaw) clockwise or counter-clockwise.
 - **Hover** in place for a set number of seconds.

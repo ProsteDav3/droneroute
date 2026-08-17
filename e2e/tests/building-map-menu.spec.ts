@@ -48,9 +48,18 @@ test.describe("Building menu on the map", () => {
 
     // The point of the feature: click the building itself, not its sidebar
     // row, and get its actions on the spot.
-    await page.mouse.click(cx, cy);
+    //
+    // Retried, because the click is only meaningful once Mapbox has actually
+    // rasterized the building's fill layer — `queryRenderedFeatures` (which
+    // is how the click finds the building) returns nothing until then, and
+    // the sidebar row appearing is not proof that the paint has happened.
+    // Clicking one frame too early made this spec fail roughly one run in
+    // three.
     const orbitFromMenu = page.getByRole("button", { name: "Vytvořit orbit" });
-    await expect(orbitFromMenu).toBeVisible({ timeout: 10_000 });
+    await expect(async () => {
+      await page.mouse.click(cx, cy);
+      await expect(orbitFromMenu).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
     await expect(
       page.getByRole("button", { name: "Odebrat budovu" }),
     ).toBeVisible();

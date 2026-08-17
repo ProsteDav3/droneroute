@@ -1061,71 +1061,6 @@ function minStandoffForWidthFovM(widthM: number, hfovDeg: number): number {
 }
 
 /**
- * When an orbit's POI is locked (`OrbitParams.poiCenter`) separately from
- * its flight circle — e.g. flying an arc offset to one side of a subject
- * because an obstacle blocks the far side — dragging the circle's own
- * center too close to that fixed POI can put every point on the resulting
- * circle too close for the whole subject to ever fit in the camera's FOV,
- * regardless of gimbal pitch (the same physical limit `minStandoffForFovM`
- * itself guards elsewhere). Clamps a dragged candidate center to the
- * nearest point that keeps the circle's closest approach to the POI at or
- * above that minimum, preserving the bearing the user is actually dragging
- * along so the clamp feels like hitting a wall, not a jump to an unrelated
- * spot. Used by `TemplateDrawHandler`'s orbit center drag handle.
- *
- * Two distances satisfy the constraint — POI inside the circle
- * (`radiusM - minStandoffM`) or outside it (`radiusM + minStandoffM`) — with
- * a forbidden band between them. `previousCenter` decides which side the
- * clamp holds: the one the centre was already on. Picking the arithmetically
- * nearer boundary instead (what this did before) meant dragging outward past
- * the band's midpoint teleported the centre to the far solution — on a 100 m
- * orbit that is a 142 m jump, right out of the guide ring, from one mouse
- * move to the next. Hitting a wall and staying there is what a drag should
- * do; crossing to the other side is a decision, not a drag.
- */
-function clampOrbitCenterForPoiMinStandoff(
-  candidateCenter: [number, number],
-  poiCenter: [number, number],
-  radiusM: number,
-  minStandoffM: number,
-  previousCenter?: [number, number],
-): [number, number] {
-  const [poiLat, poiLng] = poiCenter;
-  const [cLat, cLng] = candidateCenter;
-  const dist = haversine(poiLat, poiLng, cLat, cLng);
-  const closestApproach = Math.abs(dist - radiusM);
-  if (closestApproach >= minStandoffM) return candidateCenter;
-
-  const bearingDeg = dist > 0 ? bearing(poiLat, poiLng, cLat, cLng) : 0;
-
-  const outsideDist = radiusM + minStandoffM;
-  const insideDist = radiusM - minStandoffM;
-  if (insideDist <= 0) {
-    // The radius alone is under the minimum: no "POI inside the circle"
-    // solution exists at all, so the only way to satisfy it is to push the
-    // POI outside — but yanking the centre 200 m away mid-drag is worse than
-    // useless. Hold it on the POI and let the panel's own guard explain why
-    // this geometry can't work.
-    return poiCenter;
-  }
-
-  // The forbidden band straddles `dist === radiusM` (POI exactly on the
-  // flight circle), so that is the side test — not "was it already past a
-  // boundary", which flips on floating-point noise for a centre sitting
-  // exactly on one.
-  const previousDist = previousCenter
-    ? haversine(poiLat, poiLng, previousCenter[0], previousCenter[1])
-    : dist;
-  const wasOutside = previousDist >= radiusM;
-  return destinationPoint(
-    poiLat,
-    poiLng,
-    wasOutside ? outsideDist : insideDist,
-    bearingDeg,
-  );
-}
-
-/**
  * The closest a waypoint may come to a locked camera target and still show
  * the whole subject — vertical extent for a bare POI, and for a real
  * building also its widest silhouette from the bearings actually flown.
@@ -1296,30 +1231,103 @@ export function poiDistanceSwing(
   return { nearM, farM, ratio: nearM > 0 ? farM / nearM : Infinity };
 }
 
+/** How finely the centre drag is bisected when it runs into the clearance
+ * limit. 24 halvings resolve a metre-scale drag to well under a millimetre —
+ * far below what a mouse or the map can express. */
+const CENTER_DRAG_BISECTIONS = 24;
+
 /**
- * Keeps a dragged orbit centre from putting the flight circle too close to a
- * locked POI to fit the subject in frame — see
- * `clampOrbitCenterForPoiMinStandoff`. That is the only hard limit on the
- * drag now. An earlier revision also capped how FAR the centre could sit from
- * the POI (a fixed 1.6 near/far distance ratio, meant to keep the subject's
- * apparent size steady) — but that forbade a perfectly good composition, an
- * arc that starts and ends just short of the subject and swings round its
- * far side, where the subject is simply larger at the ends. The panel now
- * reports that swing (`poiDistanceSwing`) instead of preventing it.
+ * Keeps a dragged orbit centre from bringing a FLOWN waypoint closer to a
+ * locked POI than the subject needs to fit in frame. That is the only hard
+ * limit on the drag.
+ *
+ * "Flown" is the whole point. This used to measure the flight circle's own
+ * closest approach (`|distance − radius|`), which on an open arc judges a
+ * point the aircraft never visits: a 270° orbit whose 90° gap faces the
+ * building — start and end just short of it, swinging round its far side —
+ * has its circle passing right through the building while every actual
+ * waypoint stays 68 m clear. The panel said 68 m and was happy; the drag
+ * refused to move. Same measure as `orbitStandoffViolation` now, so the
+ * handle and the warning can no longer disagree.
+ *
+ * When the candidate is too close, the centre is bisected back along the drag
+ * towards `previousCenter` and stopped at the last position that clears — a
+ * wall, and one that can never teleport, since every result lies on the
+ * segment the user dragged. If `previousCenter` is itself violating (the
+ * radius, arc or waypoint count changed under an existing orbit), the drag is
+ * left free so the handle can be pulled back out of trouble; the panel's own
+ * guard blocks Apply meanwhile.
+ *
+ * An earlier revision also capped how FAR the centre could sit from the POI
+ * (a fixed 1.6 near/far distance ratio, meant to keep the subject's apparent
+ * size steady) — but that forbade the very composition above, where the
+ * subject is simply larger at the ends of the arc. The panel reports that
+ * swing (`poiDistanceSwing`) instead of preventing it.
  */
 export function clampOrbitCenterForPoiClearance(
   candidateCenter: [number, number],
-  poiCenter: [number, number],
-  radiusM: number,
-  minStandoffM: number,
-  previousCenter?: [number, number],
+  previousCenter: [number, number],
+  arc: {
+    poiCenter: [number, number];
+    radiusM: number;
+    minStandoffM: number;
+    startAngleDeg: number;
+    endAngleDeg: number;
+    numPoints: number;
+  },
 ): [number, number] {
-  return clampOrbitCenterForPoiMinStandoff(
-    candidateCenter,
-    poiCenter,
-    radiusM,
-    minStandoffM,
-    previousCenter,
+  const { poiCenter, radiusM, minStandoffM, ...sweep } = arc;
+  const clears = (center: [number, number]): boolean =>
+    poiDistanceSwing(
+      center,
+      poiCenter,
+      radiusM,
+      sweep.startAngleDeg,
+      sweep.endAngleDeg,
+      sweep.numPoints,
+    ).nearM >= minStandoffM;
+
+  if (clears(candidateCenter)) return candidateCenter;
+  if (!clears(previousCenter)) return candidateCenter;
+
+  const dragM = haversine(
+    previousCenter[0],
+    previousCenter[1],
+    candidateCenter[0],
+    candidateCenter[1],
+  );
+  if (dragM === 0) return previousCenter;
+  const dragBearing = bearing(
+    previousCenter[0],
+    previousCenter[1],
+    candidateCenter[0],
+    candidateCenter[1],
+  );
+
+  let clearFraction = 0;
+  let blockedFraction = 1;
+  for (let i = 0; i < CENTER_DRAG_BISECTIONS; i++) {
+    const mid = (clearFraction + blockedFraction) / 2;
+    if (
+      clears(
+        destinationPoint(
+          previousCenter[0],
+          previousCenter[1],
+          dragM * mid,
+          dragBearing,
+        ),
+      )
+    ) {
+      clearFraction = mid;
+    } else {
+      blockedFraction = mid;
+    }
+  }
+  return destinationPoint(
+    previousCenter[0],
+    previousCenter[1],
+    dragM * clearFraction,
+    dragBearing,
   );
 }
 

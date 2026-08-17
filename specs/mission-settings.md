@@ -12,6 +12,7 @@ Configure your drone model, camera, altitude reference, and safety options for t
   - Relative to start point.
   - EGM96 (MSL) — altitude above mean sea level.
   - Above ground level.
+- **Choose who aims the camera — "Automaticky" or "Ručně"**: in automatic mode the aircraft flies the plan's own aiming (heading modes and gimbal angles from the waypoints and templates — an Orbit's POI tracking, a facade scan's fixed pitch). In manual mode the aircraft only flies the route and you hold heading and gimbal on the sticks the whole way. The plan's aiming stays saved in the mission, so switching back restores it untouched — it is simply left out of the exported KMZ, because a flight that both tracks a POI and hands the controls over fights the pilot in the air.
 - **Set what happens when the mission ends**: go home, land automatically, return to the first waypoint, or hover.
 - **Set what happens if the remote controller connection is lost**: return home, land, or hover.
 - **Set the transit speed** (speed used to fly to the first waypoint).
@@ -38,6 +39,7 @@ Configure your drone model, camera, altitude reference, and safety options for t
   isn't published), but it's meaningfully closer than a flat distance/speed
   calculation.
 - Height reference affects how altitude values are interpreted by the drone — choose the one that matches your operational needs. The default is **above ground level**.
+- **What manual mode changes in the exported file**: the gimbal is set to manual control, every waypoint flies on the "manually" heading, and the actions that aim the aircraft or camera (gimbal rotation, yaw rotation, focus) are dropped. Actions that are the point of the flight — photos, recording, hover, zoom — are kept and still fire where the plan says. Importing such a KMZ back recognises it as a manual-control mission rather than silently re-enabling the aiming.
 - **Heading mode is only a default**: it applies to waypoints that don't have their own heading override. Templates that need the drone to track a target as it flies (Orbit, Turbine blade inspection, Facade's thermal recommendation) set each of their own waypoints to a specific mode regardless of this setting — so seeing a different heading mode on a selected waypoint than in Mission settings doesn't mean either one is wrong; the per-waypoint value is what actually flies.
 - All height fields enforce a minimum of 1 meter.
 - You can set default values for all mission settings in the **Mission defaults** tab of the settings dialog. New missions will use those defaults instead of the factory defaults.

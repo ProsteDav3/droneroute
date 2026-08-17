@@ -1,0 +1,1 @@
+- Added: mission settings now choose who aims the camera — **Automaticky** (the aircraft flies the plan's own heading and gimbal, as before) or **Ručně** (the aircraft only flies the route; you hold heading and gimbal on the sticks). Manual mode leaves the planned aiming saved in the mission and simply omits it from the exported KMZ, so switching back restores it untouched.

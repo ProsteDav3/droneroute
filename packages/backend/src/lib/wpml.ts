@@ -175,10 +175,17 @@ function buildActionXml(action: WaypointAction): string {
           </wpml:action>`;
 }
 
-function buildActionGroupXml(wp: Waypoint, groupIdOffset: number): string {
-  if (wp.actions.length === 0) return "";
+function buildActionGroupXml(
+  wp: Waypoint,
+  groupIdOffset: number,
+  c: MissionConfig,
+): string {
+  const actions = isManualCameraControl(c)
+    ? wp.actions.filter((a) => !AIMING_ACTION_TYPES.has(a.actionType))
+    : wp.actions;
+  if (actions.length === 0) return "";
 
-  const actionsXml = wp.actions.map(buildActionXml).join("");
+  const actionsXml = actions.map(buildActionXml).join("");
 
   return `
         <wpml:actionGroup>
@@ -230,6 +237,33 @@ interface ResolvedHeading {
 const ZERO_POI_POINT = "0.000000,0.000000,0.000000";
 
 /**
+ * `cameraControl: "manual"` means the pilot holds heading and gimbal on the
+ * sticks and the aircraft only flies the route. The plan's own aiming stays
+ * in the mission (so switching back to auto restores it untouched) and is
+ * stripped here, at export, because a KMZ that both tracks a POI and hands
+ * the controls over fights the pilot in the air.
+ *
+ * Absent means auto: every mission planned before this setting existed must
+ * keep flying its own aiming.
+ */
+function isManualCameraControl(c: MissionConfig): boolean {
+  return c.cameraControl === "manual";
+}
+
+/** Actions that aim the aircraft or the camera, as opposed to actions that
+ * are the point of the flight (shooting, hovering, zoom). Only these are
+ * dropped in manual mode — a pilot who took over the gimbal still wants the
+ * photos taken where the plan says. `focus` goes with them: it pins focus to
+ * a frame region computed for the planned aim, which is no longer where the
+ * camera is pointing. */
+const AIMING_ACTION_TYPES = new Set([
+  "gimbalRotate",
+  "gimbalEvenlyRotate",
+  "rotateYaw",
+  "focus",
+]);
+
+/**
  * Effective per-waypoint heading (globals resolved). 1.0.6 always carries
  * a full waypointHeadingParam per waypoint in waylines.wpml, so every
  * field needs a concrete value even for waypoints on the global default.
@@ -245,6 +279,9 @@ function resolveHeading(
   c: MissionConfig,
   pois: PointOfInterest[],
 ): ResolvedHeading | null {
+  if (isManualCameraControl(c)) {
+    return { mode: "manually", angle: 0, poiPoint: ZERO_POI_POINT };
+  }
   const mode = wp.useGlobalHeadingParam
     ? c.globalHeadingMode
     : wp.headingMode || c.globalHeadingMode;
@@ -284,10 +321,11 @@ export function buildTemplateKml(mission: Mission): string {
   const c = mission.config;
   const pois = mission.pois || [];
   const now = Date.now();
+  const manual = isManualCameraControl(c);
 
   const placemarks = mission.waypoints
     .map((wp, i) => {
-      const actionGroupXml = buildActionGroupXml(wp, i);
+      const actionGroupXml = buildActionGroupXml(wp, i, c);
 
       // Per-waypoint heading override whenever this waypoint opts out of
       // the global heading config — Pilot 2 regenerates its own
@@ -295,7 +333,9 @@ export function buildTemplateKml(mission: Mission): string {
       // Turbine/Facade-thermal give each waypoint its own bearing) must be
       // fully described here too, not just in waylines.wpml.
       let headingOverrideXml = "";
-      if (!wp.useGlobalHeadingParam && wp.headingMode) {
+      // In manual mode every waypoint rides the global "manually" heading —
+      // an override here would be the plan's aiming creeping back in.
+      if (!manual && !wp.useGlobalHeadingParam && wp.headingMode) {
         const h = resolveHeading(wp, c, pois);
         if (h) {
           headingOverrideXml = `
@@ -327,10 +367,10 @@ export function buildTemplateKml(mission: Mission): string {
         <wpml:useGlobalHeight>${wp.useGlobalHeight ? 1 : 0}</wpml:useGlobalHeight>
         <wpml:useGlobalSpeed>${wp.useGlobalSpeed ? 1 : 0}</wpml:useGlobalSpeed>
         ${!wp.useGlobalSpeed ? `<wpml:waypointSpeed>${wp.speed}</wpml:waypointSpeed>` : ""}
-        <wpml:useGlobalHeadingParam>${wp.useGlobalHeadingParam ? 1 : 0}</wpml:useGlobalHeadingParam>${headingOverrideXml}
+        <wpml:useGlobalHeadingParam>${manual || wp.useGlobalHeadingParam ? 1 : 0}</wpml:useGlobalHeadingParam>${headingOverrideXml}
         <wpml:useGlobalTurnParam>${wp.useGlobalTurnParam ? 1 : 0}</wpml:useGlobalTurnParam>${turnOverrideXml}
         <wpml:useStraightLine>0</wpml:useStraightLine>
-        <wpml:gimbalPitchAngle>${wp.gimbalPitchAngle}</wpml:gimbalPitchAngle>${actionGroupXml}
+        <wpml:gimbalPitchAngle>${manual ? 0 : wp.gimbalPitchAngle}</wpml:gimbalPitchAngle>${actionGroupXml}
         <wpml:isRisky>0</wpml:isRisky>
       </Placemark>`;
     })
@@ -355,9 +395,9 @@ ${buildMissionConfigXml(c)}
     <wpml:autoFlightSpeed>${c.autoFlightSpeed}</wpml:autoFlightSpeed>
     <wpml:globalHeight>${globalHeight}</wpml:globalHeight>
     <wpml:caliFlightEnable>0</wpml:caliFlightEnable>
-    <wpml:gimbalPitchMode>${c.gimbalPitchMode}</wpml:gimbalPitchMode>
+    <wpml:gimbalPitchMode>${manual ? "manual" : c.gimbalPitchMode}</wpml:gimbalPitchMode>
     <wpml:globalWaypointHeadingParam>
-      <wpml:waypointHeadingMode>${c.globalHeadingMode}</wpml:waypointHeadingMode>
+      <wpml:waypointHeadingMode>${manual ? "manually" : c.globalHeadingMode}</wpml:waypointHeadingMode>
       <wpml:waypointHeadingAngle>0</wpml:waypointHeadingAngle>
       <wpml:waypointPoiPoint>0.000000,0.000000,0.000000</wpml:waypointPoiPoint>
       <wpml:waypointHeadingPoiIndex>0</wpml:waypointHeadingPoiIndex>
@@ -379,6 +419,7 @@ ${buildMissionConfigXml(c)}
 export function buildWaylinesWpml(mission: Mission): string {
   const c = mission.config;
   const pois = mission.pois || [];
+  const manual = isManualCameraControl(c);
 
   let totalDistanceM = 0;
   for (let i = 1; i < mission.waypoints.length; i++) {
@@ -397,7 +438,7 @@ export function buildWaylinesWpml(mission: Mission): string {
 
   const placemarks = mission.waypoints
     .map((wp, i) => {
-      const actionGroupXml = buildActionGroupXml(wp, i);
+      const actionGroupXml = buildActionGroupXml(wp, i, c);
       // Unresolvable towardPOI falls back to the global mode (or
       // followWayline when the global itself is towardPOI) — never a
       // zeroed POI target.
@@ -435,7 +476,7 @@ export function buildWaylinesWpml(mission: Mission): string {
         </wpml:waypointTurnParam>
         <wpml:useStraightLine>0</wpml:useStraightLine>
         <wpml:waypointGimbalHeadingParam>
-          <wpml:waypointGimbalPitchAngle>${wp.gimbalPitchAngle}</wpml:waypointGimbalPitchAngle>
+          <wpml:waypointGimbalPitchAngle>${manual ? 0 : wp.gimbalPitchAngle}</wpml:waypointGimbalPitchAngle>
           <wpml:waypointGimbalYawAngle>0</wpml:waypointGimbalYawAngle>
         </wpml:waypointGimbalHeadingParam>
         <wpml:isRisky>0</wpml:isRisky>${actionGroupXml}

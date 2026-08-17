@@ -175,28 +175,65 @@ function buildActionXml(action: WaypointAction): string {
           </wpml:action>`;
 }
 
+/**
+ * A gimbal interpolation does not happen AT a waypoint — it happens along
+ * the leg to the next one, so WPML expects it in its own action group
+ * triggered `betweenAdjacentPoints` and spanning `index` → `index + 1`.
+ * Filed under the same `reachPoint` group as the recording actions, it
+ * simply never runs: the aircraft turned to the target correctly but the
+ * gimbal held its angle for the entire flight (field-verified on a Matrice
+ * 4T, the same orbit with and without this group).
+ */
+const INTERPOLATED_ACTION_TYPES = new Set(["gimbalEvenlyRotate"]);
+
 function buildActionGroupXml(
   wp: Waypoint,
   groupIdOffset: number,
   c: MissionConfig,
+  isLastWaypoint: boolean,
 ): string {
   const actions = isManualCameraControl(c)
     ? wp.actions.filter((a) => !AIMING_ACTION_TYPES.has(a.actionType))
     : wp.actions;
-  if (actions.length === 0) return "";
 
-  const actionsXml = actions.map(buildActionXml).join("");
+  const atPoint = actions.filter(
+    (a) => !INTERPOLATED_ACTION_TYPES.has(a.actionType),
+  );
+  // Nothing to interpolate toward past the end of the route — a group
+  // spanning a waypoint that doesn't exist is a file Pilot 2 rejects.
+  const alongLeg = isLastWaypoint
+    ? []
+    : actions.filter((a) => INTERPOLATED_ACTION_TYPES.has(a.actionType));
 
-  return `
+  const group = (
+    id: number,
+    trigger: string,
+    endIndex: number,
+    groupActions: typeof actions,
+  ): string =>
+    groupActions.length === 0
+      ? ""
+      : `
         <wpml:actionGroup>
-          <wpml:actionGroupId>${groupIdOffset}</wpml:actionGroupId>
+          <wpml:actionGroupId>${id}</wpml:actionGroupId>
           <wpml:actionGroupStartIndex>${wp.index}</wpml:actionGroupStartIndex>
-          <wpml:actionGroupEndIndex>${wp.index}</wpml:actionGroupEndIndex>
+          <wpml:actionGroupEndIndex>${endIndex}</wpml:actionGroupEndIndex>
           <wpml:actionGroupMode>sequence</wpml:actionGroupMode>
           <wpml:actionTrigger>
-            <wpml:actionTriggerType>reachPoint</wpml:actionTriggerType>
-          </wpml:actionTrigger>${actionsXml}
+            <wpml:actionTriggerType>${trigger}</wpml:actionTriggerType>
+          </wpml:actionTrigger>${groupActions.map(buildActionXml).join("")}
         </wpml:actionGroup>`;
+
+  // Two groups per waypoint at most, so ids are spaced to stay unique.
+  return (
+    group(groupIdOffset * 2, "reachPoint", wp.index, atPoint) +
+    group(
+      groupIdOffset * 2 + 1,
+      "betweenAdjacentPoints",
+      wp.index + 1,
+      alongLeg,
+    )
+  );
 }
 
 // ── Shared blocks ────────────────────────────────────────
@@ -325,7 +362,12 @@ export function buildTemplateKml(mission: Mission): string {
 
   const placemarks = mission.waypoints
     .map((wp, i) => {
-      const actionGroupXml = buildActionGroupXml(wp, i, c);
+      const actionGroupXml = buildActionGroupXml(
+        wp,
+        i,
+        c,
+        i === mission.waypoints.length - 1,
+      );
 
       // Per-waypoint heading override whenever this waypoint opts out of
       // the global heading config — Pilot 2 regenerates its own
@@ -438,7 +480,12 @@ export function buildWaylinesWpml(mission: Mission): string {
 
   const placemarks = mission.waypoints
     .map((wp, i) => {
-      const actionGroupXml = buildActionGroupXml(wp, i, c);
+      const actionGroupXml = buildActionGroupXml(
+        wp,
+        i,
+        c,
+        i === mission.waypoints.length - 1,
+      );
       // Unresolvable towardPOI falls back to the global mode (or
       // followWayline when the global itself is towardPOI) — never a
       // zeroed POI target.

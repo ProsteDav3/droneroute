@@ -121,6 +121,13 @@ export interface OrbitParams {
    */
   evenDistanceM?: number;
   /**
+   * Keeps the whole route sitting on the distance where the subject fits
+   * (`alignOrbitToDistance`) as the camera target is moved, instead of the
+   * flight staying put while the target wanders off the middle of it. Set by
+   * the padlock next to the panel's "na červený kruh" link.
+   */
+  snapToTargetRing?: boolean;
+  /**
    * Real height of the object being orbited, measured from ground level —
    * the input to the "does the whole thing fit in shot" framing solve. NOT
    * where the camera points; that's `aimHeight`.
@@ -1287,38 +1294,28 @@ export function signedArcSweepDeg(
   return clockwise ? clockwiseSweep : clockwiseSweep - 360;
 }
 
-/** How much of each half of the arc is spent opening back out to the fixed
- * end point, as a fraction of that half. The rest holds the even distance.
- * 15% is 20° on a 270° arc — enough for the path to turn without a visible
- * corner, short enough that the steady part covers the shot. */
-const OVAL_END_TRANSITION = 0.15;
-
-/** Smooth 0→1 ramp with zero slope at both ends (smoothstep), so the path
- * leaves the steady section and meets the end point without a kink. */
-function smoothstep(t: number): number {
-  const x = Math.min(Math.max(t, 0), 1);
-  return x * x * (3 - 2 * x);
-}
-
 /**
  * Distance from an orbit's centre to its path at a given bearing.
  *
  * A plain orbit is a circle: the answer is always `radiusM`. With
- * `evenDistanceM` set it becomes an oval that holds that distance **from the
- * camera target** through the middle of the arc and opens back out to
- * `radiusM` at the two ends, which stay exactly where the user placed them.
+ * `evenDistanceM` set it becomes an oval — an ellipse centred on the orbit's
+ * own centre, with one axis along the middle of the flown arc and the other
+ * solved so the curve still passes through the arc's two end points. Those
+ * ends are where the pilot put them, in front of the building; everything
+ * between them moves.
  *
- * Why measured from the target rather than from the centre: the point of the
- * shape is that the subject stays the same size on screen. With the target
- * locked off to one side, holding a distance from the orbit's own centre
- * still lets the distance to the subject swing — on the Congress Centre
- * orbit the middle of the arc sits 147 m from the building against 74 m at
- * the ends, and the building shrinks to half over the shot.
+ * Two earlier attempts are worth not repeating. A raised-cosine blend of the
+ * radius, flat at the middle and the ends, put nearly all the pull into the
+ * middle and left the waypoints beside the ends where they were: pinched,
+ * not oval. Holding a fixed distance from the target across the middle and
+ * flaring only at the ends fixed the framing but deformed in two distinct
+ * pieces — dragging the handle slid a stiff arc around rather than reshaping
+ * the whole path, which is not what an oval does under the hand.
  *
- * An earlier version blended the radius with a raised cosine, flat at both
- * the middle and the ends. Flown, that put nearly all of the pull into the
- * middle while the waypoints beside the two ends barely moved: the shape came
- * out pinched rather than oval. Hence the flat middle and short flares here.
+ * `evenDistanceM` is the distance from the TARGET at the middle of the arc,
+ * not a radius: that is the number that decides how big the subject looks,
+ * and it is what the handle and the panel both speak in. It is converted to
+ * the ellipse's semi-axis here.
  */
 export function orbitRadiusAtBearing(
   params: {
@@ -1348,8 +1345,9 @@ export function orbitRadiusAtBearing(
   if (halfSweep === 0) return radiusM;
   const midBearing = startAngleDeg + signedSweep / 2;
 
-  // Where the target sits relative to the centre, in the flat local frame the
-  // rest of this module uses for footprint-scale geometry.
+  // Along the mid-arc bearing, a point at radius r is (r + offset) from the
+  // target when that bearing points away from it, and (r - offset) when it
+  // points at it — the orbit passes the target and carries on.
   const offsetM = haversine(center[0], center[1], poiCenter[0], poiCenter[1]);
   const offsetBearing = bearing(
     center[0],
@@ -1357,40 +1355,27 @@ export function orbitRadiusAtBearing(
     poiCenter[0],
     poiCenter[1],
   );
-  const phi = ((bearingDeg - offsetBearing) * Math.PI) / 180;
-  const along = offsetM * Math.cos(phi);
+  const towardTarget =
+    Math.cos(((midBearing - offsetBearing) * Math.PI) / 180) >= 0;
+  const midRadiusM = Math.max(
+    1,
+    towardTarget ? offsetM + evenDistanceM : evenDistanceM - offsetM,
+  );
 
-  // How far along this bearing the aircraft has to be to sit exactly
-  // `evenDistanceM` from the target. Solved by bisection on the real
-  // distance rather than from the flat-plane quadratic: the rest of this
-  // module measures with `haversine`/`destinationPoint`, and mixing a flat
-  // solve with spherical measurement left the two halves of the arc a couple
-  // of metres apart even though the shape is symmetric by construction.
+  // Radius grows from the middle of the arc to its ends as the square of the
+  // angular distance. Flat at the middle (so the pulled-in section is a
+  // proper nose rather than a point) and steepest at the ends, which is what
+  // makes the waypoints beside the start and finish move with everything
+  // else — the first attempt was flat at the ends too and left them behind.
   //
-  // Distance to the target falls until the ray's closest approach and rises
-  // after it, so bracketing from that point outward gives a monotonic
-  // interval and the larger (outer) solution — the one that keeps flying
-  // around the target rather than cutting inside it.
-  const distanceAt = (r: number): number => {
-    const [lat, lng] = destinationPoint(center[0], center[1], r, bearingDeg);
-    return haversine(lat, lng, poiCenter[0], poiCenter[1]);
-  };
-  let low = Math.max(along, 0.5);
-  let high = Math.max(low, along + evenDistanceM) + 1;
-  while (distanceAt(high) < evenDistanceM && high < radiusM * 8) high *= 1.5;
-  for (let i = 0; i < 24; i++) {
-    const mid = (low + high) / 2;
-    if (distanceAt(mid) < evenDistanceM) low = mid;
-    else high = mid;
-  }
-  const holdRadiusM = Math.max((low + high) / 2, 1);
-
+  // Deliberately not a true ellipse through the fixed ends. That family
+  // stops existing once the mid-arc semi-axis drops below
+  // `radiusM · |cos(halfSweep)|` — 0.71 × radius on a 270° arc, right in the
+  // range that is useful — so the handle would hit an invisible wall while
+  // the subject was still shrinking.
   const offsetFromMid = Math.abs(((bearingDeg - midBearing + 540) % 360) - 180);
   const t = Math.min(offsetFromMid / halfSweep, 1);
-  const flare = smoothstep(
-    (t - (1 - OVAL_END_TRANSITION)) / OVAL_END_TRANSITION,
-  );
-  return Math.max(1, holdRadiusM + (radiusM - holdRadiusM) * flare);
+  return Math.max(1, midRadiusM + (radiusM - midRadiusM) * t * t);
 }
 
 /** How finely the geometry solves below bisect. 24 halvings resolve a
@@ -1638,6 +1623,62 @@ function worstBuildingStandoffDeficitM(
     if (deficit > worstDeficit) worstDeficit = deficit;
   }
   return worstDeficit;
+}
+
+/**
+ * How far out the flight has to be, at a given altitude, for the whole
+ * building — full height and its widest silhouette — to fit inside the
+ * camera's frame. This is the red guide ring on the map.
+ *
+ * Altitude matters and the first version ignored it. From higher up the
+ * building subtends a smaller angle: its height is seen more steeply, and
+ * its length is seen from farther away along the slant. Flying at 100 m
+ * genuinely allows a closer pass than flying at 50 m, and a ring that did
+ * not move when the altitude changed was telling the pilot otherwise.
+ *
+ * Solved by bisection on the distance — both spans shrink monotonically as
+ * the aircraft backs off, so the smallest distance that fits both is the
+ * answer. `MIN_FOV_FIT_FACTOR` keeps the subject off the very edge of frame,
+ * the same margin the other standoff helpers use.
+ */
+export function minStandoffForBuildingAtAltitudeM(
+  vertices: [number, number][],
+  poiHeight: number,
+  altitude: number,
+  aimHeight: number,
+  vfovDeg: number,
+): number {
+  const hfovDeg = deriveHfovFromVfov(vfovDeg);
+  let widestM = 0;
+  for (const bearingDeg of sampleArcBearingsDeg(
+    0,
+    360,
+    CIRCLE_CLEARANCE_SAMPLE_COUNT,
+  )) {
+    const widthM = buildingProjectedWidthM(vertices, bearingDeg);
+    if (widthM > widestM) widestM = widthM;
+  }
+
+  const verticalBudget = (vfovDeg * MIN_FOV_FIT_FACTOR * Math.PI) / 180;
+  const horizontalBudget = (hfovDeg * MIN_FOV_FIT_FACTOR * Math.PI) / 180;
+  const fits = (distanceM: number): boolean => {
+    const verticalSpan =
+      Math.atan((poiHeight - altitude) / distanceM) -
+      Math.atan(-altitude / distanceM);
+    const slantM = Math.hypot(distanceM, altitude - aimHeight);
+    const horizontalSpan = 2 * Math.atan(widestM / 2 / slantM);
+    return verticalSpan <= verticalBudget && horizontalSpan <= horizontalBudget;
+  };
+
+  let low = 1;
+  let high = Math.max(widestM, poiHeight) * 4 + 10;
+  while (!fits(high) && high < 100_000) high *= 2;
+  for (let i = 0; i < BISECTION_STEPS; i++) {
+    const mid = (low + high) / 2;
+    if (fits(mid)) high = mid;
+    else low = mid;
+  }
+  return high;
 }
 
 /**

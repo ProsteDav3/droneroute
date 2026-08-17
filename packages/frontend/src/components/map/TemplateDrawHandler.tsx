@@ -20,7 +20,9 @@ import {
   clampOrbitCenterForPoiClearance,
   signedArcSweepDeg,
   orbitRadiusAtBearing,
-  minStandoffForBuildingPoiClearanceM,
+  minStandoffForBuildingAtAltitudeM,
+  defaultAimHeight,
+  alignOrbitToDistance,
   recomputeBuildingOrbitForArc,
   DEFAULT_ORBIT_PARAMS,
   DEFAULT_GRID_PARAMS,
@@ -216,18 +218,41 @@ function OrbitMidArcHandle({
  * time, so grabbing "the orbit handle" often grabbed this one instead,
  * moving the POI by accident and forcing it to be dragged back afterward.
  */
-function OrbitPoiHandle({ poiCenter }: { poiCenter: [number, number] }) {
+function OrbitPoiHandle({
+  poiCenter,
+  onMove,
+}: {
+  poiCenter: [number, number];
+  /** Present only while the route is locked to the target's ring, which is
+   * the one mode where dragging the target is meant to take the flight with
+   * it. Left out otherwise: the handle sits on top of the centre handle the
+   * moment the POI is locked, and making both draggable meant grabbing "the
+   * orbit" often moved the target by accident. */
+  onMove?: (poiCenter: [number, number]) => void;
+}) {
   const [lat, lng] = poiCenter;
+  const handleDrag = useCallback(
+    (e: { lngLat: { lng: number; lat: number } }) => {
+      onMove?.([e.lngLat.lat, e.lngLat.lng]);
+    },
+    [onMove],
+  );
 
   return (
     <Marker
       longitude={lng}
       latitude={lat}
       anchor="center"
-      style={{ zIndex: 5 }}
+      draggable={!!onMove}
+      onDrag={handleDrag}
+      style={{ zIndex: onMove ? 12 : 5 }}
     >
       <div
-        title="Cíl kamery (POI je uzamčen na tomto místě, odděleně od středu orbitu)"
+        title={
+          onMove
+            ? "Cíl kamery — přetažením posunete cíl i celou trasu, která kolem něj zůstane na červeném kruhu"
+            : "Cíl kamery (POI je uzamčen na tomto místě, odděleně od středu orbitu)"
+        }
         style={{
           width: 18,
           height: 18,
@@ -833,7 +858,29 @@ export function TemplateDrawHandler() {
           />
           {orbitParams.poiCenter && (
             <>
-              <OrbitPoiHandle poiCenter={orbitParams.poiCenter} />
+              <OrbitPoiHandle
+                poiCenter={orbitParams.poiCenter}
+                onMove={
+                  orbitParams.snapToTargetRing && orbitParams.buildingVertices
+                    ? (poiCenter) =>
+                        setOrbitParams(
+                          alignOrbitToDistance(
+                            { ...orbitParams, poiCenter },
+                            Math.round(
+                              minStandoffForBuildingAtAltitudeM(
+                                orbitParams.buildingVertices!,
+                                orbitParams.poiHeight,
+                                orbitParams.altitude,
+                                orbitParams.aimHeight ??
+                                  defaultAimHeight(orbitParams.poiHeight),
+                                vfovDeg,
+                              ),
+                            ),
+                          ),
+                        )
+                    : undefined
+                }
+              />
               {orbitParams.poiHeight > 0 && (
                 <Source
                   id="orbit-poi-clearance-guide"
@@ -863,9 +910,12 @@ export function TemplateDrawHandler() {
               {orbitParams.buildingVertices &&
                 orbitParams.poiHeight > 0 &&
                 (() => {
-                  const wholeBuildingM = minStandoffForBuildingPoiClearanceM(
+                  const wholeBuildingM = minStandoffForBuildingAtAltitudeM(
                     orbitParams.buildingVertices,
                     orbitParams.poiHeight,
+                    orbitParams.altitude,
+                    orbitParams.aimHeight ??
+                      defaultAimHeight(orbitParams.poiHeight),
                     vfovDeg,
                   );
                   if (

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { Label } from "@/components/ui/label";
 import { Lock, Unlock } from "lucide-react";
@@ -19,7 +20,7 @@ import {
   fitAltitudeRange,
   fitRadiusRange,
   alignOrbitToDistance,
-  minStandoffForBuildingPoiClearanceM,
+  minStandoffForBuildingAtAltitudeM,
   computeRadiusForPitch,
   defaultAimHeight,
   objectFitsInFrame,
@@ -109,13 +110,32 @@ export function OrbitFields({
   const wholeBuildingDistanceM =
     orbitParams.buildingVertices && orbitParams.poiHeight > 0
       ? Math.round(
-          minStandoffForBuildingPoiClearanceM(
+          minStandoffForBuildingAtAltitudeM(
             orbitParams.buildingVertices,
             orbitParams.poiHeight,
+            orbitParams.altitude,
+            shownAimHeight,
             vfovDeg,
           ),
         )
       : null;
+
+  // Locked to the ring: anything that changes where that ring is — the
+  // object's height, the building's outline, the camera — has to move the
+  // flight with it, not just the times the target itself is dragged. Guarded
+  // on the values it would write, so it settles after one pass instead of
+  // looping.
+  useEffect(() => {
+    if (!orbitParams.snapToTargetRing || wholeBuildingDistanceM === null)
+      return;
+    const alreadySnapped =
+      orbitParams.radiusM === wholeBuildingDistanceM &&
+      orbitParams.poiCenter !== undefined &&
+      orbitParams.center[0] === orbitParams.poiCenter[0] &&
+      orbitParams.center[1] === orbitParams.poiCenter[1];
+    if (alreadySnapped) return;
+    onOrbitChange(alignOrbitToDistance(orbitParams, wholeBuildingDistanceM));
+  }, [orbitParams, wholeBuildingDistanceM, onOrbitChange]);
 
   const swing = orbitParams.poiCenter
     ? poiDistanceSwing(
@@ -311,19 +331,58 @@ export function OrbitFields({
             </Label>
             <div className="flex items-center gap-2">
               {wholeBuildingDistanceM !== null && (
-                <button
-                  type="button"
-                  className="text-[10px] text-red-400 hover:text-red-300"
-                  onClick={() =>
-                    onOrbitChange(
-                      alignOrbitToDistance(orbitParams, wholeBuildingDistanceM),
-                    )
-                  }
-                  title="Posadí celou trasu včetně začátku a konce na červený kruh — vzdálenost, ze které je vidět celá budova"
-                >
-                  na červený kruh ({wholeBuildingDistanceM}{" "}
-                  {distanceLabel(unitSystem)})
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="text-[10px] text-red-400 hover:text-red-300"
+                    onClick={() =>
+                      onOrbitChange({
+                        ...alignOrbitToDistance(
+                          orbitParams,
+                          wholeBuildingDistanceM,
+                        ),
+                      })
+                    }
+                    title="Posadí celou trasu včetně začátku a konce na červený kruh — vzdálenost, ze které je vidět celá budova"
+                  >
+                    na červený kruh ({wholeBuildingDistanceM}{" "}
+                    {distanceLabel(unitSystem)})
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={!!orbitParams.snapToTargetRing}
+                    className={
+                      orbitParams.snapToTargetRing
+                        ? "text-red-400"
+                        : "text-muted-foreground hover:text-foreground"
+                    }
+                    onClick={() => {
+                      const locking = !orbitParams.snapToTargetRing;
+                      onOrbitChange(
+                        locking
+                          ? {
+                              ...alignOrbitToDistance(
+                                orbitParams,
+                                wholeBuildingDistanceM,
+                              ),
+                              snapToTargetRing: true,
+                            }
+                          : { ...orbitParams, snapToTargetRing: false },
+                      );
+                    }}
+                    title={
+                      orbitParams.snapToTargetRing
+                        ? "Zamčeno na červený kruh — posunutím cíle se s ním posune celá trasa. Kliknutím odemknete."
+                        : "Zamknout na červený kruh: trasa zůstane na této vzdálenosti i když budete cílem hýbat"
+                    }
+                  >
+                    {orbitParams.snapToTargetRing ? (
+                      <Lock className="h-3 w-3" />
+                    ) : (
+                      <Unlock className="h-3 w-3" />
+                    )}
+                  </button>
+                </>
               )}
               {orbitParams.evenDistanceM !== undefined && (
                 <button

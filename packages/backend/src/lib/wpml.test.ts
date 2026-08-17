@@ -389,3 +389,99 @@ describe("manual camera control (the pilot aims, the aircraft only flies)", () =
     }
   });
 });
+
+describe("gimbalEvenlyRotate needs its own betweenAdjacentPoints group", () => {
+  // In WPML a gimbal interpolation is not something that happens ON a
+  // waypoint — it happens along the leg to the next one, so it belongs to an
+  // action group triggered `betweenAdjacentPoints` and spanning i → i+1.
+  // Filed under the same reachPoint group as the recording actions it simply
+  // does not run, which is what the field test saw as "the gimbal never
+  // moved" (verified on a Matrice 4T: same file plus this group = correct
+  // tilt for the whole flight).
+  const wp0 = waypoint({
+    index: 0,
+    gimbalPitchAngle: -13,
+    actions: [
+      { actionId: 0, actionType: "startRecord", params: {} },
+      {
+        actionId: 1,
+        actionType: "gimbalRotate",
+        params: { gimbalPitchRotateAngle: -13 },
+      },
+      {
+        actionId: 2,
+        actionType: "gimbalEvenlyRotate",
+        params: { gimbalPitchRotateAngle: -11 },
+      },
+    ],
+  } as Partial<Waypoint>);
+  const wp1 = waypoint({
+    index: 1,
+    name: "WP2",
+    latitude: 41.259,
+    gimbalPitchAngle: -11,
+    actions: [{ actionId: 0, actionType: "stopRecord", params: {} }],
+  } as Partial<Waypoint>);
+
+  const groups = (xml: string) =>
+    [...xml.matchAll(/<wpml:actionGroup>([\s\S]*?)<\/wpml:actionGroup>/g)].map(
+      (m) => m[1],
+    );
+  const field = (xml: string, name: string) =>
+    new RegExp(`<wpml:${name}>([^<]*)</wpml:${name}>`).exec(xml)?.[1] ?? null;
+
+  for (const [label, build] of [
+    ["template.kml", buildTemplateKml],
+    ["waylines.wpml", buildWaylinesWpml],
+  ] as const) {
+    it(`splits the groups by trigger in ${label}`, () => {
+      const xml = build(mission([wp0, wp1]));
+      const gs = groups(xml);
+      const evenly = gs.filter((g) => g.includes("gimbalEvenlyRotate"));
+      const reach = gs.filter((g) => !g.includes("gimbalEvenlyRotate"));
+
+      expect(evenly).toHaveLength(1);
+      expect(field(evenly[0], "actionTriggerType")).toBe(
+        "betweenAdjacentPoints",
+      );
+      // Spans this waypoint and the next — that is the leg the gimbal moves
+      // along.
+      expect(field(evenly[0], "actionGroupStartIndex")).toBe("0");
+      expect(field(evenly[0], "actionGroupEndIndex")).toBe("1");
+      // The interpolation group carries nothing else.
+      expect(evenly[0]).not.toContain("startRecord");
+      expect(evenly[0]).not.toContain("gimbalRotate</wpml:actionActuatorFunc>");
+
+      // Everything that happens AT a waypoint keeps its reachPoint group.
+      expect(reach.some((g) => g.includes("startRecord"))).toBe(true);
+      expect(reach.some((g) => g.includes("stopRecord"))).toBe(true);
+      for (const g of reach) {
+        expect(field(g, "actionTriggerType")).toBe("reachPoint");
+      }
+    });
+  }
+
+  it("gives every action group a distinct id", () => {
+    const xml = buildWaylinesWpml(mission([wp0, wp1]));
+    const ids = [
+      ...xml.matchAll(/<wpml:actionGroupId>([^<]*)<\/wpml:actionGroupId>/g),
+    ].map((m) => m[1]);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("drops a trailing interpolation that has no next waypoint to reach", () => {
+    const lonely = waypoint({
+      index: 0,
+      actions: [
+        {
+          actionId: 0,
+          actionType: "gimbalEvenlyRotate",
+          params: { gimbalPitchRotateAngle: -20 },
+        },
+      ],
+    } as Partial<Waypoint>);
+    const xml = buildWaylinesWpml(mission([lonely]));
+    expect(xml).not.toContain("betweenAdjacentPoints");
+    expect(xml).not.toContain("gimbalEvenlyRotate");
+  });
+});

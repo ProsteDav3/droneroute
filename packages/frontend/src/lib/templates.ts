@@ -1819,6 +1819,92 @@ function applyVideoCaptureActions(
     waypoints.length === 1 ? [...last.actions, stopAction] : [stopAction];
 }
 
+/**
+ * Adds the actions that actually move the gimbal and pull focus, on top of
+ * the per-waypoint `gimbalPitchAngle` values.
+ *
+ * Field-verified on a Matrice 4T, two variants of one orbit flown back to
+ * back. With the pitch numbers alone (`gimbalPitchMode: usePointSetting`, no
+ * actions) the aircraft turned to the POI correctly but the gimbal never
+ * moved — "zůstal na 6 stupních, nemířil vůbec dolů" — and nothing was in
+ * focus. With `gimbalRotate` setting the opening angle, `gimbalEvenlyRotate`
+ * walking it toward the next waypoint's angle on each leg, and one `focus`
+ * once the aircraft has turned to the target, the same flight came back
+ * correctly aimed, correctly tilted and sharp.
+ *
+ * Focus goes on the SECOND waypoint on purpose: the aircraft focuses on
+ * arrival at the start point and only then swings toward the POI, so
+ * focusing any earlier locks onto whatever it was looking at on the way in.
+ *
+ * `gimbalEvenlyRotate` is skipped when the pitch never changes (a plain
+ * circular orbit around its own centre holds one angle the whole way) —
+ * walking the gimbal toward the angle it already holds is noise in the file.
+ */
+function applyOrbitAimingActions(waypoints: TemplateResult["waypoints"]): void {
+  if (waypoints.length === 0) return;
+  const nextId = (i: number) =>
+    waypoints[i].actions.reduce((max, a) => Math.max(max, a.actionId + 1), 0);
+
+  waypoints[0].actions = [
+    ...waypoints[0].actions,
+    {
+      actionId: nextId(0),
+      actionType: "gimbalRotate",
+      params: {
+        gimbalRotateMode: "absoluteAngle",
+        gimbalPitchRotateAngle: waypoints[0].gimbalPitchAngle,
+        payloadPositionIndex: 0,
+      },
+    },
+  ];
+
+  if (waypoints.length > 1) {
+    waypoints[1].actions = [
+      ...waypoints[1].actions,
+      {
+        // One second, matching the flight-verified file exactly: long enough
+        // for the lens to settle before the focus command, short enough not
+        // to read as a stall in the footage.
+        actionId: nextId(1),
+        actionType: "hover",
+        params: { hoverTime: 1 },
+      },
+    ];
+    waypoints[1].actions = [
+      ...waypoints[1].actions,
+      {
+        actionId: nextId(1),
+        actionType: "focus",
+        params: {
+          isPointFocus: true,
+          focusX: 0.5,
+          focusY: 0.5,
+          isInfiniteFocus: false,
+          payloadPositionIndex: 0,
+        },
+      },
+    ];
+  }
+
+  const pitchChanges = waypoints.some(
+    (wp) => wp.gimbalPitchAngle !== waypoints[0].gimbalPitchAngle,
+  );
+  if (!pitchChanges) return;
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    waypoints[i].actions = [
+      ...waypoints[i].actions,
+      {
+        actionId: nextId(i),
+        actionType: "gimbalEvenlyRotate",
+        params: {
+          gimbalPitchRotateAngle: waypoints[i + 1].gimbalPitchAngle,
+          payloadPositionIndex: 0,
+        },
+      },
+    ];
+  }
+}
+
 export function generateOrbit(params: OrbitParams): TemplateResult {
   const {
     center,
@@ -1961,6 +2047,9 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
   if (captureMode === "video") {
     applyVideoCaptureActions(waypoints);
   }
+  // After the capture actions, which replace a waypoint's action list
+  // wholesale — adding the aiming actions first would lose them.
+  applyOrbitAimingActions(waypoints);
 
   return { waypoints, pois };
 }

@@ -1181,22 +1181,18 @@ describe("capture mode (photo/video)", () => {
       captureMode: "video",
     } satisfies OrbitParams);
 
-    expect(result.waypoints[0].actions).toEqual([
-      {
-        actionId: 0,
-        actionType: "startRecord",
-        params: { payloadPositionIndex: 0 },
-      },
-    ]);
-    expect(result.waypoints[result.waypoints.length - 1].actions).toEqual([
-      {
-        actionId: 0,
-        actionType: "stopRecord",
-        params: { payloadPositionIndex: 0 },
-      },
-    ]);
-    for (const wp of result.waypoints.slice(1, -1)) {
-      expect(wp.actions).toEqual([]);
+    // Only the capture actions are asserted here: an orbit also carries the
+    // gimbal/focus actions that aim the camera (see the aiming-actions suite),
+    // and those legitimately sit on the same waypoints.
+    const captureTypes = (i: number) =>
+      result.waypoints[i].actions
+        .map((a) => a.actionType)
+        .filter((t) => t === "startRecord" || t === "stopRecord");
+
+    expect(captureTypes(0)).toEqual(["startRecord"]);
+    expect(captureTypes(result.waypoints.length - 1)).toEqual(["stopRecord"]);
+    for (let i = 1; i < result.waypoints.length - 1; i++) {
+      expect(captureTypes(i)).toEqual([]);
     }
   });
 
@@ -1212,12 +1208,12 @@ describe("capture mode (photo/video)", () => {
     expect(
       result.waypoints.every(
         (wp) =>
-          wp.actions.length === 1 && wp.actions[0].actionType === "takePhoto",
+          wp.actions.filter((a) => a.actionType === "takePhoto").length === 1,
       ),
     ).toBe(true);
   });
 
-  it("generateOrbit: no captureMode at all produces no actions (regression — matches every orbit generated before this field existed)", () => {
+  it("generateOrbit: no captureMode at all shoots nothing (regression — matches every orbit generated before this field existed; the camera-aiming actions are separate and always present)", () => {
     const { captureMode: _omit, ...legacyParams } = {
       ...DEFAULT_ORBIT_PARAMS,
       center: CENTER,
@@ -1226,7 +1222,12 @@ describe("capture mode (photo/video)", () => {
     } satisfies OrbitParams;
     const result = generateOrbit(legacyParams as OrbitParams);
 
-    expect(result.waypoints.every((wp) => wp.actions.length === 0)).toBe(true);
+    const CAPTURE = ["takePhoto", "startRecord", "stopRecord"];
+    expect(
+      result.waypoints.every(
+        (wp) => !wp.actions.some((a) => CAPTURE.includes(a.actionType)),
+      ),
+    ).toBe(true);
   });
 
   it("generateGrid: legacy addPhotos:true with no captureMode still behaves as photo mode (regression)", () => {
@@ -1737,7 +1738,10 @@ describe("capture mode (photo/video)", () => {
     } satisfies OrbitParams);
 
     expect(result.waypoints).toHaveLength(1);
-    expect(result.waypoints[0].actions).toEqual([
+    const capture = result.waypoints[0].actions.filter(
+      (a) => a.actionType === "startRecord" || a.actionType === "stopRecord",
+    );
+    expect(capture).toEqual([
       {
         actionId: 0,
         actionType: "startRecord",
@@ -1749,6 +1753,10 @@ describe("capture mode (photo/video)", () => {
         params: { payloadPositionIndex: 0 },
       },
     ]);
+    // Ids stay unique once the camera-aiming actions join them, or Pilot 2
+    // dedupes one of them away.
+    const ids = result.waypoints[0].actions.map((a) => a.actionId);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 });
 
@@ -2068,17 +2076,16 @@ describe("orbit cinema mode", () => {
     }
     expect(CINEMA_SPEED_MPS).toBeLessThanOrEqual(3);
     // Still a continuous video: one startRecord at the first waypoint, one
-    // stopRecord at the last, nothing in between.
-    expect(result.waypoints[0].actions.map((a) => a.actionType)).toEqual([
-      "startRecord",
-    ]);
-    expect(
-      result.waypoints[result.waypoints.length - 1].actions.map(
-        (a) => a.actionType,
-      ),
-    ).toEqual(["stopRecord"]);
-    for (const wp of result.waypoints.slice(1, -1)) {
-      expect(wp.actions).toEqual([]);
+    // stopRecord at the last, nothing in between. (Camera-aiming actions sit
+    // alongside them and are asserted in their own suite.)
+    const captureTypes = (i: number) =>
+      result.waypoints[i].actions
+        .map((a) => a.actionType)
+        .filter((t) => t === "startRecord" || t === "stopRecord");
+    expect(captureTypes(0)).toEqual(["startRecord"]);
+    expect(captureTypes(result.waypoints.length - 1)).toEqual(["stopRecord"]);
+    for (let i = 1; i < result.waypoints.length - 1; i++) {
+      expect(captureTypes(i)).toEqual([]);
     }
   });
 
@@ -2613,5 +2620,132 @@ describe("radiusForNearestStandoffM", () => {
     expect(
       radiusForNearestStandoffM({ center, poiCenter: POI, ...ARC }, 50, 200),
     ).toBeNull();
+  });
+});
+
+describe("orbit drives the gimbal and focuses, the way the field tests settled it", () => {
+  // Flight-verified on a Matrice 4T. Two variants of the same orbit, flown
+  // back to back:
+  //
+  //   C1 — per-waypoint gimbalPitchAngle only, gimbalPitchMode
+  //        usePointSetting, no gimbal actions. Result: the aircraft turned to
+  //        the POI correctly but the gimbal stayed put ("zůstal na 6
+  //        stupních, nemířil vůbec dolů") and the shot was never in focus.
+  //   C9 — same, plus gimbalRotate on the first waypoint, gimbalEvenlyRotate
+  //        toward the next waypoint's pitch on every leg, and a focus action
+  //        once the aircraft has turned to the POI. Result: correct aim,
+  //        correct gimbal, in focus.
+  //
+  // The pitch numbers alone are not enough — these actions are what actually
+  // moves the gimbal.
+  const params: OrbitParams = {
+    ...DEFAULT_ORBIT_PARAMS,
+    center: CENTER,
+    radiusM: 100,
+    numPoints: 12,
+    altitude: 40,
+    poiHeight: 50,
+    aimHeight: 25,
+    poiCenter: destinationPoint(CENTER[0], CENTER[1], 40, 90),
+    startAngleDeg: 17,
+    endAngleDeg: 287,
+    captureMode: "video",
+  };
+  const typesAt = (
+    wps: ReturnType<typeof generateOrbit>["waypoints"],
+    i: number,
+  ) => wps[i].actions.map((a) => a.actionType);
+
+  it("sets the starting gimbal angle on the first waypoint", () => {
+    const { waypoints } = generateOrbit(params);
+    expect(typesAt(waypoints, 0)).toContain("gimbalRotate");
+    const rotate = waypoints[0].actions.find(
+      (a) => a.actionType === "gimbalRotate",
+    )!;
+    expect(
+      (rotate.params as { gimbalPitchRotateAngle: number })
+        .gimbalPitchRotateAngle,
+    ).toBe(waypoints[0].gimbalPitchAngle);
+  });
+
+  it("walks the gimbal to the next waypoint's pitch on every leg but the last", () => {
+    const { waypoints } = generateOrbit(params);
+    for (let i = 0; i < waypoints.length - 1; i++) {
+      const evenly = waypoints[i].actions.find(
+        (a) => a.actionType === "gimbalEvenlyRotate",
+      );
+      expect(evenly, `waypoint ${i} should walk the gimbal`).toBeDefined();
+      expect(
+        (evenly!.params as { gimbalPitchRotateAngle: number })
+          .gimbalPitchRotateAngle,
+      ).toBe(waypoints[i + 1].gimbalPitchAngle);
+    }
+    // Nothing to interpolate toward past the end.
+    expect(typesAt(waypoints, waypoints.length - 1)).not.toContain(
+      "gimbalEvenlyRotate",
+    );
+  });
+
+  it("focuses on the second waypoint, after the aircraft has turned to the target", () => {
+    // Not the first: the aircraft focuses on arrival at the start point, and
+    // then turns toward the POI — focusing before that turn focuses on
+    // whatever it was pointing at on the way in, which is what the pilot saw
+    // ("kamera zaostří při doletění na start point, ale při otočení na POI
+    // už ne").
+    const { waypoints } = generateOrbit(params);
+    expect(typesAt(waypoints, 0)).not.toContain("focus");
+    expect(typesAt(waypoints, 1)).toContain("focus");
+    // A one-second hover right before it, exactly as in the flight-verified
+    // file — the lens settles, then focuses.
+    const hover = waypoints[1].actions.find((a) => a.actionType === "hover")!;
+    expect(hover.params).toMatchObject({ hoverTime: 1 });
+    expect(typesAt(waypoints, 1).indexOf("hover")).toBeLessThan(
+      typesAt(waypoints, 1).indexOf("focus"),
+    );
+    const focus = waypoints[1].actions.find((a) => a.actionType === "focus")!;
+    expect(focus.params).toMatchObject({
+      isPointFocus: true,
+      focusX: 0.5,
+      focusY: 0.5,
+      isInfiniteFocus: false,
+    });
+  });
+
+  it("keeps recording and photo actions alongside the aiming ones", () => {
+    const video = generateOrbit(params);
+    expect(typesAt(video.waypoints, 0)).toContain("startRecord");
+    expect(typesAt(video.waypoints, video.waypoints.length - 1)).toContain(
+      "stopRecord",
+    );
+
+    const photo = generateOrbit({ ...params, captureMode: "photo" });
+    expect(typesAt(photo.waypoints, 0)).toContain("takePhoto");
+    expect(typesAt(photo.waypoints, 0)).toContain("gimbalRotate");
+  });
+
+  it("gives every action on a waypoint its own id", () => {
+    // Duplicated actionIds inside one waypoint are what Pilot 2 dedupes
+    // against — two actions sharing an id is a silently dropped action.
+    for (const wp of generateOrbit(params).waypoints) {
+      const ids = wp.actions.map((a) => a.actionId);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+  });
+
+  it("does not aim the gimbal for an orbit with no locked target and a flat pitch", () => {
+    // A plain circular orbit around its own centre holds one pitch the whole
+    // way; walking the gimbal toward an identical angle every leg is noise in
+    // the file. The starting angle is still set.
+    const flat = generateOrbit({
+      ...params,
+      poiCenter: undefined,
+      gimbalPitchDeg: -30,
+    });
+    expect(typesAt(flat.waypoints, 0)).toContain("gimbalRotate");
+    expect(
+      flat.waypoints.some((wp) =>
+        wp.actions.some((a) => a.actionType === "gimbalEvenlyRotate"),
+      ),
+    ).toBe(false);
   });
 });

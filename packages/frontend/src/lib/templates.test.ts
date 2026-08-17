@@ -37,6 +37,8 @@ import {
   minStandoffForBuildingPoiClearanceM,
   poiDistanceSwing,
   orbitStandoffViolation,
+  orbitMinStandoffM,
+  buildingLengthShortfall,
   clampOrbitCenterForPoiClearance,
 } from "./templates";
 import type {
@@ -2256,39 +2258,30 @@ describe("orbitStandoffViolation — guards the nearest FLOWN waypoint, not the 
     expect(good).toBeNull();
   });
 
-  it("uses the building's own width too, so a long building needs more room than its height alone implies", () => {
+  it("does NOT block on a building's width — that is advice, not a limit", () => {
+    // A long building cannot fit end-to-end up close; demanding it as a hard
+    // minimum forbade every close orbit of one and pinned the centre handle.
+    // See buildingLengthShortfall for the advisory that replaced it.
     const wide: [number, number][] = [
       destinationPoint(poi[0], poi[1], 35, 90),
       destinationPoint(poi[0], poi[1], 35, 270),
       destinationPoint(poi[0], poi[1], 4, 0),
     ];
-    const withoutBuilding = orbitStandoffViolation(
-      {
-        center: poi,
-        poiCenter: poi,
-        radiusM: 20,
-        startAngleDeg: 0,
-        endAngleDeg: 360,
-        numPoints: 12,
-        poiHeight: 9,
-      },
-      VFOV,
-    );
-    const withBuilding = orbitStandoffViolation(
-      {
-        center: poi,
-        poiCenter: poi,
-        radiusM: 20,
-        startAngleDeg: 0,
-        endAngleDeg: 360,
-        numPoints: 12,
-        poiHeight: 9,
-        buildingVertices: wide,
-      },
-      VFOV,
-    );
-    expect(withoutBuilding).toBeNull();
-    expect(withBuilding).not.toBeNull();
+    expect(
+      orbitStandoffViolation(
+        {
+          center: poi,
+          poiCenter: poi,
+          radiusM: 20,
+          startAngleDeg: 0,
+          endAngleDeg: 360,
+          numPoints: 12,
+          poiHeight: 9,
+          buildingVertices: wide,
+        },
+        VFOV,
+      ),
+    ).toBeNull();
   });
 
   it("is null when there is no locked POI or no object to frame", () => {
@@ -2315,6 +2308,128 @@ describe("orbitStandoffViolation — guards the nearest FLOWN waypoint, not the 
           endAngleDeg: 360,
           numPoints: 12,
           poiHeight: 0,
+        },
+        VFOV,
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("standoff guard blocks only what is objectively broken", () => {
+  const VFOV = 56.8;
+  const c: [number, number] = [49.8, 15.0];
+  /** ~70 x 18 m hall, 10 m tall — the reported case. */
+  const hall: [number, number][] = [
+    destinationPoint(c[0], c[1], 35, 0),
+    destinationPoint(c[0], c[1], 35, 180),
+    destinationPoint(
+      destinationPoint(c[0], c[1], 35, 180)[0],
+      destinationPoint(c[0], c[1], 35, 180)[1],
+      18,
+      90,
+    ),
+    destinationPoint(
+      destinationPoint(c[0], c[1], 35, 0)[0],
+      destinationPoint(c[0], c[1], 35, 0)[1],
+      18,
+      90,
+    ),
+  ];
+
+  it("a close orbit around a long hall is allowed: fitting its whole LENGTH is impossible up close and must not block", () => {
+    // Height rule wants ~10.5 m; the building's length wants ~57 m. Orbiting
+    // at 28 m is a real, useful shot — the subject simply doesn't fit
+    // end-to-end, which is what the advisory below is for.
+    expect(
+      orbitStandoffViolation(
+        {
+          center: c,
+          poiCenter: c,
+          radiusM: 28,
+          startAngleDeg: 0,
+          endAngleDeg: 360,
+          numPoints: 12,
+          poiHeight: 10,
+          buildingVertices: hall,
+        },
+        VFOV,
+      ),
+    ).toBeNull();
+  });
+
+  it("still blocks a waypoint that is too close for the object's own HEIGHT (the reported fly-over)", () => {
+    const v = orbitStandoffViolation(
+      {
+        center: c,
+        poiCenter: c,
+        radiusM: 6,
+        startAngleDeg: 0,
+        endAngleDeg: 360,
+        numPoints: 12,
+        poiHeight: 10,
+        buildingVertices: hall,
+      },
+      VFOV,
+    );
+    expect(v).not.toBeNull();
+    expect(v!.requiredM).toBeCloseTo(minStandoffForFovM(10, VFOV), 1);
+  });
+
+  it("orbitMinStandoffM is the height requirement, not the building's width", () => {
+    expect(orbitMinStandoffM(10, VFOV)).toBeCloseTo(
+      minStandoffForFovM(10, VFOV),
+      6,
+    );
+  });
+
+  it("reports the building-length shortfall as advice, with the distance that would fit it", () => {
+    const advice = buildingLengthShortfall(
+      {
+        center: c,
+        poiCenter: c,
+        radiusM: 28,
+        startAngleDeg: 0,
+        endAngleDeg: 360,
+        numPoints: 12,
+        poiHeight: 10,
+        buildingVertices: hall,
+      },
+      VFOV,
+    );
+    expect(advice).not.toBeNull();
+    expect(advice!.requiredM).toBeGreaterThan(50);
+    expect(advice!.nearestM).toBeCloseTo(28, 0);
+  });
+
+  it("no advice once the orbit is far enough for the whole building", () => {
+    expect(
+      buildingLengthShortfall(
+        {
+          center: c,
+          poiCenter: c,
+          radiusM: 90,
+          startAngleDeg: 0,
+          endAngleDeg: 360,
+          numPoints: 12,
+          poiHeight: 10,
+          buildingVertices: hall,
+        },
+        VFOV,
+      ),
+    ).toBeNull();
+  });
+
+  it("no advice without a building outline — a bare POI has no length to fit", () => {
+    expect(
+      buildingLengthShortfall(
+        {
+          center: c,
+          poiCenter: c,
+          radiusM: 12,
+          startAngleDeg: 0,
+          endAngleDeg: 360,
+          numPoints: 12,
+          poiHeight: 10,
         },
         VFOV,
       ),

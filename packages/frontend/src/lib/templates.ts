@@ -1110,14 +1110,53 @@ function clampOrbitCenterForPoiMinStandoff(
  * Shared by the panel's guard and the centre-drag clamp so both judge by
  * the same number.
  */
-export function orbitMinStandoffM(
-  poiHeight: number,
+export function orbitMinStandoffM(poiHeight: number, vfovDeg: number): number {
+  return minStandoffForFovM(poiHeight, vfovDeg);
+}
+
+/**
+ * How much room a building needs for its whole LENGTH to fit in frame, and
+ * how close the orbit actually gets — advice, never a block.
+ *
+ * Fitting a long building end-to-end is a different requirement from seeing
+ * it at all, and up close it is simply impossible: a 70 m hall needs ~57 m
+ * of standoff for its length but only ~10 m for its height, so treating the
+ * length as a hard minimum forbade every close orbit of a long building and
+ * (because the requirement exceeded the radius) pinned the centre handle
+ * immovable. Orbiting a long building at close range, seeing part of it at
+ * a time, is a real shot; the user just needs to know that is what they are
+ * getting. `null` when there's no building outline, no locked target, or
+ * the orbit already clears the length requirement.
+ */
+export function buildingLengthShortfall(
+  params: Parameters<typeof orbitStandoffViolation>[0],
   vfovDeg: number,
-  buildingVertices?: [number, number][],
-): number {
-  return buildingVertices
-    ? minStandoffForBuildingPoiClearanceM(buildingVertices, poiHeight, vfovDeg)
-    : minStandoffForFovM(poiHeight, vfovDeg);
+): { nearestM: number; requiredM: number } | null {
+  const {
+    center,
+    poiCenter,
+    radiusM,
+    startAngleDeg,
+    endAngleDeg,
+    numPoints,
+    poiHeight,
+    buildingVertices,
+  } = params;
+  if (!buildingVertices || !poiCenter || poiHeight <= 0) return null;
+  const requiredM = minStandoffForBuildingPoiClearanceM(
+    buildingVertices,
+    poiHeight,
+    vfovDeg,
+  );
+  const { nearM } = poiDistanceSwing(
+    center,
+    poiCenter,
+    radiusM,
+    startAngleDeg,
+    endAngleDeg,
+    numPoints,
+  );
+  return nearM >= requiredM ? null : { nearestM: nearM, requiredM };
 }
 
 /**
@@ -1159,10 +1198,11 @@ export function orbitStandoffViolation(
     endAngleDeg,
     numPoints,
     poiHeight,
-    buildingVertices,
   } = params;
   if (!poiCenter || poiHeight <= 0 || numPoints < 1) return null;
-  const requiredM = orbitMinStandoffM(poiHeight, vfovDeg, buildingVertices);
+  // Height only. The building's own length is a separate, softer question —
+  // see buildingLengthShortfall for why it must not block.
+  const requiredM = orbitMinStandoffM(poiHeight, vfovDeg);
 
   const closedLoop = endAngleDeg - startAngleDeg >= 360;
   const divisor = closedLoop ? numPoints : Math.max(1, numPoints - 1);

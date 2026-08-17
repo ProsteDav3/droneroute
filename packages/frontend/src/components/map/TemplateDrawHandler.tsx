@@ -306,11 +306,13 @@ export function TemplateDrawHandler() {
 
   /** The locked-POI clearance minimum — same number the config panel's own
    * guard uses (see `orbitStandoffViolation`), so the drag clamp and the
-   * warning can never disagree about how much room the subject needs. */
-  const poiClearanceStandoffM = (
-    poiHeight: number,
-    buildingVertices?: [number, number][],
-  ) => orbitMinStandoffM(poiHeight, vfovDeg, buildingVertices);
+   * warning can never disagree about how much room the subject needs.
+   * Deliberately the object's HEIGHT requirement only: a long building's
+   * length needs far more room, and demanding it here made the requirement
+   * exceed the radius, which clamped the centre handle to a single point the
+   * user could not move at all. */
+  const poiClearanceStandoffM = (poiHeight: number) =>
+    orbitMinStandoffM(poiHeight, vfovDeg);
 
   const resetState = useCallback(() => {
     setDragging(false);
@@ -784,10 +786,7 @@ export function TemplateDrawHandler() {
                   type="geojson"
                   data={buildGuideRingGeojson(
                     orbitParams.poiCenter,
-                    poiClearanceStandoffM(
-                      orbitParams.poiHeight,
-                      orbitParams.buildingVertices,
-                    ),
+                    poiClearanceStandoffM(orbitParams.poiHeight),
                   )}
                 >
                   <Layer
@@ -813,10 +812,7 @@ export function TemplateDrawHandler() {
                       newCenter,
                       orbitParams.poiCenter,
                       orbitParams.radiusM,
-                      poiClearanceStandoffM(
-                        orbitParams.poiHeight,
-                        orbitParams.buildingVertices,
-                      ),
+                      poiClearanceStandoffM(orbitParams.poiHeight),
                     )
                   : newCenter;
               setOrbitParams({ ...orbitParams, center: clampedCenter });

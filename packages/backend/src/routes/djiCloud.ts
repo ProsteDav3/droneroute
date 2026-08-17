@@ -39,7 +39,10 @@ import {
 import { getDb } from "../models/db.js";
 import { authMiddleware, type AuthRequest } from "../middleware/auth.js";
 import { globalLimiter, strictLimiter } from "../middleware/rateLimit.js";
-import { validateMissionGeometry } from "../services/missionValidation.js";
+import {
+  validateMissionGeometry,
+  staleAimingWarning,
+} from "../services/missionValidation.js";
 import { logger } from "../lib/logger.js";
 
 function isMissionOwnedByUser(missionId: string, userId: string): boolean {
@@ -163,7 +166,7 @@ djiCloudRoutes.post(
         req.userId,
       );
 
-      res.json({ waylineName });
+      res.json({ waylineName, warning: staleAimingWarning(waypoints) });
     } catch (err) {
       // Full detail stays server-side only -- the upstream platform's raw
       // response text must never reach the client (AGENTS.md policy).
@@ -257,7 +260,7 @@ djiCloudRoutes.post(
       );
       const { count } = await uploadSegmentsToDjiCloud(kmzSegments, req.userId);
 
-      res.json({ count });
+      res.json({ count, warning: staleAimingWarning(waypoints) });
     } catch (err) {
       logger.error({ err }, "DJI Cloud segments upload error");
       // Surface a partial-success count so the user knows some legs are

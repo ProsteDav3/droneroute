@@ -4,6 +4,7 @@ import {
   validateMissionUpdate,
   validateMissionGeometry,
   validateMissionComment,
+  staleAimingWarning,
 } from "./missionValidation.js";
 
 const validWaypoint = {
@@ -350,5 +351,50 @@ describe("validateMissionGeometry", () => {
         waypoints: [{ ...validWaypoint, latitude: 999 }],
       }),
     ).toBe("souřadnice bodu trasy mimo rozsah");
+  });
+});
+
+describe("staleAimingWarning", () => {
+  const tracking = (actions: { actionType: string }[] = []) => ({
+    headingMode: "towardPOI",
+    actions,
+  });
+
+  it("warns when every waypoint tracks the target but nothing commands the gimbal", () => {
+    const warning = staleAimingWarning([tracking(), tracking(), tracking()]);
+    expect(warning).toContain("3 bodů trasy");
+    expect(warning).toContain("gimbal");
+  });
+
+  it("stays quiet once the route sets the gimbal", () => {
+    expect(
+      staleAimingWarning([
+        tracking([{ actionType: "gimbalRotate" }]),
+        tracking([{ actionType: "gimbalEvenlyRotate" }]),
+      ]),
+    ).toBeNull();
+  });
+
+  it("stays quiet for a route that doesn't track a target at all", () => {
+    // Manual camera control, or a plain survey grid — the pilot or the flight
+    // path owns the camera, and there is nothing to be stale about.
+    expect(
+      staleAimingWarning([
+        { headingMode: "manually", actions: [] },
+        {
+          headingMode: "followWayline",
+          actions: [{ actionType: "takePhoto" }],
+        },
+      ]),
+    ).toBeNull();
+  });
+
+  it("counts only the tracking waypoints, and survives waypoints with no actions field", () => {
+    const warning = staleAimingWarning([
+      { headingMode: "followWayline" },
+      tracking(),
+      tracking(),
+    ]);
+    expect(warning).toContain("2 bodů trasy");
   });
 });

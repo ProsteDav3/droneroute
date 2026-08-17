@@ -288,15 +288,22 @@ export function useMissionFileActions({
 
     setUploadingToDjiCloud(true);
     try {
-      const res = await api.post<{ waylineName: string }>("/dji-cloud/upload", {
-        name: missionName,
-        config,
-        waypoints,
-        pois,
-      });
+      const res = await api.post<{ waylineName: string; warning?: string }>(
+        "/dji-cloud/upload",
+        {
+          name: missionName,
+          config,
+          waypoints,
+          pois,
+        },
+      );
       toast.success(
         `Mise nahrána do DJI Cloud jako "${res.waylineName}" — najdete ji v Pilot 2 v záložce Cloud`,
       );
+      // The upload succeeded; this says the route itself won't aim the camera
+      // (see staleAimingWarning). Long duration because it's the difference
+      // between usable footage and a wasted flight.
+      if (res.warning) toast.warning(res.warning, { duration: 30_000 });
     } catch (err: any) {
       toast.error(`Nahrání do DJI Cloud selhalo: ${err.message}`);
     } finally {
@@ -316,7 +323,7 @@ export function useMissionFileActions({
 
     setUploadingSegmentsToDjiCloud(true);
     try {
-      const res = await api.post<{ count: number }>(
+      const res = await api.post<{ count: number; warning?: string }>(
         "/dji-cloud/upload-segments",
         {
           name: missionName,
@@ -328,6 +335,7 @@ export function useMissionFileActions({
       toast.success(
         `Nahráno ${res.count} segmentů do DJI Cloud — najdete je v Pilot 2 v záložce Cloud`,
       );
+      if (res.warning) toast.warning(res.warning, { duration: 30_000 });
     } catch (err: any) {
       // On a partial failure the backend reports how many legs already
       // uploaded, so the user doesn't re-run and create duplicates.

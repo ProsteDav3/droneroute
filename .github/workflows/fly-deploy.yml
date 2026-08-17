@@ -13,6 +13,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only
+      # The Dockerfile already accepts COMMIT_SHA and vite bakes it into the
+      # About dialog — but nothing ever passed it, so every deployed build
+      # identified itself as "dev". That made the one question worth asking
+      # after a deploy ("is the browser running the new code, or a cached
+      # shell?") unanswerable, and a stale service worker cost a full
+      # re-plan-and-upload cycle before it was spotted.
+      - run: flyctl deploy --remote-only --build-arg COMMIT_SHA=${GITHUB_SHA::7}
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          GITHUB_SHA: ${{ github.sha }}

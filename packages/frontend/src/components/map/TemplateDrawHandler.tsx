@@ -813,6 +813,7 @@ export function TemplateDrawHandler() {
                       orbitParams.poiCenter,
                       orbitParams.radiusM,
                       poiClearanceStandoffM(orbitParams.poiHeight),
+                      orbitParams.center,
                     )
                   : newCenter;
               setOrbitParams({ ...orbitParams, center: clampedCenter });

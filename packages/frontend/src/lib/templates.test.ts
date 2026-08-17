@@ -2436,3 +2436,61 @@ describe("standoff guard blocks only what is objectively broken", () => {
     ).toBeNull();
   });
 });
+
+describe("centre drag never teleports across the POI's forbidden band", () => {
+  const POI: [number, number] = [50.06, 14.43];
+  const radiusM = 100;
+  const minStandoffM = 42; // a 40 m object
+
+  const at = (m: number) => destinationPoint(POI[0], POI[1], m, 90);
+  const offsetOf = (p: [number, number]) =>
+    haversineDistance(POI[0], POI[1], p[0], p[1]);
+
+  it("stops at the near boundary when dragging outward from the POI", () => {
+    // Anywhere in the forbidden band the clamp must hold the centre at the
+    // inner boundary (58 m). Dragging further used to flip to the far
+    // solution at 142 m once past the midpoint — the centre visibly jumped
+    // right out of the guide ring, which is what a user hit.
+    for (const d of [60, 80, 100, 120, 139]) {
+      const clamped = clampOrbitCenterForPoiClearance(
+        at(d),
+        POI,
+        radiusM,
+        minStandoffM,
+        at(10),
+      );
+      expect(offsetOf(clamped)).toBeCloseTo(radiusM - minStandoffM, 0);
+    }
+  });
+
+  it("keeps a centre already outside the band on its own side", () => {
+    // Started outside (POI outside the circle) and dragged inward a little:
+    // stay outside, at the outer boundary — not yanked across to the inside.
+    const clamped = clampOrbitCenterForPoiClearance(
+      at(130),
+      POI,
+      radiusM,
+      minStandoffM,
+      at(200),
+    );
+    expect(offsetOf(clamped)).toBeCloseTo(radiusM + minStandoffM, 0);
+  });
+
+  it("leaves a valid position untouched on either side", () => {
+    for (const d of [0, 30, 58, 142, 300]) {
+      const clamped = clampOrbitCenterForPoiClearance(
+        at(d),
+        POI,
+        radiusM,
+        minStandoffM,
+        at(d),
+      );
+      expect(offsetOf(clamped)).toBeCloseTo(d, 0);
+    }
+  });
+
+  it("pins to the POI when the radius itself is under the minimum (no inside solution)", () => {
+    const clamped = clampOrbitCenterForPoiClearance(at(20), POI, 30, 50, at(0));
+    expect(offsetOf(clamped)).toBeCloseTo(0, 0);
+  });
+});

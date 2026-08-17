@@ -112,6 +112,13 @@ export interface OrbitParams {
    */
   endAngleDeg: number;
   /**
+   * Distance from the centre to the middle of the flown arc, when the orbit
+   * should be an oval rather than a circle — see `orbitRadiusAtBearing`. The
+   * arc's two ends stay on `radiusM`. `undefined` (the default) is a plain
+   * circle.
+   */
+  midArcRadiusM?: number;
+  /**
    * Real height of the object being orbited, measured from ground level —
    * the input to the "does the whole thing fit in shot" framing solve. NOT
    * where the camera points; that's `aimHeight`.
@@ -1112,6 +1119,10 @@ export function buildingLengthShortfall(
     startAngleDeg,
     endAngleDeg,
     numPoints,
+    {
+      clockwise: params.clockwise ?? true,
+      midArcRadiusM: params.midArcRadiusM,
+    },
   );
   return nearM >= requiredM ? null : { nearestM: nearM, requiredM };
 }
@@ -1143,6 +1154,8 @@ export function orbitStandoffViolation(
     endAngleDeg: number;
     numPoints: number;
     poiHeight: number;
+    clockwise?: boolean;
+    midArcRadiusM?: number;
     buildingVertices?: [number, number][];
   },
   vfovDeg: number,
@@ -1155,6 +1168,8 @@ export function orbitStandoffViolation(
     endAngleDeg,
     numPoints,
     poiHeight,
+    clockwise,
+    midArcRadiusM,
   } = params;
   if (!poiCenter || poiHeight <= 0 || numPoints < 1) return null;
   // Height only. The building's own length is a separate, softer question —
@@ -1173,7 +1188,16 @@ export function orbitStandoffViolation(
     const [lat, lng] = destinationPoint(
       center[0],
       center[1],
-      radiusM,
+      orbitRadiusAtBearing(
+        {
+          radiusM,
+          startAngleDeg,
+          endAngleDeg,
+          clockwise: clockwise ?? true,
+          midArcRadiusM,
+        },
+        angleDeg,
+      ),
       angleDeg,
     );
     const d = haversine(lat, lng, poiCenter[0], poiCenter[1]);
@@ -1208,6 +1232,10 @@ export function poiDistanceSwing(
   startAngleDeg: number,
   endAngleDeg: number,
   numPoints: number,
+  /** Present when the orbit is an oval — see `orbitRadiusAtBearing`. Omitted
+   * means a circle, which is what every caller measured before ovals
+   * existed. */
+  shape?: { clockwise: boolean; midArcRadiusM?: number },
 ): { nearM: number; farM: number; ratio: number } {
   const closedLoop = endAngleDeg - startAngleDeg >= 360;
   const divisor = closedLoop ? numPoints : Math.max(1, numPoints - 1);
@@ -1221,7 +1249,16 @@ export function poiDistanceSwing(
     const [lat, lng] = destinationPoint(
       center[0],
       center[1],
-      radiusM,
+      orbitRadiusAtBearing(
+        {
+          radiusM,
+          startAngleDeg,
+          endAngleDeg,
+          clockwise: shape?.clockwise ?? true,
+          midArcRadiusM: shape?.midArcRadiusM,
+        },
+        angleDeg,
+      ),
       angleDeg,
     );
     const d = haversine(lat, lng, poi[0], poi[1]);
@@ -1229,6 +1266,71 @@ export function poiDistanceSwing(
     if (d > farM) farM = d;
   }
   return { nearM, farM, ratio: nearM > 0 ? farM / nearM : Infinity };
+}
+
+/**
+ * The arc actually flown, as a signed sweep in degrees (positive clockwise).
+ * A full circle is ±360; an open arc is the direct increasing-angle sweep
+ * from start to end, or its 360° complement when flying anticlockwise — the
+ * two arcs between the same pair of bearings.
+ */
+export function signedArcSweepDeg(
+  startAngleDeg: number,
+  endAngleDeg: number,
+  clockwise: boolean,
+): number {
+  if (endAngleDeg - startAngleDeg >= 360) return clockwise ? 360 : -360;
+  const clockwiseSweep = (((endAngleDeg - startAngleDeg) % 360) + 360) % 360;
+  return clockwise ? clockwiseSweep : clockwiseSweep - 360;
+}
+
+/**
+ * Distance from an orbit's centre to its path at a given bearing.
+ *
+ * A plain orbit is a circle: the answer is always `radiusM`. With
+ * `midArcRadiusM` set it becomes an oval — the middle of the flown arc sits
+ * at that distance while both ends stay exactly on `radiusM`, i.e. exactly
+ * where the user placed them.
+ *
+ * Why this exists: with the camera target locked off to one side, the far
+ * side of the arc is much farther from the subject than its ends. On the
+ * Congress Centre orbit that is 67 m at the start and end against 147 m in
+ * the middle — the building shrinks to less than half over the shot. Pulling
+ * the middle in evens that out without giving up the start and end
+ * positions, which are chosen to sit in front of the building.
+ *
+ * The radius is blended with a raised cosine rather than fitted to a true
+ * ellipse. Visually the same oval, but it is defined for every value: an
+ * ellipse through fixed end points has no solution once the mid-arc
+ * semi-axis drops below `radiusM · |cos(halfSweep)|` (71 m on a 270° arc at
+ * radius 100), which would put a hard floor on the one number the user is
+ * dragging. The blend is also flat at both the middle and the ends, so the
+ * path is tangent-continuous there — no kink where the pull starts.
+ */
+export function orbitRadiusAtBearing(
+  params: {
+    radiusM: number;
+    startAngleDeg: number;
+    endAngleDeg: number;
+    clockwise: boolean;
+    midArcRadiusM?: number;
+  },
+  bearingDeg: number,
+): number {
+  const { radiusM, startAngleDeg, endAngleDeg, clockwise, midArcRadiusM } =
+    params;
+  if (midArcRadiusM === undefined || midArcRadiusM === radiusM) return radiusM;
+
+  const signedSweep = signedArcSweepDeg(startAngleDeg, endAngleDeg, clockwise);
+  const midBearing = startAngleDeg + signedSweep / 2;
+  const halfSweep = Math.abs(signedSweep) / 2;
+  if (halfSweep === 0) return radiusM;
+
+  // Angular distance from the middle of the flown arc, -180..180.
+  const offset = Math.abs(((bearingDeg - midBearing + 540) % 360) - 180);
+  const t = Math.min(offset / halfSweep, 1);
+  const blend = (1 - Math.cos(Math.PI * t)) / 2; // 0 at the middle, 1 at the ends
+  return midArcRadiusM + (radiusM - midArcRadiusM) * blend;
 }
 
 /** How finely the geometry solves below bisect. 24 halvings resolve a
@@ -1915,6 +2017,7 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     endAngleDeg,
     poiHeight,
     aimHeight,
+    midArcRadiusM,
     gimbalPitchDeg,
     poiCenter,
     captureMode,
@@ -1962,18 +2065,17 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
   // airspace instead of tracing the requested end angle.
   const isClosedLoop = endAngleDeg - startAngleDeg >= 360;
   const divisor = isClosedLoop ? numPoints : Math.max(1, numPoints - 1);
-  let signedSweep: number;
-  if (isClosedLoop) {
-    signedSweep = clockwise ? 360 : -360;
-  } else {
-    const clockwiseSweep = (((endAngleDeg - startAngleDeg) % 360) + 360) % 360;
-    signedSweep = clockwise ? clockwiseSweep : clockwiseSweep - 360;
-  }
+  const signedSweep = signedArcSweepDeg(startAngleDeg, endAngleDeg, clockwise);
 
   for (let i = 0; i < numPoints; i++) {
     const fraction = i / divisor;
     const angleDeg = startAngleDeg + fraction * signedSweep;
-    const [lat, lng] = destinationPoint(cLat, cLng, radiusM, angleDeg);
+    // Distance from the centre varies with bearing once this is an oval.
+    const bearingRadiusM = orbitRadiusAtBearing(
+      { radiusM, startAngleDeg, endAngleDeg, clockwise, midArcRadiusM },
+      angleDeg,
+    );
+    const [lat, lng] = destinationPoint(cLat, cLng, bearingRadiusM, angleDeg);
 
     // Calculate heading angle toward the aim point (== center unless
     // poiCenter decouples them), and the gimbal pitch. Two cases:

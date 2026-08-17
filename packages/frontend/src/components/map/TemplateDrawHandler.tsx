@@ -18,6 +18,7 @@ import {
   computeGimbalPitch,
   orbitMinStandoffM,
   clampOrbitCenterForPoiClearance,
+  signedArcSweepDeg,
   recomputeBuildingOrbitForArc,
   DEFAULT_ORBIT_PARAMS,
   DEFAULT_GRID_PARAMS,
@@ -144,6 +145,57 @@ function OrbitCenterHandle({
           background: "#fbbf24",
           border: "3px solid #f59e0b",
           boxShadow: "0 0 0 4px rgba(251,191,36,0.35)",
+          cursor: "grab",
+        }}
+      />
+    </Marker>
+  );
+}
+
+/**
+ * A draggable handle sitting on the middle of the flown arc. Dragging it
+ * toward or away from the orbit's centre turns the circle into an oval:
+ * `midArcRadiusM` is the handle's distance from the centre, and the arc's
+ * two ends stay exactly where they were placed (see `orbitRadiusAtBearing`).
+ *
+ * Only the distance along the mid-arc bearing is taken from the drag —
+ * sideways movement would otherwise rotate the shape out from under the
+ * start/end angles the user set deliberately.
+ */
+function OrbitMidArcHandle({
+  center,
+  midPoint,
+  onDistance,
+}: {
+  center: [number, number];
+  midPoint: [number, number];
+  onDistance: (distanceM: number) => void;
+}) {
+  const handleDrag = useCallback(
+    (e: { lngLat: { lng: number; lat: number } }) => {
+      onDistance(haversine(center[0], center[1], e.lngLat.lat, e.lngLat.lng));
+    },
+    [center, onDistance],
+  );
+
+  return (
+    <Marker
+      longitude={midPoint[1]}
+      latitude={midPoint[0]}
+      anchor="center"
+      draggable
+      onDrag={handleDrag}
+      style={{ zIndex: 8 }}
+    >
+      <div
+        title="Přetažením ke středu z orbitu uděláte ovál — střed oblouku se přiblíží k objektu, začátek a konec zůstanou na místě"
+        style={{
+          width: 16,
+          height: 16,
+          borderRadius: "50%",
+          background: "#a78bfa",
+          border: "3px solid #8b5cf6",
+          boxShadow: "0 0 0 4px rgba(167,139,250,0.35)",
           cursor: "grab",
         }}
       />
@@ -803,6 +855,38 @@ export function TemplateDrawHandler() {
               )}
             </>
           )}
+          {orbitParams.poiCenter &&
+            (() => {
+              // Mid-arc handle: pulling the middle of the arc in only means
+              // anything against a locked, off-centre target — with the POI at
+              // the orbit's own centre every waypoint is already equidistant.
+              const sweep = signedArcSweepDeg(
+                orbitParams.startAngleDeg,
+                orbitParams.endAngleDeg,
+                orbitParams.clockwise,
+              );
+              const midBearing = orbitParams.startAngleDeg + sweep / 2;
+              const midRadius =
+                orbitParams.midArcRadiusM ?? orbitParams.radiusM;
+              const midPoint = destinationPoint(
+                orbitParams.center[0],
+                orbitParams.center[1],
+                midRadius,
+                midBearing,
+              );
+              return (
+                <OrbitMidArcHandle
+                  center={orbitParams.center}
+                  midPoint={midPoint}
+                  onDistance={(distanceM) =>
+                    setOrbitParams({
+                      ...orbitParams,
+                      midArcRadiusM: Math.max(1, Math.round(distanceM)),
+                    })
+                  }
+                />
+              );
+            })()}
           <OrbitCenterHandle
             center={orbitParams.center}
             onMove={(newCenter) => {

@@ -42,6 +42,7 @@ import {
   buildingLengthShortfall,
   clampOrbitCenterForPoiClearance,
   radiusForNearestStandoffM,
+  orbitRadiusAtBearing,
 } from "./templates";
 import type {
   OrbitParams,
@@ -2783,5 +2784,185 @@ describe("an orbit's opening gimbal command never touches yaw", () => {
     const params = rotate.params as unknown as Record<string, unknown>;
     expect(params.gimbalYawRotateEnable).toBeFalsy();
     expect(params).toHaveProperty("gimbalPitchRotateAngle");
+  });
+});
+
+describe("oval orbit: pulling the middle of the arc in", () => {
+  // With the POI locked off-centre, the far side of the arc is much farther
+  // from the subject than its ends — 67 m at the start and end of the KCP
+  // orbit against 147 m in the middle, so the building shrinks 2.2x over the
+  // shot. `midArcRadiusM` pulls the middle in while leaving the ends exactly
+  // where they were placed.
+  const base = {
+    radiusM: 100,
+    startAngleDeg: 17,
+    endAngleDeg: 287,
+    clockwise: true,
+  };
+
+  it("is a plain circle when no mid-arc radius is set", () => {
+    for (const angle of [17, 100, 152, 250, 287]) {
+      expect(orbitRadiusAtBearing(base, angle)).toBeCloseTo(100, 6);
+    }
+  });
+
+  it("keeps the arc's two ends at the original radius", () => {
+    const oval = { ...base, midArcRadiusM: 70 };
+    expect(orbitRadiusAtBearing(oval, 17)).toBeCloseTo(100, 6);
+    expect(orbitRadiusAtBearing(oval, 287)).toBeCloseTo(100, 6);
+  });
+
+  it("puts the middle of the arc exactly at the requested distance", () => {
+    const oval = { ...base, midArcRadiusM: 70 };
+    // Middle of a 270 degree clockwise arc starting at 17 degrees.
+    expect(orbitRadiusAtBearing(oval, 17 + 135)).toBeCloseTo(70, 6);
+  });
+
+  it("varies smoothly and monotonically between the middle and each end", () => {
+    const oval = { ...base, midArcRadiusM: 70 };
+    let previous = 70;
+    for (let offset = 0; offset <= 135; offset += 5) {
+      const r = orbitRadiusAtBearing(oval, 17 + 135 + offset);
+      expect(r).toBeGreaterThanOrEqual(previous - 1e-9);
+      expect(r).toBeLessThanOrEqual(100 + 1e-9);
+      previous = r;
+    }
+  });
+
+  it("is symmetric about the middle of the arc", () => {
+    const oval = { ...base, midArcRadiusM: 60 };
+    for (const offset of [10, 45, 90, 130]) {
+      expect(orbitRadiusAtBearing(oval, 17 + 135 + offset)).toBeCloseTo(
+        orbitRadiusAtBearing(oval, 17 + 135 - offset),
+        6,
+      );
+    }
+  });
+
+  it("can also push the middle out, not just pull it in", () => {
+    const oval = { ...base, midArcRadiusM: 140 };
+    expect(orbitRadiusAtBearing(oval, 17 + 135)).toBeCloseTo(140, 6);
+    expect(orbitRadiusAtBearing(oval, 17)).toBeCloseTo(100, 6);
+  });
+
+  it("handles a closed 360 degree loop without a seam", () => {
+    // No arc ends to pin, so the shape runs from the mid-arc distance round
+    // to the full radius at the start bearing — and must join up smoothly
+    // there rather than stepping.
+    const loop = {
+      radiusM: 100,
+      startAngleDeg: 0,
+      endAngleDeg: 360,
+      clockwise: true,
+      midArcRadiusM: 60,
+    };
+    expect(orbitRadiusAtBearing(loop, 180)).toBeCloseTo(60, 6);
+    expect(orbitRadiusAtBearing(loop, 0)).toBeCloseTo(100, 6);
+    expect(orbitRadiusAtBearing(loop, 359.99)).toBeCloseTo(
+      orbitRadiusAtBearing(loop, 0.01),
+      3,
+    );
+  });
+
+  it("follows the flown arc when it runs anticlockwise", () => {
+    // The middle of the arc is the middle of the path actually flown, not
+    // the middle of the numeric angle range.
+    const ccw = { ...base, clockwise: false, midArcRadiusM: 70 };
+    expect(orbitRadiusAtBearing(ccw, 17 - 45)).toBeCloseTo(70, 6);
+    expect(orbitRadiusAtBearing(ccw, 17)).toBeCloseTo(100, 6);
+    expect(orbitRadiusAtBearing(ccw, 287)).toBeCloseTo(100, 6);
+  });
+});
+
+describe("an oval orbit's waypoints, and everything that measures them", () => {
+  const POI: [number, number] = [50.06152, 14.429187];
+  const params: OrbitParams = {
+    ...DEFAULT_ORBIT_PARAMS,
+    center: destinationPoint(POI[0], POI[1], 47, 150.75),
+    radiusM: 100,
+    numPoints: 24,
+    altitude: 60,
+    poiHeight: 50,
+    aimHeight: 25,
+    poiCenter: POI,
+    startAngleDeg: 17,
+    endAngleDeg: 287,
+    captureMode: "video",
+  };
+  const distances = (p: OrbitParams) =>
+    generateOrbit(p).waypoints.map((wp) =>
+      haversineDistance(wp.latitude, wp.longitude, POI[0], POI[1]),
+    );
+
+  it("evens out how far the aircraft gets from the subject", () => {
+    const circle = distances(params);
+    const oval = distances({ ...params, midArcRadiusM: 60 });
+    const swing = (d: number[]) => Math.max(...d) / Math.min(...d);
+
+    expect(swing(oval)).toBeLessThan(swing(circle));
+    expect(Math.max(...oval)).toBeLessThan(Math.max(...circle) - 20);
+  });
+
+  it("leaves the first and last waypoints exactly where the circle had them", () => {
+    const circle = generateOrbit(params).waypoints;
+    const oval = generateOrbit({ ...params, midArcRadiusM: 60 }).waypoints;
+    const last = circle.length - 1;
+
+    for (const i of [0, last]) {
+      expect(oval[i].latitude).toBeCloseTo(circle[i].latitude, 9);
+      expect(oval[i].longitude).toBeCloseTo(circle[i].longitude, 9);
+    }
+  });
+
+  it("re-aims the gimbal for the distances actually flown", () => {
+    // Pulling the middle in brings the subject closer there, so the camera
+    // has to look further down at those waypoints than it would on a circle.
+    const middle = Math.floor(params.numPoints / 2);
+    const circle = generateOrbit(params).waypoints[middle];
+    const oval = generateOrbit({ ...params, midArcRadiusM: 60 }).waypoints[
+      middle
+    ];
+    expect(oval.gimbalPitchAngle).toBeLessThan(circle.gimbalPitchAngle);
+  });
+
+  it("reports the swing of the oval, not of the circle it started as", () => {
+    const oval = { ...params, midArcRadiusM: 60 };
+    const swing = poiDistanceSwing(
+      oval.center,
+      POI,
+      oval.radiusM,
+      oval.startAngleDeg,
+      oval.endAngleDeg,
+      oval.numPoints,
+      { clockwise: oval.clockwise, midArcRadiusM: oval.midArcRadiusM },
+    );
+    const flown = distances(oval);
+
+    expect(swing.nearM).toBeCloseTo(Math.min(...flown), 0);
+    expect(swing.farM).toBeCloseTo(Math.max(...flown), 0);
+  });
+
+  it("checks the standoff on the oval's own waypoints", () => {
+    // An oval pulled hard in must trip the same guard a too-small circle
+    // would — the guard has to judge the shape that will actually be flown.
+    // The arc here is turned so its middle faces the POI (on the KCP orbit
+    // the middle faces away from it, and pulling that in can never get
+    // closer to the subject than the centre itself).
+    const facingPoi: OrbitParams = {
+      ...params,
+      startAngleDeg: 240,
+      endAngleDeg: 60,
+    };
+    expect(orbitStandoffViolation(facingPoi, DEFAULT_WIDE_VFOV_DEG)).toBeNull();
+
+    const pulledOntoIt = { ...facingPoi, midArcRadiusM: 40 };
+    const violation = orbitStandoffViolation(
+      pulledOntoIt,
+      DEFAULT_WIDE_VFOV_DEG,
+    );
+    expect(violation).not.toBeNull();
+    expect(violation!.nearestM).toBeLessThan(
+      orbitMinStandoffM(params.poiHeight, DEFAULT_WIDE_VFOV_DEG),
+    );
   });
 });

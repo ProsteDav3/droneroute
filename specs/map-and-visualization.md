@@ -13,6 +13,7 @@ An interactive map where you plan flights and see everything at a glance.
 - **Color the flight path by height or speed** instead of a flat color — set "Barvení trasy" in the Visualization tab of the settings dialog to "Podle výšky" or "Podle rychlosti" and each segment is colored along a blue (low) → green → yellow → red (high) gradient, normalized against the whole mission's own min/max. A segment that crosses an obstacle still always renders red regardless of this setting — that's a safety warning, not a style choice.
 - See colored lines from waypoints to POIs showing camera aim (green = correct pitch, red = needs adjustment).
 - See obstacle polygons drawn on the map.
+- Click a `Budova` you've already added to open its **on-map menu** (height, create an orbit around it, remove it) instead of hunting for its row in the sidebar. Buildings the mission owns take precedence over the OpenStreetMap footprint underneath them.
 - Click extruded 3D buildings to **convert them to an obstacle or to a `Budova`** (building) object via a popup — the same kind of building you'd get from drawing one by hand, ready for Facade scans or orbit-from-building.
 - Use the floating toolbar to switch between waypoint mode, POI mode, and template tools.
 - View an elevation graph below the waypoint list that shows altitude changes across the flight, with the real ground elevation along the path overlaid as a shaded terrain profile.

@@ -9,6 +9,7 @@ Draw building footprints on the map so the app can recommend orbit settings auto
 - See a list of all buildings in the sidebar, with area and height, and edit or delete them.
 - Place a point of interest (POI) on a building to have its height copied automatically, and to pre-fill the Orbit template panel with a recommended flight altitude, radius, and gimbal pitch for orbiting that building — instead of typing those numbers in by hand.
 - Click the orbit icon next to a building in the sidebar list for the same pre-filled Orbit panel directly, without placing a POI first.
+- Click a building you've already added, directly on the map, to get a small menu on the spot: change its height, create an orbit around it, or remove it — without first finding its row in the sidebar list. Clicking also selects the building, so its vertices become draggable straight away.
 - Click an extruded 3D building on the map (from OpenStreetMap data, at zoom 14+) and choose **Převést na budovu** in the popup to add it as a building without drawing it by hand — its footprint and height come straight from the map data.
 - Large complexes are often split into several separate footprints in OpenStreetMap. Hold **Shift** and click each adjacent fragment to add it to the selection, then choose **Sloučit a převést na budovu** to merge them into one accurate building outline (a true polygon union, not just a bounding box) instead of converting each fragment one at a time. The merged building's height is the tallest of the selected fragments.
 
@@ -18,6 +19,7 @@ Draw building footprints on the map so the app can recommend orbit settings auto
 2. Choose **Rect** (click-and-drag two opposite corners) or **Polygon** (click to place each corner, then click near the first point or double-click to close the shape).
 3. Enter the building's height in the panel that appears, then click Apply.
 4. To create an orbit around it, either:
+   - Click the building on the map and choose **Vytvořit orbit** in the menu that appears, or
    - Click the orbit icon next to that building in the sidebar list, or
    - Switch to **Add POI** (press **P**) and click somewhere inside the building's footprint. The new POI's height is set to the building's height.
 

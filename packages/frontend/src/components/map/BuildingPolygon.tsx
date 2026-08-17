@@ -5,6 +5,11 @@ import { usePreferencesStore } from "@/store/preferencesStore";
 import { heightLabel, toDisplayHeight } from "@/lib/units";
 import { useMemo } from "react";
 import { EdgeLengthLabels } from "./EdgeLengthLabels";
+import {
+  buildingFillLayerIds,
+  buildingOutlineLayerId,
+  buildingSourceId,
+} from "@/lib/buildingLayers";
 
 const BUILDING_EDGE_LABEL_CLASS_NAME =
   "pointer-events-none px-1 py-0.5 rounded bg-blue-950/70 border border-blue-400/50 text-[10px] font-mono text-blue-200 whitespace-nowrap";
@@ -58,7 +63,8 @@ export function BuildingPolygon({ building, is3D }: BuildingPolygonProps) {
     return [lat, lng];
   }, [building.vertices]);
 
-  const sourceId = `building-${building.id}`;
+  const sourceId = buildingSourceId(building.id);
+  const [fill2dLayerId, fill3dLayerId] = buildingFillLayerIds(building.id);
 
   return (
     <>
@@ -77,7 +83,7 @@ export function BuildingPolygon({ building, is3D }: BuildingPolygonProps) {
          * doubling of active fill-extrusion draws was a real contributor to
          * general 3D sluggishness. */}
         <Layer
-          id={`${sourceId}-fill-2d`}
+          id={fill2dLayerId}
           type="fill"
           layout={{ visibility: is3D ? "none" : "visible" }}
           paint={{
@@ -89,7 +95,7 @@ export function BuildingPolygon({ building, is3D }: BuildingPolygonProps) {
          * look of the source OSM buildings this is often converted from —
          * a flat ground rectangle doesn't convey size at all. */}
         <Layer
-          id={`${sourceId}-fill-3d`}
+          id={fill3dLayerId}
           type="fill-extrusion"
           layout={{ visibility: is3D ? "visible" : "none" }}
           paint={{
@@ -100,7 +106,7 @@ export function BuildingPolygon({ building, is3D }: BuildingPolygonProps) {
           }}
         />
         <Layer
-          id={`${sourceId}-outline`}
+          id={buildingOutlineLayerId(building.id)}
           type="line"
           paint={{
             "line-color": "#3b82f6",

@@ -14,7 +14,12 @@ import "@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css";
 import { useMissionStore } from "@/store/missionStore";
 import { useConfigStore } from "@/store/configStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
-import { getObstacleWarnings, mergeBuildingFootprints } from "@/lib/geo";
+import {
+  getObstacleWarnings,
+  mergeBuildingFootprints,
+  polygonArea,
+  formatArea,
+} from "@/lib/geo";
 import { valueToGradientColor } from "@/lib/colorScale";
 import { WaypointMarker } from "./WaypointMarker";
 import { PoiMarker } from "./PoiMarker";
@@ -29,6 +34,10 @@ import { ObstacleDrawHandler } from "./ObstacleDrawHandler";
 import { ObstaclePolygon } from "./ObstaclePolygon";
 import { BuildingDrawHandler } from "./BuildingDrawHandler";
 import { BuildingPolygon } from "./BuildingPolygon";
+import {
+  buildingFillLayerIds,
+  buildingIdFromFillLayerId,
+} from "@/lib/buildingLayers";
 import { AirspaceOverlay } from "./AirspaceOverlay";
 import { FlightTrackOverlay } from "./FlightTrackOverlay";
 import { CustomLayersOverlay } from "./CustomLayersOverlay";
@@ -48,11 +57,14 @@ import {
   fillMissingElevations,
 } from "@/lib/terrain";
 import { WIDE_CAMERA_FOV } from "@/lib/solarCamera";
-import { DEFAULT_WIDE_VFOV_DEG } from "@/lib/templates";
+import { DEFAULT_WIDE_VFOV_DEG, orbitParamsForBuilding } from "@/lib/templates";
 import { MeasureToolHandler } from "./MeasureToolHandler";
 import { useMeasureStore } from "@/store/measureStore";
-import { Triangle, Building2 } from "lucide-react";
+import { Triangle, Building2, Orbit, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { NumericInput } from "@/components/ui/numeric-input";
+import { heightLabel, toDisplayHeight, fromDisplayHeight } from "@/lib/units";
 
 interface BuildingFragment {
   height: number | null;
@@ -1073,6 +1085,12 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
   const addPoi = useMissionStore((s) => s.addPoi);
   const addObstacle = useMissionStore((s) => s.addObstacle);
   const addBuilding = useMissionStore((s) => s.addBuilding);
+  const selectBuilding = useMissionStore((s) => s.selectBuilding);
+  const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
+  const payloadEnumValue = useMissionStore((s) => s.config.payloadEnumValue);
+  const updateBuilding = useMissionStore((s) => s.updateBuilding);
+  const removeBuilding = useMissionStore((s) => s.removeBuilding);
+  const setPendingOrbitParams = useMissionStore((s) => s.setPendingOrbitParams);
   const config = useMissionStore((s) => s.config);
   const topSimTemplateGroups = useMissionStore((s) => s.templateGroups);
   const simulationActive = useFlightSimulationStore((s) => s.isActive);
@@ -1124,6 +1142,15 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
   const [buildingPopup, setBuildingPopup] = useState<BuildingPopupData | null>(
     null,
   );
+  /** Click-on-the-map menu for a building the mission already owns (a Budova,
+   * not a raw OSM footprint): its height, an orbit around it, removal. The
+   * same actions live in the sidebar's building list, but hunting for the row
+   * that matches the shape under the cursor is the slow way round. */
+  const [ownBuildingPopup, setOwnBuildingPopup] = useState<{
+    lat: number;
+    lng: number;
+    buildingId: string;
+  } | null>(null);
   const mapInstanceRef = useRef<mapboxgl.Map | null>(null);
   const [mapStuck, setMapStuck] = useState(false);
   const handleTileError = useCallback(() => setMapStuck(true), []);
@@ -1160,6 +1187,33 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
 
       // Check if a 3D building was clicked
       const map = e.target as any;
+
+      // The mission's own buildings win over the OSM footprint underneath
+      // them — they are drawn on top and are what the user is pointing at.
+      if (map.queryRenderedFeatures && buildings.length > 0) {
+        const ownLayers = buildings
+          .flatMap((b) => buildingFillLayerIds(b.id))
+          .filter((id) => map.getLayer?.(id));
+        if (ownLayers.length > 0) {
+          const hit = map.queryRenderedFeatures(e.point, {
+            layers: ownLayers,
+          })?.[0];
+          const buildingId = hit
+            ? buildingIdFromFillLayerId(String(hit.layer.id))
+            : null;
+          if (buildingId) {
+            setBuildingPopup(null);
+            selectBuilding(buildingId);
+            setOwnBuildingPopup({
+              lat: e.lngLat.lat,
+              lng: e.lngLat.lng,
+              buildingId,
+            });
+            return;
+          }
+        }
+      }
+      setOwnBuildingPopup(null);
       if (map.getLayer && map.getLayer("3d-buildings")) {
         const features = map.queryRenderedFeatures(e.point, {
           layers: ["3d-buildings"],
@@ -1222,6 +1276,8 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
       isDrawingBuilding,
       addWaypoint,
       addPoi,
+      buildings,
+      selectBuilding,
     ],
   );
 
@@ -1481,6 +1537,87 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
                       </Button>
                     </>
                   )}
+                </div>
+              </Popup>
+            );
+          })()}
+
+        {ownBuildingPopup &&
+          (() => {
+            const building = buildings.find(
+              (b) => b.id === ownBuildingPopup.buildingId,
+            );
+            // The building can disappear under the popup (removed here, or
+            // undone) — drop the menu rather than render a stale one.
+            if (!building) return null;
+
+            return (
+              <Popup
+                longitude={ownBuildingPopup.lng}
+                latitude={ownBuildingPopup.lat}
+                anchor="bottom"
+                closeOnClick={false}
+                onClose={() => setOwnBuildingPopup(null)}
+                className="building-popup"
+              >
+                <div className="flex flex-col gap-2 p-1 min-w-[190px]">
+                  <div className="text-xs text-zinc-300">
+                    <strong className="text-white">{building.name}</strong>
+                    <span className="ml-2 text-zinc-400">
+                      {formatArea(polygonArea(building.vertices), unitSystem)}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Label className="text-[10px] text-zinc-400 whitespace-nowrap">
+                      Výška ({heightLabel(unitSystem)})
+                    </Label>
+                    <NumericInput
+                      value={toDisplayHeight(building.height, unitSystem)}
+                      onChange={(v) =>
+                        updateBuilding(building.id, {
+                          height: fromDisplayHeight(v, unitSystem),
+                        })
+                      }
+                      min={1}
+                      step={1}
+                      fallback={20}
+                      className="h-7 text-xs"
+                      ariaLabel="Výška budovy"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full gap-1.5 h-7 text-xs"
+                    onClick={() => {
+                      setPendingOrbitParams(
+                        orbitParamsForBuilding(
+                          building,
+                          WIDE_CAMERA_FOV[payloadEnumValue]?.vfovDeg,
+                        ),
+                      );
+                      setOwnBuildingPopup(null);
+                    }}
+                    title="Vytvořit orbit kolem této budovy s předvyplněným radiusem, výškou a náklonem gimbalu"
+                  >
+                    <Orbit className="h-3 w-3" />
+                    Vytvořit orbit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="w-full gap-1.5 h-7 text-xs text-zinc-400 hover:text-destructive"
+                    onClick={() => {
+                      removeBuilding(building.id);
+                      setOwnBuildingPopup(null);
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                    Odebrat budovu
+                  </Button>
+                  <div className="text-[10px] text-zinc-500">
+                    Vrcholy taháte přímo na mapě, pravým tlačítkem je odeberete
+                  </div>
                 </div>
               </Popup>
             );

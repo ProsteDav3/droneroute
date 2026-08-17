@@ -44,6 +44,8 @@ The DJI Cloud platform only accepts wayline names up to 64 characters, so a long
 
 The web app's **DJI Cloud — wayline knihovna** panel (in the sidebar, below the fleet status panel, when your server has DJI Cloud configured) lists every file currently in the workspace's wayline library and lets you delete ones you no longer need — handy for cleaning up old missions or duplicates created before the overwrite behavior above existed.
 
+When a whole batch has to go — a 71-segment upload superseded by a re-plan, say — two buttons clear the library wholesale: **Smazat všechny mise** and **Smazat všechny segmenty**, counted and handled separately so segments can be swept without touching the missions they came from (and the other way round). Neither deletes on the first click: it arms, and a second button spelling out the count („Opravdu smazat 71 segmentů“) performs it. Progress is shown as it runs; if one delete fails the rest still go, and the list only drops the rows that were really deleted.
+
 ## Good to know
 
 - This is a command-line tool — you run it from the terminal, not from the web app.

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { isSegmentWayline } from "@/lib/waylineNames";
 import { api } from "@/lib/api";
 
 export interface DjiDeviceSummary {
@@ -103,6 +104,13 @@ interface DjiCloudOpsState {
   waylinesLoading: boolean;
   waylinesError: string | null;
   deletingWaylineId: string | null;
+  /** Progress of a "delete every mission / every segment" sweep, so the
+   * panel can show how far along it is and keep both buttons disabled. */
+  bulkWaylineDelete: {
+    kind: "missions" | "segments";
+    done: number;
+    total: number;
+  } | null;
   loading: boolean;
   error: string | null;
   /** Which bound device's telemetry to focus on (Mission Progress panel,
@@ -129,6 +137,9 @@ interface DjiCloudOpsState {
   fetchDevicesAndHms: () => Promise<void>;
   fetchWaylines: () => Promise<void>;
   deleteWaylineFromLibrary: (id: string) => Promise<void>;
+  deleteWaylinesInBulk: (
+    kind: "missions" | "segments",
+  ) => Promise<{ deleted: number; failed: number }>;
   startTelemetryStream: () => () => void;
 }
 
@@ -144,6 +155,7 @@ export const useDjiCloudOpsStore = create<DjiCloudOpsState>((set, get) => ({
   waylinesLoading: false,
   waylinesError: null,
   deletingWaylineId: null,
+  bulkWaylineDelete: null,
   loading: false,
   error: null,
 
@@ -276,6 +288,50 @@ export const useDjiCloudOpsStore = create<DjiCloudOpsState>((set, get) => ({
     } catch (err: any) {
       set({ waylinesError: err.message, deletingWaylineId: null });
     }
+  },
+
+  /**
+   * Deletes every wayline of one kind — all whole missions, or all segments
+   * (see `isSegmentWayline`). A 71-segment upload takes 71 individual
+   * deletes; they run one at a time rather than in parallel so a burst
+   * doesn't hit the upstream platform's rate limits, and each success is
+   * removed from local state as it lands, so the list empties visibly and a
+   * half-finished sweep leaves no phantom rows behind.
+   */
+  deleteWaylinesInBulk: async (kind) => {
+    const wantSegments = kind === "segments";
+    const targets = get().waylines.filter(
+      (w) => isSegmentWayline(w.name) === wantSegments,
+    );
+    set({ bulkWaylineDelete: { kind, done: 0, total: targets.length } });
+    let deleted = 0;
+    let failed = 0;
+    let lastError: string | null = null;
+    for (const wayline of targets) {
+      try {
+        await api.delete(
+          `/dji-cloud/waylines/${encodeURIComponent(wayline.id)}`,
+        );
+        deleted++;
+        set((state) => ({
+          waylines: state.waylines.filter((w) => w.id !== wayline.id),
+        }));
+      } catch (err: any) {
+        failed++;
+        lastError = err.message;
+      }
+      set((state) => ({
+        bulkWaylineDelete: state.bulkWaylineDelete && {
+          ...state.bulkWaylineDelete,
+          done: deleted + failed,
+        },
+      }));
+    }
+    set({
+      bulkWaylineDelete: null,
+      waylinesError: failed > 0 ? lastError : null,
+    });
+    return { deleted, failed };
   },
 
   /** Opens an SSE connection to /dji-cloud/telemetry/stream. Returns a

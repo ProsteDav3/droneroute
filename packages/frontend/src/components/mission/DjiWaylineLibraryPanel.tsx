@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { ChevronDown, ChevronRight, FileText, Trash2 } from "lucide-react";
 import { useConfigStore } from "@/store/configStore";
 import { useDjiCloudOpsStore } from "@/store/djiCloudOpsStore";
+import { isSegmentWayline } from "@/lib/waylineNames";
 
 const LS_KEY = "djiWaylineLibraryPanelOpen";
 
@@ -29,12 +31,18 @@ export function DjiWaylineLibraryPanel() {
     waylinesLoading,
     waylinesError,
     deletingWaylineId,
+    bulkWaylineDelete,
     fetchWaylines,
     deleteWaylineFromLibrary,
+    deleteWaylinesInBulk,
   } = useDjiCloudOpsStore();
   const [expanded, setExpanded] = useState(
     () => localStorage.getItem(LS_KEY) === "true",
   );
+  /** Which bulk delete is armed, if any. Clearing the whole library is not
+   * something to do on one stray click, so the button only states the intent
+   * and the count; a second, separate button actually does it. */
+  const [armed, setArmed] = useState<"missions" | "segments" | null>(null);
 
   useEffect(() => {
     if (djiCloudEnabled && expanded) void fetchWaylines();
@@ -53,6 +61,23 @@ export function DjiWaylineLibraryPanel() {
   const handleDelete = (id: string, name: string) => {
     if (!window.confirm(`Smazat "${name}" z DJI Cloud knihovny?`)) return;
     void deleteWaylineFromLibrary(id);
+  };
+
+  const segmentCount = waylines.filter((w) => isSegmentWayline(w.name)).length;
+  const missionCount = waylines.length - segmentCount;
+  const counts = { missions: missionCount, segments: segmentCount };
+  const labels = { missions: "misí", segments: "segmentů" };
+
+  const runBulkDelete = async (kind: "missions" | "segments") => {
+    setArmed(null);
+    const { deleted, failed } = await deleteWaylinesInBulk(kind);
+    if (failed > 0) {
+      toast.error(
+        `Smazáno ${deleted} z ${deleted + failed} — ${failed} se nepodařilo smazat`,
+      );
+    } else if (deleted > 0) {
+      toast.success(`Smazáno ${deleted} ${labels[kind]} z DJI Cloud`);
+    }
   };
 
   return (
@@ -81,6 +106,47 @@ export function DjiWaylineLibraryPanel() {
               Knihovna je prázdná
             </p>
           )}
+
+          {bulkWaylineDelete && (
+            <p className="text-[10px] text-amber-400">
+              Mažu {bulkWaylineDelete.done} z {bulkWaylineDelete.total}{" "}
+              {labels[bulkWaylineDelete.kind]}…
+            </p>
+          )}
+
+          {!bulkWaylineDelete &&
+            waylines.length > 0 &&
+            (["missions", "segments"] as const).map((kind) =>
+              counts[kind] === 0 ? null : armed === kind ? (
+                <div key={kind} className="flex items-center gap-1.5">
+                  <button
+                    className="flex-1 h-6 rounded border border-red-500/60 bg-red-500/15 text-[10px] text-red-300 hover:bg-red-500/25 transition-colors"
+                    onClick={() => void runBulkDelete(kind)}
+                  >
+                    Opravdu smazat {counts[kind]} {labels[kind]}
+                  </button>
+                  <button
+                    className="h-6 px-2 rounded border border-border text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setArmed(null)}
+                  >
+                    Zrušit
+                  </button>
+                </div>
+              ) : (
+                <button
+                  key={kind}
+                  className="w-full h-6 rounded border border-border text-[10px] text-muted-foreground hover:text-red-400 hover:border-red-500/50 transition-colors"
+                  onClick={() => setArmed(kind)}
+                  title={
+                    kind === "segments"
+                      ? "Smaže z DJI Cloud všechny nahrané segmenty (názvy typu …-seg-3-of-71), celé mise zůstanou"
+                      : "Smaže z DJI Cloud všechny celé mise, nahrané segmenty zůstanou"
+                  }
+                >
+                  Smazat všechny {labels[kind]} ({counts[kind]})
+                </button>
+              ),
+            )}
           {waylines.map((wl) => (
             <div key={wl.id} className="flex items-center gap-2 text-[11px]">
               <FileText className="h-3 w-3 text-muted-foreground shrink-0" />

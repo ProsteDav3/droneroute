@@ -109,6 +109,10 @@ export function OrbitFields({
         orbitParams.startAngleDeg,
         orbitParams.endAngleDeg,
         orbitParams.numPoints,
+        {
+          clockwise: orbitParams.clockwise,
+          midArcRadiusM: orbitParams.midArcRadiusM,
+        },
       )
     : null;
 
@@ -273,6 +277,67 @@ export function OrbitFields({
           unit={distanceLabel(unitSystem)}
         />
       </div>
+      {/* Only with a locked, off-centre target: that is the case where the
+          distance to the subject swings (67 m at the ends of the KCP arc
+          against 147 m in its middle). With the POI at the orbit's own
+          centre the distance is already constant and an oval would only
+          spoil it — and the panel stays as short as it was. */}
+      {orbitParams.poiCenter && (
+        <div className="col-span-2">
+          <div className="flex items-center justify-between">
+            <Label
+              className="text-[10px]"
+              title="Vzdálenost středu oblouku od středu orbitu. Menší než radius = ovál přitažený k objektu uprostřed letu, začátek i konec oblouku zůstanou přesně tam, kde jsou. U posunutého POI je právě střed oblouku nejdál od objektu."
+            >
+              Střed oblouku ({distanceLabel(unitSystem)})
+            </Label>
+            {orbitParams.midArcRadiusM !== undefined && (
+              <button
+                type="button"
+                className="text-[10px] text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  const next = { ...orbitParams };
+                  delete next.midArcRadiusM;
+                  onOrbitChange(next);
+                }}
+                title="Zpět na kruh"
+              >
+                kruh
+              </button>
+            )}
+          </div>
+          <NumericInput
+            value={toDisplayDistance(
+              orbitParams.midArcRadiusM ?? orbitParams.radiusM,
+              unitSystem,
+            )}
+            onChange={(v) =>
+              onOrbitChange({
+                ...orbitParams,
+                midArcRadiusM: fromDisplayDistance(v, unitSystem),
+              })
+            }
+            min={1}
+            step={5}
+            fallback={toDisplayDistance(orbitParams.radiusM, unitSystem)}
+            className="h-7 text-xs"
+            ariaLabel="Střed oblouku"
+          />
+          {orbitParams.midArcRadiusM !== undefined &&
+            orbitParams.midArcRadiusM !== orbitParams.radiusM && (
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                Ovál:{" "}
+                {Math.round(toDisplayDistance(orbitParams.radiusM, unitSystem))}{" "}
+                {distanceLabel(unitSystem)} na krajích →{" "}
+                {Math.round(
+                  toDisplayDistance(orbitParams.midArcRadiusM, unitSystem),
+                )}{" "}
+                {distanceLabel(unitSystem)} uprostřed
+              </div>
+            )}
+        </div>
+      )}
+
       <div>
         <Label className="text-[10px]">Body</Label>
         <NumericInput

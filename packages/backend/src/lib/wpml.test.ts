@@ -485,3 +485,54 @@ describe("gimbalEvenlyRotate needs its own betweenAdjacentPoints group", () => {
     expect(xml).not.toContain("gimbalEvenlyRotate");
   });
 });
+
+describe("gimbal yaw is opt-in (a yaw command fights target tracking)", () => {
+  const rotateAt = (params: Record<string, unknown>) =>
+    mission([
+      waypoint({
+        actions: [{ actionId: 0, actionType: "gimbalRotate", params }],
+      } as Partial<Waypoint>),
+    ]);
+
+  it("leaves yaw disabled when the action only asks for a pitch", () => {
+    // What an orbit emits. A yaw command is absolute (relative to north), so
+    // enabling it here held the camera at a fixed compass direction while the
+    // aircraft turned toward the POI: the subject was framed at the start of
+    // the flight and drifted out of shot for the rest of it (field-observed
+    // on a Matrice 4T; the flight-verified file has this at 0).
+    const xml = buildWaylinesWpml(rotateAt({ gimbalPitchRotateAngle: -28 }));
+    expect(xml).toContain(
+      "<wpml:gimbalYawRotateEnable>0</wpml:gimbalYawRotateEnable>",
+    );
+    expect(xml).toContain(
+      "<wpml:gimbalPitchRotateEnable>1</wpml:gimbalPitchRotateEnable>",
+    );
+  });
+
+  it("still leaves it disabled when a yaw angle is present but not asked for", () => {
+    // The action editor always carries a yaw field, defaulting to 0 —
+    // its presence must not be read as a request to command yaw.
+    const xml = buildWaylinesWpml(
+      rotateAt({ gimbalPitchRotateAngle: -28, gimbalYawRotateAngle: 0 }),
+    );
+    expect(xml).toContain(
+      "<wpml:gimbalYawRotateEnable>0</wpml:gimbalYawRotateEnable>",
+    );
+  });
+
+  it("commands yaw when it is explicitly enabled", () => {
+    const xml = buildWaylinesWpml(
+      rotateAt({
+        gimbalPitchRotateAngle: -20,
+        gimbalYawRotateAngle: 90,
+        gimbalYawRotateEnable: true,
+      }),
+    );
+    expect(xml).toContain(
+      "<wpml:gimbalYawRotateEnable>1</wpml:gimbalYawRotateEnable>",
+    );
+    expect(xml).toContain(
+      "<wpml:gimbalYawRotateAngle>90</wpml:gimbalYawRotateAngle>",
+    );
+  });
+});

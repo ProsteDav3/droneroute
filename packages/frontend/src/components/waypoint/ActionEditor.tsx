@@ -283,7 +283,20 @@ function ActionItem({
             />
           </div>
           <div>
-            <Label className="text-[10px]">Natočení (&deg;)</Label>
+            <Label
+              className="text-[10px] flex items-center gap-1"
+              title="Natočí gimbal na pevný azimut (0° = sever). Nechte vypnuté, pokud dron míří na POI — pevné natočení sledování přebije a kamera zůstane koukat jedním směrem."
+            >
+              <input
+                type="checkbox"
+                checked={!!params.gimbalYawRotateEnable}
+                onChange={(e) =>
+                  updateParam("gimbalYawRotateEnable", e.target.checked)
+                }
+                className="rounded"
+              />
+              Natočení (&deg;)
+            </Label>
             <Input
               type="number"
               value={params.gimbalYawRotateAngle ?? 0}
@@ -293,9 +306,10 @@ function ActionItem({
                   parseFloat(e.target.value) || 0,
                 )
               }
+              disabled={!params.gimbalYawRotateEnable}
               min={-180}
               max={180}
-              className="h-7 text-xs"
+              className="h-7 text-xs disabled:opacity-40"
             />
           </div>
         </div>

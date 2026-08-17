@@ -1,4 +1,5 @@
 import type { Mission, Waypoint, WaypointAction } from "@droneroute/shared";
+import { CAMERA_SETTLE_SECONDS } from "@droneroute/shared";
 
 function findAction(
   waypoints: Waypoint[],
@@ -19,7 +20,7 @@ function isRecordAction(action: WaypointAction): boolean {
 
 /**
  * The opening camera setup a segment needs to stand on its own: set the
- * gimbal to this leg's angle, hold a second so the aircraft finishes turning
+ * gimbal to this leg's angle, hold still so the aircraft finishes turning
  * to the target and the gimbal settles, then focus.
  *
  * The parent route does this once, on its first two waypoints — which is
@@ -50,11 +51,13 @@ function openingCameraActions(first: Waypoint): WaypointAction[] {
       },
     } as WaypointAction);
   }
+  // An inherited hover is handled by `withSettleAtLeast` instead, which
+  // lengthens it rather than adding a second pause next to it.
   if (!has("hover")) {
     actions.push({
       actionId: 0,
       actionType: "hover",
-      params: { hoverTime: 1 },
+      params: { hoverTime: CAMERA_SETTLE_SECONDS },
     } as WaypointAction);
   }
   if (!has("focus")) {
@@ -71,6 +74,22 @@ function openingCameraActions(first: Waypoint): WaypointAction[] {
     } as WaypointAction);
   }
   return actions;
+}
+
+/**
+ * Raises a hover the segment inherited to the segment settle, leaving a
+ * longer one alone. The parent route's own settle is one second — right for
+ * a pause that sits inside its footage, too short for a segment entered cold
+ * — and the segment that happens to start on that waypoint would otherwise
+ * be the one segment that keeps the short version.
+ */
+function withSettleAtLeast(actions: WaypointAction[]): WaypointAction[] {
+  return actions.map((action) => {
+    if (action.actionType !== "hover") return action;
+    const params = action.params as { hoverTime?: number };
+    const hoverTime = Math.max(params.hoverTime ?? 0, CAMERA_SETTLE_SECONDS);
+    return { ...action, params: { ...params, hoverTime } };
+  });
 }
 
 /** Whether this route aims the camera at a target at all. */
@@ -133,7 +152,7 @@ export function buildMissionSegments(mission: Mission): Mission[] {
       );
       first.actions = renumberActions([
         ...opening,
-        ...firstOther,
+        ...(aimsCamera ? withSettleAtLeast(firstOther) : firstOther),
         { ...startTemplate, actionId: 0 },
       ]);
       second.actions = renumberActions([
@@ -141,7 +160,10 @@ export function buildMissionSegments(mission: Mission): Mission[] {
         { ...stopTemplate, actionId: 0 },
       ]);
     } else if (opening.length > 0) {
-      first.actions = renumberActions([...opening, ...(first.actions ?? [])]);
+      first.actions = renumberActions([
+        ...opening,
+        ...withSettleAtLeast(first.actions ?? []),
+      ]);
     }
 
     segments.push({

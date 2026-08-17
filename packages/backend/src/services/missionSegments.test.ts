@@ -269,11 +269,22 @@ describe("every segment aims its own camera", () => {
     }
   });
 
-  it("focuses on every segment, after a settle", () => {
+  it("focuses on every segment, after a settle long enough to be worth having", () => {
     for (const seg of buildMissionSegments(orbit())) {
       const types = typesOf(seg.waypoints[0]);
       expect(types, `${seg.name} must focus`).toContain("focus");
       expect(types.indexOf("hover")).toBeLessThan(types.indexOf("focus"));
+      // A segment is entered cold — transit in, turn to the target, swing the
+      // gimbal from wherever it was — and the hover is before startRecord, so
+      // it costs nothing on screen. The parent route's own 1 s settle sits
+      // inside the footage and stays short for that reason; this one doesn't
+      // have to.
+      const hover = seg.waypoints[0].actions.find(
+        (a) => a.actionType === "hover",
+      )!;
+      expect(
+        (hover.params as { hoverTime: number }).hoverTime,
+      ).toBeGreaterThanOrEqual(3);
       // Recording starts after the camera is set, so the settle isn't in the
       // clip.
       expect(types.indexOf("focus")).toBeLessThan(types.indexOf("startRecord"));
@@ -321,5 +332,48 @@ describe("every segment aims its own camera", () => {
         expect(typesOf(wp)).not.toContain("focus");
       }
     }
+  });
+});
+
+describe("segment settle length", () => {
+  const wp = (index: number, actions: unknown[] = []) =>
+    makeWaypoint(index, {
+      headingMode: "towardPOI",
+      poiId: "poi-1",
+      useGlobalHeadingParam: false,
+      gimbalPitchAngle: -20,
+      actions: actions as never,
+    } as Partial<Waypoint>);
+
+  const hoverOf = (segment: Mission) =>
+    (
+      segment.waypoints[0].actions.find((a) => a.actionType === "hover")!
+        .params as { hoverTime: number }
+    ).hoverTime;
+
+  it("lengthens the one-second settle a segment inherits from the parent route", () => {
+    // The parent's own settle is short on purpose — it sits inside the
+    // parent's footage. The segment starting on that waypoint would
+    // otherwise be the single segment that focuses in a hurry.
+    const segments = buildMissionSegments(
+      makeMission([
+        wp(0),
+        wp(1, [{ actionId: 0, actionType: "hover", params: { hoverTime: 1 } }]),
+        wp(2),
+      ]),
+    );
+    expect(hoverOf(segments[1])).toBe(3);
+  });
+
+  it("leaves a deliberately longer hover alone", () => {
+    const segments = buildMissionSegments(
+      makeMission([
+        wp(0, [
+          { actionId: 0, actionType: "hover", params: { hoverTime: 10 } },
+        ]),
+        wp(1),
+      ]),
+    );
+    expect(hoverOf(segments[0])).toBe(10);
   });
 });

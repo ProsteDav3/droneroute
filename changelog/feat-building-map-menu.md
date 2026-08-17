@@ -1,0 +1,1 @@
+- Added: clicking a building on the map opens a menu right there — set its height, create an orbit around it, or remove it — instead of having to find its row in the sidebar list first.

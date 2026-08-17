@@ -1,0 +1,1 @@
+- Fixed: with **Uzamknout POI** on, the orbit centre can now be dragged anywhere the flown waypoints stay clear of the subject. The limit is measured on the waypoints the aircraft actually visits — same as the panel's own warning — so a 270° arc whose gap faces the building is no longer blocked by a point on the circle that is never flown.

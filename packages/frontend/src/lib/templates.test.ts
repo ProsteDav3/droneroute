@@ -1054,71 +1054,74 @@ describe("clampOrbitCenterForPoiClearance", () => {
   const height = 25;
   const vfovDeg = 55;
   const minStandoffM = minStandoffForFovM(height, vfovDeg);
+  // A closed loop flies every bearing, so nothing can hide in a gap — this is
+  // the case where "nearest flown waypoint" and "the circle's near edge"
+  // agree, which is what these limit tests are about.
+  const closedLoop = { startAngleDeg: 0, endAngleDeg: 360, numPoints: 72 };
+  const distFromPoi = (p: [number, number]) =>
+    haversineDistance(poi[0], poi[1], p[0], p[1]);
 
   it("leaves the candidate center untouched when already far enough from the POI", () => {
     // 200m due east — the circle's near edge (200 - radius) is still well
     // past the minimum standoff.
-    const radiusM = 50;
     const candidate = destinationPoint(poi[0], poi[1], 200, 90);
-    const clamped = clampOrbitCenterForPoiClearance(
-      candidate,
-      poi,
-      radiusM,
+    const clamped = clampOrbitCenterForPoiClearance(candidate, poi, {
+      poiCenter: poi,
+      radiusM: 50,
       minStandoffM,
-    );
+      ...closedLoop,
+    });
     expect(clamped).toEqual(candidate);
   });
 
-  it("pushes the center farther away when the circle's near edge would otherwise cross the minimum standoff", () => {
+  it("stops the drag at the limit when the circle would otherwise cross the minimum standoff", () => {
     const radiusM = 50;
-    // Only 60m from the POI — with a 50m radius, the near edge would sit
-    // just 10m from the POI, far inside the physical minimum.
+    // Only 60m from the POI — with a 50m radius the near edge would sit just
+    // 10m away, far inside the physical minimum. Dragged out from the POI,
+    // so the clamp holds it at the last position that still clears.
     const candidate = destinationPoint(poi[0], poi[1], 60, 90);
-    const clamped = clampOrbitCenterForPoiClearance(
-      candidate,
-      poi,
+    const clamped = clampOrbitCenterForPoiClearance(candidate, poi, {
+      poiCenter: poi,
       radiusM,
       minStandoffM,
-    );
+      ...closedLoop,
+    });
 
-    const clampedDist = bearing(poi[0], poi[1], clamped[0], clamped[1]);
-    // Direction (bearing) is preserved — still due east.
-    expect(clampedDist).toBeCloseTo(90, 0);
-
-    // The circle's near edge now sits exactly at the minimum standoff.
-    const distFromPoi = Math.hypot(
-      (clamped[0] - poi[0]) * 111320,
-      (clamped[1] - poi[1]) * 111320 * Math.cos((poi[0] * Math.PI) / 180),
+    // Direction (bearing) is preserved — still due east, on the drag line.
+    expect(bearing(poi[0], poi[1], clamped[0], clamped[1])).toBeCloseTo(90, 0);
+    // And the circle's near edge sits at the minimum, not past it.
+    expect(Math.abs(distFromPoi(clamped) - radiusM)).toBeGreaterThanOrEqual(
+      minStandoffM - 0.5,
     );
-    expect(Math.abs(distFromPoi - radiusM)).toBeCloseTo(minStandoffM, 0);
+    expect(distFromPoi(clamped)).toBeLessThan(60);
   });
 
-  it("keeps the POI inside the circle rather than pushing it outside, when that requires less movement", () => {
-    // A large radius (300m) with the candidate center placed so the POI
-    // sits just 10m inside the circle's boundary (dist = radius - 10) —
-    // closer to satisfying the standoff by nudging the center a little
-    // farther out (POI stays inside) than by dragging the whole 300m circle
-    // all the way past the POI to the outside.
+  it("keeps the POI inside the circle rather than flinging it outside", () => {
+    // A large radius (300m) with the candidate placed so the POI sits just
+    // 10m inside the circle's boundary. Satisfying the standoff by pushing
+    // the whole 300m circle past the POI would be a teleport; the drag stops
+    // on its own side instead.
     const radiusM = 300;
     const candidate = destinationPoint(poi[0], poi[1], radiusM - 10, 45);
-    const clamped = clampOrbitCenterForPoiClearance(
-      candidate,
-      poi,
+    const clamped = clampOrbitCenterForPoiClearance(candidate, poi, {
+      poiCenter: poi,
       radiusM,
       minStandoffM,
-    );
+      ...closedLoop,
+    });
 
-    const distFromPoi = Math.hypot(
-      (clamped[0] - poi[0]) * 111320,
-      (clamped[1] - poi[1]) * 111320 * Math.cos((poi[0] * Math.PI) / 180),
+    expect(distFromPoi(clamped)).toBeLessThanOrEqual(
+      radiusM - minStandoffM + 1,
     );
-    // Confirms the "inside" branch was chosen: distance from POI to the new
-    // center is close to radiusM - minStandoffM, not radiusM + minStandoffM.
-    expect(distFromPoi).toBeCloseTo(radiusM - minStandoffM, 0);
   });
 
-  it("picks an arbitrary direction (doesn't throw) when the candidate lands exactly on the POI", () => {
-    const clamped = clampOrbitCenterForPoiClearance(poi, poi, 50, minStandoffM);
+  it("does not throw when the candidate lands exactly on the previous center", () => {
+    const clamped = clampOrbitCenterForPoiClearance(poi, poi, {
+      poiCenter: poi,
+      radiusM: 50,
+      minStandoffM,
+      ...closedLoop,
+    });
     expect(Number.isFinite(clamped[0])).toBe(true);
     expect(Number.isFinite(clamped[1])).toBe(true);
   });
@@ -2437,60 +2440,117 @@ describe("standoff guard blocks only what is objectively broken", () => {
   });
 });
 
-describe("centre drag never teleports across the POI's forbidden band", () => {
+describe("centre drag is judged on the waypoints actually flown", () => {
   const POI: [number, number] = [50.06, 14.43];
-  const radiusM = 100;
-  const minStandoffM = 42; // a 40 m object
+  const radiusM = 89;
+  const minStandoffM = orbitMinStandoffM(50, DEFAULT_WIDE_VFOV_DEG);
 
-  const at = (m: number) => destinationPoint(POI[0], POI[1], m, 90);
+  // A 270 degree arc whose 90 degree gap faces the POI — the composition the
+  // user asked for: start and end just short of the building, swing round its
+  // far side. The circle's own closest point lies inside that gap and is
+  // never visited.
+  const ARC = { startAngleDeg: 15.75, endAngleDeg: 285.75, numPoints: 12 };
+
+  // Bearing from the POI that puts the POI in the middle of the arc's gap as
+  // seen from the centre, i.e. the "start and end in front of the building"
+  // layout. The opposite bearing points the gap away and drags a waypoint
+  // straight at the POI.
+  const GAP_SIDE = 150.75;
+  const FLOWN_SIDE = 330.75;
+
+  const at = (m: number, bearingDeg = GAP_SIDE) =>
+    destinationPoint(POI[0], POI[1], m, bearingDeg);
   const offsetOf = (p: [number, number]) =>
     haversineDistance(POI[0], POI[1], p[0], p[1]);
-
-  it("stops at the near boundary when dragging outward from the POI", () => {
-    // Anywhere in the forbidden band the clamp must hold the centre at the
-    // inner boundary (58 m). Dragging further used to flip to the far
-    // solution at 142 m once past the midpoint — the centre visibly jumped
-    // right out of the guide ring, which is what a user hit.
-    for (const d of [60, 80, 100, 120, 139]) {
-      const clamped = clampOrbitCenterForPoiClearance(
-        at(d),
-        POI,
-        radiusM,
-        minStandoffM,
-        at(10),
-      );
-      expect(offsetOf(clamped)).toBeCloseTo(radiusM - minStandoffM, 0);
-    }
-  });
-
-  it("keeps a centre already outside the band on its own side", () => {
-    // Started outside (POI outside the circle) and dragged inward a little:
-    // stay outside, at the outer boundary — not yanked across to the inside.
-    const clamped = clampOrbitCenterForPoiClearance(
-      at(130),
-      POI,
+  const clamp = (candidate: [number, number], previous: [number, number]) =>
+    clampOrbitCenterForPoiClearance(candidate, previous, {
+      poiCenter: POI,
       radiusM,
       minStandoffM,
-      at(200),
+      ...ARC,
+    });
+
+  it("allows an offset centre the flown waypoints clear, even where the full circle would not", () => {
+    // 60 m off the POI puts the circle's nearest point 29 m away — under the
+    // ~52 m minimum — so the old whole-circle clamp refused to move at all.
+    // But that point sits in the arc's gap: the nearest FLOWN waypoint is
+    // well clear, which is what the panel itself reports and what actually
+    // matters for the shot.
+    const candidate = at(60);
+    const { nearM } = poiDistanceSwing(
+      candidate,
+      POI,
+      radiusM,
+      ARC.startAngleDeg,
+      ARC.endAngleDeg,
+      ARC.numPoints,
     );
-    expect(offsetOf(clamped)).toBeCloseTo(radiusM + minStandoffM, 0);
+    expect(nearM).toBeGreaterThan(minStandoffM);
+    expect(Math.abs(offsetOf(candidate) - radiusM)).toBeLessThan(minStandoffM);
+
+    expect(offsetOf(clamp(candidate, at(10)))).toBeCloseTo(60, 0);
   });
 
-  it("leaves a valid position untouched on either side", () => {
-    for (const d of [0, 30, 58, 142, 300]) {
-      const clamped = clampOrbitCenterForPoiClearance(
-        at(d),
-        POI,
-        radiusM,
-        minStandoffM,
-        at(d),
+  it("still stops a drag that would fly a waypoint too close", () => {
+    // Same arc, dragged the other way: now a flown waypoint closes in on the
+    // POI and the drag must stop before it does.
+    const previous = at(10);
+    const candidate = at(radiusM, FLOWN_SIDE);
+    const clamped = clamp(candidate, previous);
+    const { nearM } = poiDistanceSwing(
+      clamped,
+      POI,
+      radiusM,
+      ARC.startAngleDeg,
+      ARC.endAngleDeg,
+      ARC.numPoints,
+    );
+    expect(nearM).toBeGreaterThanOrEqual(minStandoffM - 0.5);
+    expect(offsetOf(clamped)).toBeLessThan(offsetOf(candidate));
+  });
+
+  it("never jumps: the clamped centre always lies between the old and the new one", () => {
+    const previous = at(10);
+    for (const d of [40, 80, 120, 160, 200]) {
+      const candidate = at(d, FLOWN_SIDE);
+      const clamped = clamp(candidate, previous);
+      // On the segment means: no farther from the previous centre than the
+      // candidate is. A teleport to the far side of the POI would break this.
+      expect(
+        haversineDistance(previous[0], previous[1], clamped[0], clamped[1]),
+      ).toBeLessThanOrEqual(
+        haversineDistance(
+          previous[0],
+          previous[1],
+          candidate[0],
+          candidate[1],
+        ) + 0.5,
       );
-      expect(offsetOf(clamped)).toBeCloseTo(d, 0);
     }
   });
 
-  it("pins to the POI when the radius itself is under the minimum (no inside solution)", () => {
-    const clamped = clampOrbitCenterForPoiClearance(at(20), POI, 30, 50, at(0));
-    expect(offsetOf(clamped)).toBeCloseTo(0, 0);
+  it("leaves a closed 360 degree orbit judged on the whole circle", () => {
+    // No gap to hide in: every point of the circle is flown, so a centre that
+    // brings the ring within the minimum must still be stopped.
+    const previous = at(5);
+    const candidate = at(radiusM - minStandoffM + 25);
+    const clamped = clampOrbitCenterForPoiClearance(candidate, previous, {
+      poiCenter: POI,
+      radiusM,
+      minStandoffM,
+      startAngleDeg: 0,
+      endAngleDeg: 360,
+      numPoints: 36,
+    });
+    expect(offsetOf(clamped)).toBeLessThan(radiusM - minStandoffM + 3);
+  });
+
+  it("does not trap a centre that is already too close — it can be dragged back out", () => {
+    // Radius or waypoint count changed underneath an existing orbit and left
+    // it violating. The panel's guard blocks Apply; the handle must still
+    // move, or there is no way to fix it.
+    const stuck = at(radiusM, FLOWN_SIDE);
+    const target = at(5);
+    expect(offsetOf(clamp(target, stuck))).toBeCloseTo(5, 0);
   });
 });

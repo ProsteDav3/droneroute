@@ -810,10 +810,17 @@ export function TemplateDrawHandler() {
                 orbitParams.poiCenter && orbitParams.poiHeight > 0
                   ? clampOrbitCenterForPoiClearance(
                       newCenter,
-                      orbitParams.poiCenter,
-                      orbitParams.radiusM,
-                      poiClearanceStandoffM(orbitParams.poiHeight),
                       orbitParams.center,
+                      {
+                        poiCenter: orbitParams.poiCenter,
+                        radiusM: orbitParams.radiusM,
+                        minStandoffM: poiClearanceStandoffM(
+                          orbitParams.poiHeight,
+                        ),
+                        startAngleDeg: orbitParams.startAngleDeg,
+                        endAngleDeg: orbitParams.endAngleDeg,
+                        numPoints: orbitParams.numPoints,
+                      },
                     )
                   : newCenter;
               setOrbitParams({ ...orbitParams, center: clampedCenter });

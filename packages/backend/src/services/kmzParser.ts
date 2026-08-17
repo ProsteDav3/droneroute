@@ -114,6 +114,15 @@ export async function parseKmz(buffer: Buffer): Promise<{
         headingParam["wpml:waypointHeadingMode"] || "followWayline";
     }
 
+    // A file that hands both the heading and the gimbal to the pilot is a
+    // manual-control mission — recognise it on import so a round trip
+    // (export, re-import, export) doesn't quietly turn the aiming back on.
+    config.cameraControl =
+      config.gimbalPitchMode === "manual" &&
+      config.globalHeadingMode === "manually"
+        ? "manual"
+        : "auto";
+
     const coordSys = folder["wpml:waylineCoordinateSysParam"];
     if (coordSys?.["wpml:heightMode"]) {
       config.heightMode = coordSys["wpml:heightMode"];

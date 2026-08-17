@@ -20,6 +20,21 @@ export type RCLostAction = "goBack" | "landing" | "hover";
 
 export type GimbalPitchMode = "manual" | "usePointSetting";
 
+/**
+ * Who aims the camera during the flight.
+ *
+ * `auto` — the aircraft flies the plan as designed: heading modes and gimbal
+ * angles from the waypoints and templates (an Orbit's towardPOI tracking, a
+ * facade scan's fixed pitch, and so on).
+ *
+ * `manual` — the aircraft only flies the route; the pilot holds heading and
+ * gimbal on the sticks throughout. The plan's own aiming is left untouched in
+ * the mission (switching back restores it) but is not written into the
+ * exported KMZ, because a mission that both tracks a POI and hands the
+ * controls to the pilot fights itself in the air.
+ */
+export type CameraControlMode = "auto" | "manual";
+
 // ── Action Types ─────────────────────────────────────────
 
 export type ActionType =
@@ -322,6 +337,9 @@ export interface MissionConfig {
   globalHeadingMode: HeadingMode;
   globalTurnMode: TurnMode;
   gimbalPitchMode: GimbalPitchMode;
+  /** Absent means `auto` — every mission planned before this setting existed
+   * flew its own aiming, and must keep doing so. */
+  cameraControl?: CameraControlMode;
 }
 
 // ── Mission ──────────────────────────────────────────────
@@ -523,6 +541,7 @@ export const DEFAULT_MISSION_CONFIG: MissionConfig = {
   globalHeadingMode: "followWayline",
   globalTurnMode: "toPointAndStopWithDiscontinuityCurvature",
   gimbalPitchMode: "usePointSetting",
+  cameraControl: "auto",
 };
 
 export const DEFAULT_WAYPOINT: Omit<

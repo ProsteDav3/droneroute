@@ -86,3 +86,26 @@ describe("generateKmzBuffer", () => {
     );
   });
 });
+
+describe("manual camera control survives a KMZ round trip", () => {
+  it("re-imports a manual-control export as manual, not as an auto mission", async () => {
+    // Without this the round trip (export → re-import → export) would quietly
+    // hand the aiming back to the aircraft: the second export would see
+    // cameraControl absent and write the plan's own heading/gimbal again.
+    const m = mission([waypoint(0), waypoint(1)]);
+    m.config = { ...m.config, cameraControl: "manual" };
+
+    const parsed = await parseKmz(await generateKmzBuffer(m));
+
+    expect(parsed.config.cameraControl).toBe("manual");
+    expect(parsed.config.gimbalPitchMode).toBe("manual");
+    expect(parsed.config.globalHeadingMode).toBe("manually");
+  });
+
+  it("re-imports a normal export as auto", async () => {
+    const parsed = await parseKmz(
+      await generateKmzBuffer(mission([waypoint(0), waypoint(1)])),
+    );
+    expect(parsed.config.cameraControl).toBe("auto");
+  });
+});

@@ -31,6 +31,7 @@ import type {
   RCLostAction,
   HeightMode,
   FlyToWaylineMode,
+  CameraControlMode,
 } from "@droneroute/shared";
 
 export function MissionConfig() {
@@ -315,6 +316,40 @@ export function MissionConfig() {
       </div>
 
       <div>
+        <Label className="text-xs">Ovládání kamery a natočení</Label>
+        <div className="grid grid-cols-2 gap-1 mt-1">
+          {(
+            [
+              ["auto", "Automaticky"],
+              ["manual", "Ručně"],
+            ] as [CameraControlMode, string][]
+          ).map(([mode, label]) => {
+            const active = (config.cameraControl ?? "auto") === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setConfig({ cameraControl: mode })}
+                className={`h-8 rounded-md border text-xs transition-colors ${
+                  active
+                    ? "border-primary bg-primary/20 text-foreground"
+                    : "border-border bg-background text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="text-[10px] text-muted-foreground mt-0.5">
+          {(config.cameraControl ?? "auto") === "manual"
+            ? "Dron jen letí trasu — natočení i gimbal držíte celou dobu vy na ovladači. Naplánované míření (POI, náklony gimbalu, otáčení) zůstává v misi uložené, ale do KMZ se nezapíše, aby se s vámi dron nepral. Focus se také vynechá."
+            : "Dron míří sám podle plánu — režimy natočení a náklony gimbalu z bodů trasy a šablon (např. sledování POI u orbitu)."}
+        </div>
+      </div>
+
+      <div>
         <Label className="text-xs">Režim natočení</Label>
         <Select
           value={config.globalHeadingMode}
@@ -334,6 +369,9 @@ export function MissionConfig() {
           </SelectContent>
         </Select>
         <div className="text-[10px] text-muted-foreground mt-0.5">
+          {(config.cameraControl ?? "auto") === "manual"
+            ? "V ručním režimu se nepoužije — natočení řídíte vy."
+            : null}{" "}
           Výchozí hodnota jen pro body trasy bez vlastního nastavení natočení —
           šablony jako Orbit dávají každému bodu vlastní režim (např. "Směrem k
           POI"), který tuto výchozí hodnotu přebíjí a v praxi rozhoduje, jak

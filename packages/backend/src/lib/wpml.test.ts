@@ -276,3 +276,116 @@ describe("WPML 1.0.6 native format (Pilot 2 cloud-download compatibility)", () =
     );
   });
 });
+
+describe("manual camera control (the pilot aims, the aircraft only flies)", () => {
+  function manualMission(waypoints: Waypoint[], pois: Mission["pois"] = []) {
+    const m = mission(waypoints, pois);
+    m.config = { ...m.config, cameraControl: "manual" };
+    return m;
+  }
+
+  const aimedWaypoint = waypoint({
+    useGlobalHeadingParam: false,
+    headingMode: "towardPOI",
+    poiId: "poi-1",
+    gimbalPitchAngle: -35,
+    actions: [
+      {
+        actionId: 0,
+        actionType: "gimbalRotate",
+        params: { gimbalPitchRotateAngle: -35 },
+      },
+      {
+        actionId: 1,
+        actionType: "gimbalEvenlyRotate",
+        params: { gimbalPitchRotateAngle: -20 },
+      },
+      { actionId: 2, actionType: "rotateYaw", params: { aircraftHeading: 90 } },
+      { actionId: 3, actionType: "takePhoto", params: {} },
+      { actionId: 4, actionType: "hover", params: { hoverTime: 3 } },
+    ],
+  } as Partial<Waypoint>);
+  const pois: Mission["pois"] = [
+    {
+      id: "poi-1",
+      name: "Target",
+      latitude: 41.26,
+      longitude: 0.94,
+      height: 10,
+    },
+  ];
+
+  it("hands the gimbal to the pilot in both files", () => {
+    const m = manualMission([aimedWaypoint], pois);
+    expect(buildTemplateKml(m)).toContain(
+      "<wpml:gimbalPitchMode>manual</wpml:gimbalPitchMode>",
+    );
+  });
+
+  it("flies every waypoint on the global 'manually' heading, dropping POI tracking", () => {
+    const m = manualMission([aimedWaypoint], pois);
+    const kml = buildTemplateKml(m);
+    const wpml = buildWaylinesWpml(m);
+
+    expect(kml).toContain(
+      "<wpml:waypointHeadingMode>manually</wpml:waypointHeadingMode>",
+    );
+    expect(kml).not.toContain("towardPOI");
+    expect(wpml).toContain(
+      "<wpml:waypointHeadingMode>manually</wpml:waypointHeadingMode>",
+    );
+    expect(wpml).not.toContain("towardPOI");
+    // No stale POI target left behind for the aircraft to snap to.
+    expect(kml).not.toContain("41.26,0.94,10");
+    expect(wpml).not.toContain("41.26,0.94,10");
+  });
+
+  it("strips gimbal and yaw actions but keeps what the flight is for", () => {
+    const wpml = buildWaylinesWpml(manualMission([aimedWaypoint], pois));
+    for (const stripped of [
+      "gimbalRotate",
+      "gimbalEvenlyRotate",
+      "rotateYaw",
+    ]) {
+      expect(wpml).not.toContain(
+        `<wpml:actionActuatorFunc>${stripped}</wpml:actionActuatorFunc>`,
+      );
+    }
+    expect(wpml).toContain(
+      "<wpml:actionActuatorFunc>takePhoto</wpml:actionActuatorFunc>",
+    );
+    expect(wpml).toContain(
+      "<wpml:actionActuatorFunc>hover</wpml:actionActuatorFunc>",
+    );
+  });
+
+  it("zeroes the planned per-waypoint gimbal pitch so nothing fights the pilot's stick", () => {
+    const wpml = buildWaylinesWpml(manualMission([aimedWaypoint], pois));
+    expect(wpml).toContain(
+      "<wpml:waypointGimbalPitchAngle>0</wpml:waypointGimbalPitchAngle>",
+    );
+    expect(wpml).not.toContain(
+      "<wpml:waypointGimbalPitchAngle>-35</wpml:waypointGimbalPitchAngle>",
+    );
+  });
+
+  it("leaves an auto mission (and a mission saved before the setting existed) exactly as it was", () => {
+    const auto = mission([aimedWaypoint], pois);
+    const legacy = mission([aimedWaypoint], pois);
+    // Older saved missions have no cameraControl at all.
+    legacy.config = { ...legacy.config, cameraControl: undefined };
+
+    for (const m of [auto, legacy]) {
+      const wpml = buildWaylinesWpml(m);
+      expect(wpml).toContain(
+        "<wpml:waypointHeadingMode>towardPOI</wpml:waypointHeadingMode>",
+      );
+      expect(wpml).toContain(
+        "<wpml:actionActuatorFunc>gimbalRotate</wpml:actionActuatorFunc>",
+      );
+      expect(wpml).toContain(
+        "<wpml:waypointGimbalPitchAngle>-35</wpml:waypointGimbalPitchAngle>",
+      );
+    }
+  });
+});

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { CAMERA_SETTLE_SECONDS } from "@droneroute/shared";
 import {
   generateOrbit,
   DEFAULT_ORBIT_PARAMS,
@@ -1741,22 +1742,21 @@ describe("capture mode (photo/video)", () => {
     const capture = result.waypoints[0].actions.filter(
       (a) => a.actionType === "startRecord" || a.actionType === "stopRecord",
     );
-    expect(capture).toEqual([
-      {
-        actionId: 0,
-        actionType: "startRecord",
-        params: { payloadPositionIndex: 0 },
-      },
-      {
-        actionId: 1,
-        actionType: "stopRecord",
-        params: { payloadPositionIndex: 0 },
-      },
+    // Both present, in order, and after the camera setup that now precedes
+    // them on the opening waypoint — hence ids are asserted as unique and
+    // sequential below rather than as literal 0 and 1.
+    expect(capture.map((a) => a.actionType)).toEqual([
+      "startRecord",
+      "stopRecord",
     ]);
-    // Ids stay unique once the camera-aiming actions join them, or Pilot 2
-    // dedupes one of them away.
+    expect(capture.map((a) => a.params)).toEqual([
+      { payloadPositionIndex: 0 },
+      { payloadPositionIndex: 0 },
+    ]);
+    // Ids stay unique and sequential once the camera-aiming actions join
+    // them, or Pilot 2 dedupes one of them away.
     const ids = result.waypoints[0].actions.map((a) => a.actionId);
-    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(ids.map((_, i) => i));
   });
 });
 
@@ -2686,23 +2686,30 @@ describe("orbit drives the gimbal and focuses, the way the field tests settled i
     );
   });
 
-  it("focuses on the second waypoint, after the aircraft has turned to the target", () => {
-    // Not the first: the aircraft focuses on arrival at the start point, and
-    // then turns toward the POI — focusing before that turn focuses on
-    // whatever it was pointing at on the way in, which is what the pilot saw
-    // ("kamera zaostří při doletění na start point, ale při otočení na POI
-    // už ne").
+  it("aims, settles and focuses on the FIRST waypoint, before anything starts shooting", () => {
+    // The shot has to be sharp from its very first frame. Focusing on
+    // arrival used to lock onto whatever the aircraft saw on the way in —
+    // it lands at the start point still carrying its transit heading and
+    // only then swings toward the POI ("kamera zaostří při doletění na start
+    // point, ale při otočení na POI už ne"). The settle is what fixes that:
+    // gimbal to the leg's angle, hold while the turn and the gimbal finish,
+    // focus, and only then record. The pause is before startRecord, so it is
+    // not in the footage.
     const { waypoints } = generateOrbit(params);
-    expect(typesAt(waypoints, 0)).not.toContain("focus");
-    expect(typesAt(waypoints, 1)).toContain("focus");
-    // A one-second hover right before it, exactly as in the flight-verified
-    // file — the lens settles, then focuses.
-    const hover = waypoints[1].actions.find((a) => a.actionType === "hover")!;
-    expect(hover.params).toMatchObject({ hoverTime: 1 });
-    expect(typesAt(waypoints, 1).indexOf("hover")).toBeLessThan(
-      typesAt(waypoints, 1).indexOf("focus"),
-    );
-    const focus = waypoints[1].actions.find((a) => a.actionType === "focus")!;
+    const types = typesAt(waypoints, 0);
+    expect(types).toContain("focus");
+    expect(types.indexOf("gimbalRotate")).toBeLessThan(types.indexOf("hover"));
+    expect(types.indexOf("hover")).toBeLessThan(types.indexOf("focus"));
+    expect(types.indexOf("focus")).toBeLessThan(types.indexOf("startRecord"));
+
+    const hover = waypoints[0].actions.find((a) => a.actionType === "hover")!;
+    expect(hover.params).toMatchObject({ hoverTime: CAMERA_SETTLE_SECONDS });
+    expect(CAMERA_SETTLE_SECONDS).toBeGreaterThanOrEqual(3);
+    // Nothing left behind on the second waypoint to re-focus mid-shot.
+    expect(typesAt(waypoints, 1)).not.toContain("focus");
+    expect(typesAt(waypoints, 1)).not.toContain("hover");
+
+    const focus = waypoints[0].actions.find((a) => a.actionType === "focus")!;
     expect(focus.params).toMatchObject({
       isPointFocus: true,
       focusX: 0.5,

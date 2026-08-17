@@ -11,7 +11,13 @@ Bring in existing missions or export your planned flight as a file ready for DJI
   per visit over a long recurring schedule (e.g. a construction time-lapse
   orbit revisited every few days), where each visit only needs to fly the next
   leg but every leg should keep the same POI heading target and mission
-  settings as the original route.
+  settings as the original route. Because each leg is flown as its own flight,
+  every segment also gets its own camera setup at the start — the gimbal angle
+  for that leg, a three-second settle while the aircraft turns to the target,
+  then a focus — before its recording starts, rather than relying on the
+  opening angle and focus that the parent route only performs once at its very
+  beginning. Routes that don't aim at a
+  target (surveys, or a pilot-controlled camera) are left alone.
 - **Save segments as missions**: instead of (or in addition to) downloading
   the zip, save every leg as its own named mission in your account, right
   alongside the original full-route mission — requires being signed in.

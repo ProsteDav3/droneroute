@@ -156,9 +156,12 @@ describe("buildMissionSegments", () => {
     // Segment 2: WP1 (gimbalRotate) -> WP2 (hover, stop). The gimbal move
     // must survive on the first waypoint, alongside its own startRecord, and
     // the hover must survive on the second waypoint alongside stopRecord.
+    // startRecord now comes last on a leg's opening waypoint: whatever sets
+    // the camera up (gimbal, settle, focus) has to happen before the
+    // recording starts, or the swing and the settle end up in the clip.
     expect(types(segments[1].waypoints[0].actions)).toEqual([
-      "startRecord",
       "gimbalRotate",
+      "startRecord",
     ]);
     expect(types(segments[1].waypoints[1].actions)).toEqual([
       "hover",
@@ -188,5 +191,189 @@ describe("buildMissionSegments", () => {
         expect(wp.actions).toEqual([]);
       }
     }
+  });
+});
+
+describe("every segment aims its own camera", () => {
+  // Each segment is flown as its own flight, months apart in a time-lapse
+  // series. The parent orbit sets the opening gimbal angle and focuses once,
+  // on its first two waypoints — carried through the split unchanged, that
+  // leaves segments 2..N taking off with the gimbal wherever the pilot left
+  // it and never focusing. Verified against a real 71-segment upload: only
+  // 1 of 71 segments had a gimbalRotate and only 2 of 71 had a focus.
+  const orbitWaypoint = (index: number, pitch: number, extra = []) =>
+    makeWaypoint(index, {
+      headingMode: "towardPOI",
+      poiId: "poi-1",
+      useGlobalHeadingParam: false,
+      gimbalPitchAngle: pitch,
+      actions: [
+        {
+          actionId: 0,
+          actionType: "gimbalEvenlyRotate",
+          params: { gimbalPitchRotateAngle: pitch + 1 },
+        },
+        ...extra,
+      ],
+    } as Partial<Waypoint>);
+
+  const orbit = () => {
+    const m = makeMission([
+      orbitWaypoint(0, -28, [
+        { actionId: 1, actionType: "startRecord", params: {} },
+        {
+          actionId: 2,
+          actionType: "gimbalRotate",
+          params: { gimbalPitchRotateAngle: -28 },
+        },
+      ] as never),
+      orbitWaypoint(1, -27, [
+        { actionId: 1, actionType: "hover", params: { hoverTime: 1 } },
+        { actionId: 2, actionType: "focus", params: { isPointFocus: true } },
+      ] as never),
+      orbitWaypoint(2, -26),
+      makeWaypoint(3, {
+        headingMode: "towardPOI",
+        poiId: "poi-1",
+        useGlobalHeadingParam: false,
+        gimbalPitchAngle: -25,
+        actions: [{ actionId: 0, actionType: "stopRecord", params: {} }],
+      } as Partial<Waypoint>),
+    ]);
+    m.pois = [
+      {
+        id: "poi-1",
+        name: "Cíl",
+        latitude: 41.26,
+        longitude: 0.94,
+        height: 25,
+      },
+    ];
+    return m;
+  };
+
+  const typesOf = (wp: Waypoint) => wp.actions.map((a) => a.actionType);
+
+  it("gives every segment an opening gimbal angle matching its own first waypoint", () => {
+    const segments = buildMissionSegments(orbit());
+    expect(segments).toHaveLength(3);
+    for (const seg of segments) {
+      const rotate = seg.waypoints[0].actions.find(
+        (a) => a.actionType === "gimbalRotate",
+      );
+      expect(rotate, `${seg.name} must set its opening angle`).toBeDefined();
+      expect(
+        (rotate!.params as { gimbalPitchRotateAngle: number })
+          .gimbalPitchRotateAngle,
+      ).toBe(seg.waypoints[0].gimbalPitchAngle);
+    }
+  });
+
+  it("focuses on every segment, after a settle long enough to be worth having", () => {
+    for (const seg of buildMissionSegments(orbit())) {
+      const types = typesOf(seg.waypoints[0]);
+      expect(types, `${seg.name} must focus`).toContain("focus");
+      expect(types.indexOf("hover")).toBeLessThan(types.indexOf("focus"));
+      // A segment is entered cold — transit in, turn to the target, swing the
+      // gimbal from wherever it was — and the hover is before startRecord, so
+      // it costs nothing on screen. The parent route's own 1 s settle sits
+      // inside the footage and stays short for that reason; this one doesn't
+      // have to.
+      const hover = seg.waypoints[0].actions.find(
+        (a) => a.actionType === "hover",
+      )!;
+      expect(
+        (hover.params as { hoverTime: number }).hoverTime,
+      ).toBeGreaterThanOrEqual(3);
+      // Recording starts after the camera is set, so the settle isn't in the
+      // clip.
+      expect(types.indexOf("focus")).toBeLessThan(types.indexOf("startRecord"));
+    }
+  });
+
+  it("does not duplicate what a segment already inherited", () => {
+    for (const seg of buildMissionSegments(orbit())) {
+      for (const wp of seg.waypoints) {
+        for (const type of ["gimbalRotate", "focus", "hover"]) {
+          expect(
+            wp.actions.filter((a) => a.actionType === type).length,
+            `${seg.name} ${wp.name} ${type}`,
+          ).toBeLessThanOrEqual(1);
+        }
+      }
+      const ids = seg.waypoints[0].actions.map((a) => a.actionId);
+      expect(new Set(ids).size).toBe(ids.length);
+    }
+  });
+
+  it("keeps the per-leg gimbal walk and the recording pair", () => {
+    for (const seg of buildMissionSegments(orbit())) {
+      expect(typesOf(seg.waypoints[0])).toContain("gimbalEvenlyRotate");
+      expect(typesOf(seg.waypoints[0])).toContain("startRecord");
+      expect(typesOf(seg.waypoints[1])).toContain("stopRecord");
+    }
+  });
+
+  it("leaves a route that doesn't track a target alone", () => {
+    // A survey grid or a manually-flown camera: nothing here asked for the
+    // gimbal to be aimed, so segments must not start inventing gimbal moves.
+    const plain = makeMission([
+      makeWaypoint(0, {
+        actions: [{ actionId: 0, actionType: "startRecord", params: {} }],
+      } as Partial<Waypoint>),
+      makeWaypoint(1),
+      makeWaypoint(2, {
+        actions: [{ actionId: 0, actionType: "stopRecord", params: {} }],
+      } as Partial<Waypoint>),
+    ]);
+    for (const seg of buildMissionSegments(plain)) {
+      for (const wp of seg.waypoints) {
+        expect(typesOf(wp)).not.toContain("gimbalRotate");
+        expect(typesOf(wp)).not.toContain("focus");
+      }
+    }
+  });
+});
+
+describe("segment settle length", () => {
+  const wp = (index: number, actions: unknown[] = []) =>
+    makeWaypoint(index, {
+      headingMode: "towardPOI",
+      poiId: "poi-1",
+      useGlobalHeadingParam: false,
+      gimbalPitchAngle: -20,
+      actions: actions as never,
+    } as Partial<Waypoint>);
+
+  const hoverOf = (segment: Mission) =>
+    (
+      segment.waypoints[0].actions.find((a) => a.actionType === "hover")!
+        .params as { hoverTime: number }
+    ).hoverTime;
+
+  it("lengthens the one-second settle a segment inherits from the parent route", () => {
+    // The parent's own settle is short on purpose — it sits inside the
+    // parent's footage. The segment starting on that waypoint would
+    // otherwise be the single segment that focuses in a hurry.
+    const segments = buildMissionSegments(
+      makeMission([
+        wp(0),
+        wp(1, [{ actionId: 0, actionType: "hover", params: { hoverTime: 1 } }]),
+        wp(2),
+      ]),
+    );
+    expect(hoverOf(segments[1])).toBe(3);
+  });
+
+  it("leaves a deliberately longer hover alone", () => {
+    const segments = buildMissionSegments(
+      makeMission([
+        wp(0, [
+          { actionId: 0, actionType: "hover", params: { hoverTime: 10 } },
+        ]),
+        wp(1),
+      ]),
+    );
+    expect(hoverOf(segments[0])).toBe(10);
   });
 });

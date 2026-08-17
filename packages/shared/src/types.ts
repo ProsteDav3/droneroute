@@ -518,6 +518,21 @@ export interface MapViewState {
 
 // ── Default Config ───────────────────────────────────────
 
+/**
+ * How long a route holds still at its opening waypoint before focusing, in
+ * seconds.
+ *
+ * The aircraft arrives at a waypoint still carrying its transit heading and
+ * only then swings toward the camera target; the gimbal may have to travel
+ * most of its range to reach the leg's angle. A focus issued before both
+ * finish locks onto whatever the camera happened to be pointing at on the
+ * way in — field-observed on a Matrice 4T, where the shot came back soft
+ * ("kamera zaostří při doletění na start point, ale při otočení na POI už
+ * ne"). This pause is what makes focusing at the very first waypoint safe,
+ * and it is placed before recording starts, so it costs nothing on screen.
+ */
+export const CAMERA_SETTLE_SECONDS = 3;
+
 export const DEFAULT_MISSION_CONFIG: MissionConfig = {
   // DJI Matrice 4T is the default drone. maxBatteryMinutes is intentionally
   // well under its rated 46-49 min max flight time (DJI spec sheet,

@@ -3,7 +3,7 @@ import type {
   PointOfInterest,
   WaypointAction,
 } from "@droneroute/shared";
-import { DEFAULT_WAYPOINT } from "@droneroute/shared";
+import { DEFAULT_WAYPOINT, CAMERA_SETTLE_SECONDS } from "@droneroute/shared";
 import { distanceToPolygonBoundaryM, polygonCentroid } from "@/lib/geo";
 import { deriveHfovFromVfov } from "@/lib/solarCamera";
 
@@ -1832,9 +1832,14 @@ function applyVideoCaptureActions(
  * once the aircraft has turned to the target, the same flight came back
  * correctly aimed, correctly tilted and sharp.
  *
- * Focus goes on the SECOND waypoint on purpose: the aircraft focuses on
- * arrival at the start point and only then swings toward the POI, so
- * focusing any earlier locks onto whatever it was looking at on the way in.
+ * All of it sits on the FIRST waypoint, ahead of the capture actions, so the
+ * very first frame recorded is already sharp and correctly framed. An earlier
+ * revision focused on the second waypoint instead: the aircraft arrives at
+ * the start point still carrying its transit heading and only then swings
+ * toward the POI, so a focus issued on arrival locked onto whatever it saw on
+ * the way in. The settle (`CAMERA_SETTLE_SECONDS`) is what removes that
+ * objection — the turn and the gimbal move both finish inside it — and
+ * because it runs before `startRecord`, the pause never reaches the footage.
  *
  * `gimbalEvenlyRotate` is skipped when the pitch never changes (a plain
  * circular orbit around its own centre holds one angle the whole way) —
@@ -1845,10 +1850,12 @@ function applyOrbitAimingActions(waypoints: TemplateResult["waypoints"]): void {
   const nextId = (i: number) =>
     waypoints[i].actions.reduce((max, a) => Math.max(max, a.actionId + 1), 0);
 
-  waypoints[0].actions = [
-    ...waypoints[0].actions,
+  // Prepended, not appended: the camera has to be aimed, settled and focused
+  // before whatever shoots (startRecord / takePhoto) runs, or the opening of
+  // the clip is a soft, still-swinging frame.
+  const opening: WaypointAction[] = [
     {
-      actionId: nextId(0),
+      actionId: 0,
       actionType: "gimbalRotate",
       params: {
         gimbalRotateMode: "absoluteAngle",
@@ -1856,35 +1863,26 @@ function applyOrbitAimingActions(waypoints: TemplateResult["waypoints"]): void {
         payloadPositionIndex: 0,
       },
     },
+    {
+      actionId: 0,
+      actionType: "hover",
+      params: { hoverTime: CAMERA_SETTLE_SECONDS },
+    },
+    {
+      actionId: 0,
+      actionType: "focus",
+      params: {
+        isPointFocus: true,
+        focusX: 0.5,
+        focusY: 0.5,
+        isInfiniteFocus: false,
+        payloadPositionIndex: 0,
+      },
+    },
   ];
-
-  if (waypoints.length > 1) {
-    waypoints[1].actions = [
-      ...waypoints[1].actions,
-      {
-        // One second, matching the flight-verified file exactly: long enough
-        // for the lens to settle before the focus command, short enough not
-        // to read as a stall in the footage.
-        actionId: nextId(1),
-        actionType: "hover",
-        params: { hoverTime: 1 },
-      },
-    ];
-    waypoints[1].actions = [
-      ...waypoints[1].actions,
-      {
-        actionId: nextId(1),
-        actionType: "focus",
-        params: {
-          isPointFocus: true,
-          focusX: 0.5,
-          focusY: 0.5,
-          isInfiniteFocus: false,
-          payloadPositionIndex: 0,
-        },
-      },
-    ];
-  }
+  waypoints[0].actions = [...opening, ...waypoints[0].actions].map(
+    (action, i) => ({ ...action, actionId: i }),
+  );
 
   const pitchChanges = waypoints.some(
     (wp) => wp.gimbalPitchAngle !== waypoints[0].gimbalPitchAngle,

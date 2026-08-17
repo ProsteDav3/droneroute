@@ -18,6 +18,8 @@ import {
   computeOrbitAimPitch,
   fitAltitudeRange,
   fitRadiusRange,
+  alignOrbitToDistance,
+  minStandoffForBuildingPoiClearanceM,
   computeRadiusForPitch,
   defaultAimHeight,
   objectFitsInFrame,
@@ -101,6 +103,20 @@ export function OrbitFields({
    * did, at a fixed 1.6 ratio that forbade exactly that shot) the panel
    * measures the swing over the waypoints actually flown and says so.
    */
+  /** The red ring on the map: how far out the whole building — width and
+   * all — fits in frame. `null` when there is no building outline to
+   * measure, in which case there is nothing to snap to. */
+  const wholeBuildingDistanceM =
+    orbitParams.buildingVertices && orbitParams.poiHeight > 0
+      ? Math.round(
+          minStandoffForBuildingPoiClearanceM(
+            orbitParams.buildingVertices,
+            orbitParams.poiHeight,
+            vfovDeg,
+          ),
+        )
+      : null;
+
   const swing = orbitParams.poiCenter
     ? poiDistanceSwing(
         orbitParams.center,
@@ -293,20 +309,37 @@ export function OrbitFields({
             >
               Držet vzdálenost od cíle ({distanceLabel(unitSystem)})
             </Label>
-            {orbitParams.evenDistanceM !== undefined && (
-              <button
-                type="button"
-                className="text-[10px] text-muted-foreground hover:text-foreground"
-                onClick={() => {
-                  const next = { ...orbitParams };
-                  delete next.evenDistanceM;
-                  onOrbitChange(next);
-                }}
-                title="Zpět na kruh"
-              >
-                kruh
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {wholeBuildingDistanceM !== null && (
+                <button
+                  type="button"
+                  className="text-[10px] text-red-400 hover:text-red-300"
+                  onClick={() =>
+                    onOrbitChange(
+                      alignOrbitToDistance(orbitParams, wholeBuildingDistanceM),
+                    )
+                  }
+                  title="Posadí celou trasu včetně začátku a konce na červený kruh — vzdálenost, ze které je vidět celá budova"
+                >
+                  na červený kruh ({wholeBuildingDistanceM}{" "}
+                  {distanceLabel(unitSystem)})
+                </button>
+              )}
+              {orbitParams.evenDistanceM !== undefined && (
+                <button
+                  type="button"
+                  className="text-[10px] text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    const next = { ...orbitParams };
+                    delete next.evenDistanceM;
+                    onOrbitChange(next);
+                  }}
+                  title="Zpět na kruh"
+                >
+                  kruh
+                </button>
+              )}
+            </div>
           </div>
           <NumericInput
             value={toDisplayDistance(

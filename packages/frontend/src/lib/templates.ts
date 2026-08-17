@@ -2142,6 +2142,57 @@ function orbitWaypointBearings(
   return bearings;
 }
 
+/**
+ * Puts the whole orbit at one distance from the camera target — every
+ * waypoint, the two ends included.
+ *
+ * Holding a distance across the middle (`evenDistanceM`) leaves the ends
+ * wherever `radiusM` put them, so with a radius wider than the hold the first
+ * and last waypoints stick out of the shape. Snapping is the shortcut for the
+ * case the pilot actually wants: fly the whole arc at the distance where the
+ * subject fits, and start and finish on it too.
+ *
+ * The orbit's centre moves onto the target and the radius becomes that
+ * distance, which is what "the same distance everywhere" means geometrically.
+ * The arc keeps its extent and its direction of travel, and starts on the
+ * same bearing from the target as before, so the flight still begins where
+ * it was aimed to begin.
+ */
+export function alignOrbitToDistance(
+  params: OrbitParams,
+  distanceM: number,
+): OrbitParams {
+  const { poiCenter } = params;
+  if (!poiCenter) return params;
+
+  const flown = generateOrbit(params).waypoints;
+  const first = flown[0];
+  const last = flown[flown.length - 1];
+  if (!first || !last) return params;
+
+  // Both ends keep the direction they had **as seen from the target**, which
+  // is where the pilot sees them on the map — in front of the building. The
+  // arc's own extent is not preserved: measured from the old, off-centre
+  // hub it spans a different angle than the same two directions do from the
+  // target, and forcing it would swing the finish 30° away from where it was
+  // aimed.
+  const bearingFromTarget = (wp: { latitude: number; longitude: number }) =>
+    bearing(poiCenter[0], poiCenter[1], wp.latitude, wp.longitude);
+  const startAngleDeg = bearingFromTarget(first);
+  const endBearingDeg = bearingFromTarget(last);
+  const forward = (((endBearingDeg - startAngleDeg) % 360) + 360) % 360;
+  const sweep = params.clockwise ? forward : forward - 360;
+
+  return {
+    ...params,
+    center: poiCenter,
+    radiusM: distanceM,
+    startAngleDeg,
+    endAngleDeg: startAngleDeg + sweep,
+    evenDistanceM: undefined,
+  };
+}
+
 export function generateOrbit(params: OrbitParams): TemplateResult {
   const {
     center,

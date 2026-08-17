@@ -43,6 +43,8 @@ import {
   clampOrbitCenterForPoiClearance,
   radiusForNearestStandoffM,
   orbitRadiusAtBearing,
+  alignOrbitToDistance,
+  signedArcSweepDeg,
 } from "./templates";
 import type {
   OrbitParams,
@@ -3092,5 +3094,91 @@ describe("oval holds an even distance from the target, flaring only at the ends"
       previous = b;
     }
     expect(reversals).toBe(0);
+  });
+});
+
+describe("snapping the whole orbit onto one distance from the target", () => {
+  // Holding a distance across the middle still leaves the two ends out where
+  // the radius put them — on the Congress Centre orbit, 155 m against the
+  // 118 m the rest of the flight holds, which reads as the ends sticking out
+  // of the shape. This puts every waypoint, ends included, at one distance.
+  const POI: [number, number] = [50.06152, 14.429187];
+  const params: OrbitParams = {
+    ...DEFAULT_ORBIT_PARAMS,
+    center: destinationPoint(POI[0], POI[1], 47, 150.75),
+    radiusM: 155,
+    numPoints: 24,
+    altitude: 37,
+    poiHeight: 30,
+    aimHeight: 15,
+    poiCenter: POI,
+    startAngleDeg: 11.7,
+    endAngleDeg: 281.7,
+    captureMode: "video",
+  };
+
+  it("puts every waypoint at the requested distance, ends included", () => {
+    const snapped = alignOrbitToDistance(params, 118);
+    const flown = generateOrbit(snapped).waypoints.map((wp) =>
+      haversineDistance(wp.latitude, wp.longitude, POI[0], POI[1]),
+    );
+    for (const d of flown) expect(d).toBeCloseTo(118, 0);
+  });
+
+  it("keeps the flight starting and ending in the same direction as before", () => {
+    const before = generateOrbit(params).waypoints;
+    const after = generateOrbit(alignOrbitToDistance(params, 118)).waypoints;
+    const dirFromPoi = (wp: { latitude: number; longitude: number }) =>
+      bearing(POI[0], POI[1], wp.latitude, wp.longitude);
+    const gap = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+
+    expect(gap(dirFromPoi(after[0]), dirFromPoi(before[0]))).toBeLessThan(1);
+    expect(
+      gap(
+        dirFromPoi(after[after.length - 1]),
+        dirFromPoi(before[before.length - 1]),
+      ),
+    ).toBeLessThan(6);
+  });
+
+  it("keeps flying the same way round, over an arc that still covers the building", () => {
+    // The extent measured from the target is not the extent measured from the
+    // old off-centre hub — the same two end directions simply subtend a
+    // different angle from a different vantage point. Direction of travel and
+    // a still-substantial sweep are what have to survive.
+    const snapped = alignOrbitToDistance(params, 118);
+    const sweep = signedArcSweepDeg(
+      snapped.startAngleDeg,
+      snapped.endAngleDeg,
+      snapped.clockwise,
+    );
+    expect(snapped.clockwise).toBe(params.clockwise);
+    expect(sweep).toBeGreaterThan(180);
+    expect(sweep).toBeLessThan(360);
+  });
+
+  it("leaves it a plain circle around the target, with nothing left to hold", () => {
+    // Once every point is the same distance out, the oval has nothing left to
+    // do — carrying a hold distance as well would just be a second, competing
+    // description of the same shape.
+    const snapped = alignOrbitToDistance(params, 118);
+    expect(snapped.evenDistanceM).toBeUndefined();
+    expect(snapped.radiusM).toBe(118);
+    expect(snapped.center).toEqual(POI);
+  });
+
+  it("keeps every other setting untouched", () => {
+    const snapped = alignOrbitToDistance(params, 118);
+    expect(snapped.numPoints).toBe(params.numPoints);
+    expect(snapped.altitude).toBe(params.altitude);
+    expect(snapped.poiHeight).toBe(params.poiHeight);
+    expect(snapped.aimHeight).toBe(params.aimHeight);
+    expect(snapped.captureMode).toBe(params.captureMode);
+    expect(snapped.poiCenter).toEqual(params.poiCenter);
+  });
+
+  it("does nothing without a locked target to measure from", () => {
+    const noTarget = { ...params, poiCenter: undefined };
+    expect(alignOrbitToDistance(noTarget, 118)).toEqual(noTarget);
   });
 });

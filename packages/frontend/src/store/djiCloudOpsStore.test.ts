@@ -63,13 +63,23 @@ describe("deleteWaylinesInBulk", () => {
     });
   });
 
-  it("deletes only the segments, leaving whole missions untouched", async () => {
-    mockedApi.delete.mockResolvedValue(undefined as never);
+  it("asks the server to delete the whole batch in one request", async () => {
+    // Deleting them one by one from here tripped our own strict rate limiter
+    // (10 per minute) and stopped after ten files: "smazáno 10 z 50".
+    mockedApi.post.mockResolvedValue({
+      deleted: ["s1", "s2", "s3"],
+      failed: [],
+    } as never);
 
     const result = await useDjiCloudOpsStore
       .getState()
       .deleteWaylinesInBulk("segments");
 
+    expect(mockedApi.post).toHaveBeenCalledTimes(1);
+    expect(mockedApi.post).toHaveBeenCalledWith(
+      "/dji-cloud/waylines/bulk-delete",
+      { ids: ["s1", "s2", "s3"] },
+    );
     expect(result).toEqual({ deleted: 3, failed: 0 });
     expect(useDjiCloudOpsStore.getState().waylines.map((w) => w.id)).toEqual([
       "m1",
@@ -77,14 +87,18 @@ describe("deleteWaylinesInBulk", () => {
     ]);
   });
 
-  it("deletes only the whole missions, leaving segments untouched", async () => {
-    mockedApi.delete.mockResolvedValue(undefined as never);
+  it("sends only the whole missions when that is what was asked for", async () => {
+    mockedApi.post.mockResolvedValue({
+      deleted: ["m1", "m2"],
+      failed: [],
+    } as never);
 
-    const result = await useDjiCloudOpsStore
-      .getState()
-      .deleteWaylinesInBulk("missions");
+    await useDjiCloudOpsStore.getState().deleteWaylinesInBulk("missions");
 
-    expect(result).toEqual({ deleted: 2, failed: 0 });
+    expect(mockedApi.post).toHaveBeenCalledWith(
+      "/dji-cloud/waylines/bulk-delete",
+      { ids: ["m1", "m2"] },
+    );
     expect(useDjiCloudOpsStore.getState().waylines.map((w) => w.id)).toEqual([
       "s1",
       "s2",
@@ -92,14 +106,11 @@ describe("deleteWaylinesInBulk", () => {
     ]);
   });
 
-  it("keeps going when one delete fails, and reports it", async () => {
-    // A partly-failed sweep must not leave rows that were actually deleted
-    // still showing, nor stop at the first error — the point of the button is
-    // to clear the library in one go.
-    mockedApi.delete
-      .mockResolvedValueOnce(undefined as never)
-      .mockRejectedValueOnce(new Error("429 Too Many Requests"))
-      .mockResolvedValueOnce(undefined as never);
+  it("drops only what the server actually deleted, and counts the rest", async () => {
+    mockedApi.post.mockResolvedValue({
+      deleted: ["s1", "s3"],
+      failed: ["s2"],
+    } as never);
 
     const result = await useDjiCloudOpsStore
       .getState()
@@ -111,11 +122,22 @@ describe("deleteWaylinesInBulk", () => {
       "m2",
       "s2",
     ]);
-    expect(useDjiCloudOpsStore.getState().waylinesError).toContain("429");
+  });
+
+  it("reports a failed request instead of pretending the sweep worked", async () => {
+    mockedApi.post.mockRejectedValue(new Error("Příliš mnoho požadavků"));
+
+    const result = await useDjiCloudOpsStore
+      .getState()
+      .deleteWaylinesInBulk("segments");
+
+    expect(result).toEqual({ deleted: 0, failed: 3 });
+    expect(useDjiCloudOpsStore.getState().waylines).toHaveLength(5);
+    expect(useDjiCloudOpsStore.getState().waylinesError).toContain("Příliš");
   });
 
   it("clears the progress indicator when it finishes", async () => {
-    mockedApi.delete.mockResolvedValue(undefined as never);
+    mockedApi.post.mockResolvedValue({ deleted: [], failed: [] } as never);
     await useDjiCloudOpsStore.getState().deleteWaylinesInBulk("segments");
     expect(useDjiCloudOpsStore.getState().bulkWaylineDelete).toBeNull();
   });

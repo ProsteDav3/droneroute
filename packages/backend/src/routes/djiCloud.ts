@@ -340,6 +340,61 @@ djiCloudRoutes.get(
   },
 );
 
+/**
+ * Clearing a whole batch — a superseded 71-segment upload, say — as ONE
+ * request.
+ *
+ * Deleting them one at a time from the browser hits the strict limiter (10
+ * per minute) after ten files and reports "smazáno 10 z 50". Batching moves
+ * the loop to the server, where it costs a single rate-limit hit and the
+ * deletes can be paced against the upstream platform instead of against our
+ * own middleware. Reports per-file outcomes rather than failing the lot: a
+ * wayline someone else removed in the meantime shouldn't abort the sweep.
+ */
+const MAX_BULK_DELETE = 500;
+
+djiCloudRoutes.post(
+  "/waylines/bulk-delete",
+  strictLimiter,
+  authMiddleware,
+  async (req: AuthRequest, res) => {
+    try {
+      if (!requireConfigured(res)) return;
+      const ids = req.body?.ids;
+      if (
+        !Array.isArray(ids) ||
+        ids.length === 0 ||
+        ids.some((id) => typeof id !== "string" || !id)
+      ) {
+        res.status(400).json({ error: "Chybí seznam ID waylines" });
+        return;
+      }
+      if (ids.length > MAX_BULK_DELETE) {
+        res.status(400).json({
+          error: `Najednou lze smazat nejvýše ${MAX_BULK_DELETE} waylines`,
+        });
+        return;
+      }
+
+      const deleted: string[] = [];
+      const failed: string[] = [];
+      for (const id of ids as string[]) {
+        try {
+          await deleteWayline(id, req.userId);
+          deleted.push(id);
+        } catch (err) {
+          logger.warn({ err, id }, "DJI Cloud bulk delete: one wayline failed");
+          failed.push(id);
+        }
+      }
+      res.json({ deleted, failed });
+    } catch (err) {
+      logger.error({ err }, "DJI Cloud bulk wayline delete error");
+      res.status(502).json({ error: "Smazání z DJI Cloud selhalo" });
+    }
+  },
+);
+
 // Removes a wayline from the workspace's library (e.g. a timestamped
 // duplicate from a retried upload). Rate-limited like the upload routes —
 // it's an authenticated, workspace-mutating call.

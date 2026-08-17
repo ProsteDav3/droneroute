@@ -581,3 +581,118 @@ describe("mission version history", () => {
     expect(res.status).toBe(404);
   });
 });
+
+describe("POST /api/missions/bulk-delete", () => {
+  const create = async (authToken: string, name: string) => {
+    const res = await request(app)
+      .post("/api/missions")
+      .set("Authorization", `Bearer ${authToken}`)
+      .send({ ...validBody, name });
+    return res.body.id as string;
+  };
+
+  it("deletes a whole batch in one call", async () => {
+    // Clearing a 71-segment upload one card at a time is both tedious and a
+    // good way to get cut off by the rate limiter part-way through.
+    const ids = [
+      await create(token, "bulk-1"),
+      await create(token, "bulk-2"),
+      await create(token, "bulk-3"),
+    ];
+
+    const res = await request(app)
+      .post("/api/missions/bulk-delete")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ids });
+
+    expect(res.status).toBe(200);
+    expect(res.body.deleted).toHaveLength(3);
+    expect(res.body.skipped).toHaveLength(0);
+
+    for (const id of ids) {
+      const check = await request(app)
+        .get(`/api/missions/${id}`)
+        .set("Authorization", `Bearer ${token}`);
+      expect(check.status).toBe(404);
+    }
+  });
+
+  it("never deletes someone else's route, and says which it skipped", async () => {
+    const mine = await create(token, "bulk-mine");
+    const theirs = await create(otherToken, "bulk-theirs");
+
+    const res = await request(app)
+      .post("/api/missions/bulk-delete")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ids: [mine, theirs] });
+
+    expect(res.body.deleted).toEqual([mine]);
+    expect(res.body.skipped).toEqual([theirs]);
+
+    const stillThere = await request(app)
+      .get(`/api/missions/${theirs}`)
+      .set("Authorization", `Bearer ${otherToken}`);
+    expect(stillThere.status).toBe(200);
+  });
+
+  it("carries on past an id that no longer exists", async () => {
+    const real = await create(token, "bulk-real");
+
+    const res = await request(app)
+      .post("/api/missions/bulk-delete")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ids: ["does-not-exist", real] });
+
+    expect(res.body.deleted).toEqual([real]);
+    expect(res.body.skipped).toEqual(["does-not-exist"]);
+  });
+
+  it("rejects a malformed or empty list", async () => {
+    for (const body of [{}, { ids: [] }, { ids: ["ok", 42] }]) {
+      const res = await request(app)
+        .post("/api/missions/bulk-delete")
+        .set("Authorization", `Bearer ${token}`)
+        .send(body);
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it("requires signing in", async () => {
+    const res = await request(app)
+      .post("/api/missions/bulk-delete")
+      .send({ ids: ["anything"] });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("DELETE a mission that has history behind it", () => {
+  it("removes the mission and its snapshots instead of failing on a foreign key", async () => {
+    // Saving a mission writes a version snapshot immediately, and five tables
+    // carry a foreign key to missions(id) with no ON DELETE CASCADE - so a
+    // plain delete failed with "FOREIGN KEY constraint failed" for every
+    // mission that had ever been saved. Deleting a route from the library
+    // returned a 500 and left it there; libraries filled up with hundreds of
+    // segment routes nobody could clear.
+    const created = await request(app)
+      .post("/api/missions")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...validBody, name: "with-history" });
+    const id = created.body.id as string;
+
+    // Save again so there is more than one snapshot to clear.
+    await request(app)
+      .put(`/api/missions/${id}`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ ...validBody, name: "with-history v2" });
+
+    const res = await request(app)
+      .delete(`/api/missions/${id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(res.status).toBe(200);
+
+    const gone = await request(app)
+      .get(`/api/missions/${id}`)
+      .set("Authorization", `Bearer ${token}`);
+    expect(gone.status).toBe(404);
+  });
+});

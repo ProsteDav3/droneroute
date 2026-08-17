@@ -179,6 +179,58 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
     }
   };
 
+  /** Ids ticked for a bulk delete. A single segment upload can leave 71
+   * saved routes behind, and clearing them one card at a time is what this
+   * exists to avoid. */
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    if (
+      !confirm(
+        ids.length === 1
+          ? "Trvale smazat vybranou trasu?"
+          : `Trvale smazat ${ids.length} vybraných tras?`,
+      )
+    ) {
+      return;
+    }
+    setBulkDeleting(true);
+    try {
+      // One request for the whole batch: deleting them individually runs into
+      // the shared rate limiter and stops part-way through.
+      const res = await api.post<{ deleted: string[]; skipped: string[] }>(
+        "/missions/bulk-delete",
+        { ids },
+      );
+      const gone = new Set(res.deleted);
+      setMissions((prev) => prev.filter((m) => !gone.has(m.id)));
+      setSelectedIds(new Set());
+      if (res.skipped.length > 0) {
+        toast.warning(
+          `Smazáno ${res.deleted.length}, ${res.skipped.length} se smazat nepodařilo`,
+        );
+      } else {
+        toast.success(`Smazáno ${res.deleted.length} tras`);
+      }
+    } catch (e: any) {
+      toast.error("Smazání se nezdařilo: " + (e.message || "Neznámá chyba"));
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
   const [exportingId, setExportingId] = useState<string | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -494,6 +546,40 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
               )}
 
             {!loading && !error && token && filteredMissions.length > 0 && (
+              <div className="flex items-center gap-2 mb-3">
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() =>
+                    setSelectedIds((prev) =>
+                      prev.size === filteredMissions.length
+                        ? new Set()
+                        : new Set(filteredMissions.map((m) => m.id)),
+                    )
+                  }
+                >
+                  {selectedIds.size === filteredMissions.length
+                    ? "Zrušit výběr"
+                    : `Vybrat vše (${filteredMissions.length})`}
+                </button>
+                {selectedIds.size > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 text-xs border-red-500/60 text-red-300 hover:bg-red-500/15"
+                    disabled={bulkDeleting}
+                    onClick={handleBulkDelete}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    {bulkDeleting
+                      ? "Mažu…"
+                      : `Smazat vybrané (${selectedIds.size})`}
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {!loading && !error && token && filteredMissions.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredMissions.map((mission) => {
                   const waypoints: Waypoint[] = (() => {
@@ -531,11 +617,30 @@ export function RoutesPage({ onRequestAuth }: RoutesPageProps) {
                   return (
                     <div
                       key={mission.id}
-                      className="group bg-card border border-border rounded-lg overflow-hidden hover:border-primary/50 transition-all hover:shadow-lg hover:shadow-primary/5 cursor-pointer"
+                      className={`group relative bg-card border rounded-lg overflow-hidden transition-all hover:shadow-lg hover:shadow-primary/5 cursor-pointer ${
+                        selectedIds.has(mission.id)
+                          ? "border-red-500/60"
+                          : "border-border hover:border-primary/50"
+                      }`}
                       onClick={() => handleLoad(mission)}
                     >
                       {/* Card gradient header */}
                       <div className="h-2 bg-gradient-to-r from-blue-500 via-purple-500 to-amber-500" />
+
+                      {/* Tick to include in a bulk delete. Stops the click
+                          from also opening the route. */}
+                      <label
+                        className="absolute top-3 right-3 z-10 flex items-center"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          className="rounded"
+                          checked={selectedIds.has(mission.id)}
+                          onChange={() => toggleSelected(mission.id)}
+                          aria-label={`Vybrat trasu ${mission.name || "bez názvu"}`}
+                        />
+                      </label>
 
                       <div className="p-4">
                         <div className="flex items-start justify-between mb-3">

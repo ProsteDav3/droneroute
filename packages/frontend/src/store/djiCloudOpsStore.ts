@@ -304,34 +304,25 @@ export const useDjiCloudOpsStore = create<DjiCloudOpsState>((set, get) => ({
       (w) => isSegmentWayline(w.name) === wantSegments,
     );
     set({ bulkWaylineDelete: { kind, done: 0, total: targets.length } });
-    let deleted = 0;
-    let failed = 0;
-    let lastError: string | null = null;
-    for (const wayline of targets) {
-      try {
-        await api.delete(
-          `/dji-cloud/waylines/${encodeURIComponent(wayline.id)}`,
-        );
-        deleted++;
-        set((state) => ({
-          waylines: state.waylines.filter((w) => w.id !== wayline.id),
-        }));
-      } catch (err: any) {
-        failed++;
-        lastError = err.message;
-      }
+    try {
+      // One request for the whole batch. Deleting them individually from here
+      // ran into our own strict rate limiter (10 per minute) and stopped
+      // after ten files with "smazáno 10 z 50".
+      const res = await api.post<{ deleted: string[]; failed: string[] }>(
+        "/dji-cloud/waylines/bulk-delete",
+        { ids: targets.map((w) => w.id) },
+      );
+      const goneIds = new Set(res.deleted);
       set((state) => ({
-        bulkWaylineDelete: state.bulkWaylineDelete && {
-          ...state.bulkWaylineDelete,
-          done: deleted + failed,
-        },
+        waylines: state.waylines.filter((w) => !goneIds.has(w.id)),
+        bulkWaylineDelete: null,
+        waylinesError: null,
       }));
+      return { deleted: res.deleted.length, failed: res.failed.length };
+    } catch (err: any) {
+      set({ bulkWaylineDelete: null, waylinesError: err.message });
+      return { deleted: 0, failed: targets.length };
     }
-    set({
-      bulkWaylineDelete: null,
-      waylinesError: failed > 0 ? lastError : null,
-    });
-    return { deleted, failed };
   },
 
   /** Opens an SSE connection to /dji-cloud/telemetry/stream. Returns a

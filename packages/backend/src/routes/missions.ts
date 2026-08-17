@@ -474,6 +474,39 @@ missionRoutes.put("/:id", authMiddleware, (req: AuthRequest, res) => {
  *       404:
  *         description: Mission not found
  */
+/**
+ * Removes a mission and everything hanging off it.
+ *
+ * Five tables carry a foreign key to `missions(id)` and none of them
+ * declares `ON DELETE CASCADE`, so a plain `DELETE FROM missions` fails with
+ * "FOREIGN KEY constraint failed" the moment the mission has any history —
+ * and saving a mission writes a version snapshot straight away, so that is
+ * every mission. Deleting a saved route has therefore been returning a 500
+ * and quietly doing nothing; this is why a library fills up with hundreds of
+ * segment routes that cannot be cleared.
+ *
+ * Flight logs and live-track sessions are records of something that actually
+ * happened, and their `mission_id` is nullable — the plan being deleted is
+ * no reason to lose the flight, so those are unlinked rather than deleted.
+ * Everything else (comments, versions, the risk assessment, permits) belongs
+ * to the mission and goes with it.
+ */
+function deleteMissionCascade(db: ReturnType<typeof getDb>, id: string): void {
+  db.prepare(
+    "UPDATE flight_logs SET mission_id = NULL WHERE mission_id = ?",
+  ).run(id);
+  db.prepare(
+    "UPDATE flight_track_sessions SET mission_id = NULL WHERE mission_id = ?",
+  ).run(id);
+  db.prepare("DELETE FROM mission_comments WHERE mission_id = ?").run(id);
+  db.prepare("DELETE FROM mission_versions WHERE mission_id = ?").run(id);
+  db.prepare("DELETE FROM mission_risk_assessments WHERE mission_id = ?").run(
+    id,
+  );
+  db.prepare("DELETE FROM mission_permits WHERE mission_id = ?").run(id);
+  db.prepare("DELETE FROM missions WHERE id = ?").run(id);
+}
+
 // Delete mission
 missionRoutes.delete("/:id", authMiddleware, (req: AuthRequest, res) => {
   const db = getDb();
@@ -489,8 +522,57 @@ missionRoutes.delete("/:id", authMiddleware, (req: AuthRequest, res) => {
     return;
   }
 
-  db.prepare("DELETE FROM missions WHERE id = ?").run(req.params.id);
+  db.transaction(() => deleteMissionCascade(db, String(req.params.id)))();
   res.json({ success: true });
+});
+
+/**
+ * Deletes many of the caller's missions in one call.
+ *
+ * A single segment upload can leave 71 saved missions behind, and clearing
+ * them one card at a time is both tedious and (through the shared limiter) a
+ * good way to get cut off part-way. Deletes only rows the caller owns and
+ * reports what actually went, so a stale id in the list can't take the rest
+ * of the batch down with it.
+ */
+const MAX_BULK_MISSION_DELETE = 1000;
+
+missionRoutes.post("/bulk-delete", authMiddleware, (req: AuthRequest, res) => {
+  const ids = req.body?.ids;
+  if (
+    !Array.isArray(ids) ||
+    ids.length === 0 ||
+    ids.some((id) => typeof id !== "string" || !id)
+  ) {
+    res.status(400).json({ error: "Chybí seznam ID tras" });
+    return;
+  }
+  if (ids.length > MAX_BULK_MISSION_DELETE) {
+    res.status(400).json({
+      error: `Najednou lze smazat nejvýše ${MAX_BULK_MISSION_DELETE} tras`,
+    });
+    return;
+  }
+
+  const db = getDb();
+  const owned = db.prepare("SELECT user_id FROM missions WHERE id = ?");
+  const deleted: string[] = [];
+  const skipped: string[] = [];
+
+  const run = db.transaction((missionIds: string[]) => {
+    for (const id of missionIds) {
+      const row = owned.get(id) as { user_id?: string } | undefined;
+      if (!row || row.user_id !== req.userId) {
+        skipped.push(id);
+        continue;
+      }
+      deleteMissionCascade(db, id);
+      deleted.push(id);
+    }
+  });
+  run(ids as string[]);
+
+  res.json({ deleted, skipped });
 });
 
 // Duplicate a mission (owner only) — a clean, independent copy: fresh id,

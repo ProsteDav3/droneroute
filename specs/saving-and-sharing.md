@@ -18,7 +18,7 @@ Save your missions to your account and share them with others via a link.
 - **Browse version history**: every save keeps a snapshot (the most recent 20
   per mission), so you can see when a mission was last changed and restore an
   earlier version if a later edit turns out to be wrong.
-- **Delete** missions you no longer need.
+- **Delete** missions you no longer need — one at a time, or several at once: tick the checkbox on each card (or "Vybrat vše") and use "Smazat vybrané". A segment upload can leave dozens of routes behind, so the whole selection goes in one request rather than one call per card. Deleting a route also clears its own history — comments, saved versions, risk assessment, permits — while flight logs and live-track sessions are kept and simply unlinked, since those record a flight that really happened.
 - **Share** a mission by generating a read-only link that anyone can open — no account required.
 - **Revoke** a shared link at any time, immediately making it inaccessible.
 - Visitors who open a shared link can:

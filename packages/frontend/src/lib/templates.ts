@@ -1231,10 +1231,76 @@ export function poiDistanceSwing(
   return { nearM, farM, ratio: nearM > 0 ? farM / nearM : Infinity };
 }
 
-/** How finely the centre drag is bisected when it runs into the clearance
- * limit. 24 halvings resolve a metre-scale drag to well under a millimetre —
- * far below what a mouse or the map can express. */
-const CENTER_DRAG_BISECTIONS = 24;
+/** How finely the geometry solves below bisect. 24 halvings resolve a
+ * metre-scale interval to well under a millimetre — far below what a mouse,
+ * the map, or a radius field can express. */
+const BISECTION_STEPS = 24;
+
+/** Upper bound on the radius search below, in metres. Far past any orbit a
+ * real flight would use — it exists so an impossible requirement terminates
+ * instead of looping. */
+const MAX_SEARCHED_RADIUS_M = 20000;
+
+/**
+ * The radius that would put the nearest flown waypoint at least `requiredM`
+ * from the camera target, keeping the centre, the arc and the waypoint count
+ * as they are. `null` when `currentRadiusM` already clears it, or when no
+ * radius under `MAX_SEARCHED_RADIUS_M` does.
+ *
+ * This exists because the panel's warnings state a DISTANCE ("the whole
+ * length needs 118 m") while the field the user types into is a RADIUS, and
+ * with a locked POI sitting off-centre those are not the same number: with
+ * the target 47 m off the centre, a 100 m radius brings the near side of the
+ * arc to ~67 m of the building, and reaching 118 m of clearance takes a
+ * radius closer to 147 m. Typing the quoted distance into the radius field
+ * therefore leaves the shot still cropped — the warning was true and useless
+ * at the same time. Quoting the radius alongside it makes it actionable.
+ *
+ * Searches upward only: growing the radius is the move the warning is
+ * suggesting. (A far smaller radius can also satisfy the requirement by
+ * putting the target outside the circle entirely, but that is a different
+ * shot, not a fix to this one.)
+ */
+export function radiusForNearestStandoffM(
+  params: {
+    center: [number, number];
+    poiCenter: [number, number];
+    startAngleDeg: number;
+    endAngleDeg: number;
+    numPoints: number;
+  },
+  requiredM: number,
+  currentRadiusM: number,
+): number | null {
+  const { center, poiCenter, startAngleDeg, endAngleDeg, numPoints } = params;
+  const nearestFor = (radiusM: number): number =>
+    poiDistanceSwing(
+      center,
+      poiCenter,
+      radiusM,
+      startAngleDeg,
+      endAngleDeg,
+      numPoints,
+    ).nearM;
+
+  if (nearestFor(currentRadiusM) >= requiredM) return null;
+
+  // Grow until the requirement is met, then bisect back to the smallest
+  // radius that still meets it. Growth is geometric so an impossible case
+  // reaches the cap in a handful of steps rather than crawling.
+  let clearing = Math.max(currentRadiusM, 1);
+  while (nearestFor(clearing) < requiredM) {
+    clearing *= 1.5;
+    if (clearing > MAX_SEARCHED_RADIUS_M) return null;
+  }
+  let short = currentRadiusM;
+  for (let i = 0; i < BISECTION_STEPS; i++) {
+    const mid = (short + clearing) / 2;
+    if (nearestFor(mid) >= requiredM) clearing = mid;
+    else short = mid;
+  }
+  return clearing;
+}
 
 /**
  * Keeps a dragged orbit centre from bringing a FLOWN waypoint closer to a
@@ -1306,7 +1372,7 @@ export function clampOrbitCenterForPoiClearance(
 
   let clearFraction = 0;
   let blockedFraction = 1;
-  for (let i = 0; i < CENTER_DRAG_BISECTIONS; i++) {
+  for (let i = 0; i < BISECTION_STEPS; i++) {
     const mid = (clearFraction + blockedFraction) / 2;
     if (
       clears(

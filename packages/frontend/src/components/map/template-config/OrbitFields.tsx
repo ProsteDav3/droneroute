@@ -119,6 +119,15 @@ export function OrbitFields({
    * stands right now, so the user can see before typing where a change will
    * land. Only meaningful when there's an object to frame.
    */
+  /**
+   * With a locked POI sitting off the orbit's centre, the radius is NOT the
+   * distance to the subject — the arc's near side can be tens of metres
+   * closer than the radius says. The fit range is a range of DISTANCES, so
+   * judge it against the nearest distance actually flown; otherwise the hint
+   * happily prints a tick while the near end of the arc is already cropping
+   * the building.
+   */
+  const framingDistanceM = swing ? swing.nearM : orbitParams.radiusM;
   const radiusRange =
     orbitParams.poiHeight > 0
       ? fitRadiusRange(
@@ -126,7 +135,7 @@ export function OrbitFields({
           orbitParams.poiHeight,
           vfovDeg,
           shownAimHeight,
-          orbitParams.radiusM,
+          framingDistanceM,
         )
       : null;
   const altitudeRange =
@@ -258,7 +267,8 @@ export function OrbitFields({
         />
         <FitRangeHint
           range={radiusRange}
-          current={orbitParams.radiusM}
+          current={framingDistanceM}
+          measuredAsDistance={!!swing}
           toDisplay={(m) => toDisplayDistance(m, unitSystem)}
           unit={distanceLabel(unitSystem)}
         />
@@ -699,11 +709,18 @@ export function OrbitFields({
 function FitRangeHint({
   range,
   current,
+  measuredAsDistance = false,
   toDisplay,
   unit,
 }: {
   range: FitRange | null;
   current: number;
+  /** Set when `current` is the nearest flown distance to a locked, off-centre
+   * POI rather than the field's own value. The numbers then aren't radii the
+   * user can type, so the line has to say what they are measured on — a bare
+   * "vejde se od 51 m" under the radius field reads as "type 51" and would be
+   * wrong by the centre's offset. */
+  measuredAsDistance?: boolean;
   toDisplay: (metres: number) => number;
   unit: string;
 }) {
@@ -727,6 +744,8 @@ function FitRangeHint({
       {outside ? "✗ " : "✓ "}
       {fitsText}
       {idealText}
+      {measuredAsDistance &&
+        ` — vzdálenosti od cíle (teď nejblíž ${toDisplay(current)} ${unit}), ne radius`}
     </div>
   );
 }

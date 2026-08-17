@@ -40,6 +40,7 @@ import {
   orbitMinStandoffM,
   buildingLengthShortfall,
   clampOrbitCenterForPoiClearance,
+  radiusForNearestStandoffM,
 } from "./templates";
 import type {
   OrbitParams,
@@ -2552,5 +2553,65 @@ describe("centre drag is judged on the waypoints actually flown", () => {
     const stuck = at(radiusM, FLOWN_SIDE);
     const target = at(5);
     expect(offsetOf(clamp(target, stuck))).toBeCloseTo(5, 0);
+  });
+});
+
+describe("radiusForNearestStandoffM", () => {
+  const POI: [number, number] = [50.06, 14.43];
+  const ARC = { startAngleDeg: 16.98, endAngleDeg: 286.98, numPoints: 72 };
+  // Centre offset from the POI, the "start and end in front of the building"
+  // layout — this is exactly the case where the radius and the distance to
+  // the subject are NOT the same number.
+  const center = destinationPoint(POI[0], POI[1], 47, 150.75);
+  const nearestFor = (radiusM: number) =>
+    poiDistanceSwing(
+      center,
+      POI,
+      radiusM,
+      ARC.startAngleDeg,
+      ARC.endAngleDeg,
+      ARC.numPoints,
+    ).nearM;
+
+  it("returns the radius that puts the nearest flown waypoint at the required distance", () => {
+    const requiredM = 118;
+    const radius = radiusForNearestStandoffM(
+      { center, poiCenter: POI, ...ARC },
+      requiredM,
+      100,
+    );
+    expect(radius).not.toBeNull();
+    expect(nearestFor(radius!)).toBeGreaterThanOrEqual(requiredM);
+    // And it is the SMALLEST such radius — a metre less no longer clears.
+    expect(nearestFor(radius! - 1)).toBeLessThan(requiredM);
+  });
+
+  it("is larger than the required distance itself when the centre is offset", () => {
+    // The whole point of the helper: with the POI 47 m off-centre, typing the
+    // required distance into the radius field leaves the near side of the arc
+    // far too close.
+    const requiredM = 118;
+    const radius = radiusForNearestStandoffM(
+      { center, poiCenter: POI, ...ARC },
+      requiredM,
+      100,
+    );
+    expect(radius!).toBeGreaterThan(requiredM);
+    expect(nearestFor(requiredM)).toBeLessThan(requiredM);
+  });
+
+  it("equals the required distance for a centred POI, where radius IS the distance", () => {
+    const radius = radiusForNearestStandoffM(
+      { center: POI, poiCenter: POI, ...ARC },
+      118,
+      100,
+    );
+    expect(radius!).toBeCloseTo(118, 0);
+  });
+
+  it("returns null when the current radius already clears the requirement", () => {
+    expect(
+      radiusForNearestStandoffM({ center, poiCenter: POI, ...ARC }, 50, 200),
+    ).toBeNull();
   });
 });

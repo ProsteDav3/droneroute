@@ -23,6 +23,7 @@ import { WIDE_CAMERA_FOV } from "@/lib/solarCamera";
 import {
   orbitStandoffViolation,
   buildingLengthShortfall,
+  radiusForNearestStandoffM,
   DEFAULT_WIDE_VFOV_DEG,
 } from "@/lib/templates";
 import type { PointOfInterest } from "@droneroute/shared";
@@ -145,6 +146,35 @@ export function TemplateConfigPanel({
         orbitParams,
         wideFov?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
       )
+    : null;
+
+  /**
+   * Both warnings above state a DISTANCE from the subject, but the field the
+   * user types into is the radius — and with a locked POI off the orbit's
+   * centre those differ a lot (a 100 m radius can put the near side of the
+   * arc 67 m from the building). Quoting the radius that would actually
+   * satisfy the requirement turns "you need 118 m" into something you can act
+   * on without solving the geometry by hand.
+   */
+  const radiusFor = (requiredM: number): number | null =>
+    orbitParams?.poiCenter
+      ? radiusForNearestStandoffM(
+          {
+            center: orbitParams.center,
+            poiCenter: orbitParams.poiCenter,
+            startAngleDeg: orbitParams.startAngleDeg,
+            endAngleDeg: orbitParams.endAngleDeg,
+            numPoints: orbitParams.numPoints,
+          },
+          requiredM,
+          orbitParams.radiusM,
+        )
+      : null;
+  const standoffRadiusM = standoffViolation
+    ? radiusFor(standoffViolation.requiredM)
+    : null;
+  const lengthRadiusM = lengthShortfall
+    ? radiusFor(lengthShortfall.requiredM)
     : null;
 
   // "Save as preset" — reusable across missions, e.g. the same recurring
@@ -441,8 +471,12 @@ export function TemplateConfigPanel({
           Bod trasy {standoffViolation.waypointNumber} je jen{" "}
           {Math.round(standoffViolation.nearestM)} m od cíle kamery — dron by
           letěl prakticky nad objektem a ten se do záběru nevejde ani na výšku
-          (potřeba aspoň {Math.round(standoffViolation.requiredM)} m). Zvětšete
-          radius, nebo posuňte střed orbitu dál od cíle.
+          (potřeba aspoň {Math.round(standoffViolation.requiredM)} m).{" "}
+          {standoffRadiusM
+            ? `Zvětšete radius na ${Math.round(standoffRadiusM)} m (teď ${Math.round(
+                orbitParams!.radiusM,
+              )} m), nebo posuňte střed orbitu dál od cíle.`
+            : "Zvětšete radius, nebo posuňte střed orbitu dál od cíle."}
         </div>
       )}
 
@@ -450,8 +484,13 @@ export function TemplateConfigPanel({
         <div className="text-[10px] text-muted-foreground mb-2">
           Nejbližší bod je {Math.round(lengthShortfall.nearestM)} m od budovy —
           v záběru bude jen její část, na celou délku by bylo potřeba{" "}
-          {Math.round(lengthShortfall.requiredM)} m. U dlouhé budovy je let
-          zblízka běžná volba; použít to jde.
+          {Math.round(lengthShortfall.requiredM)} m
+          {lengthRadiusM
+            ? `, tedy radius ${Math.round(lengthRadiusM)} m (teď ${Math.round(
+                orbitParams!.radiusM,
+              )} m)`
+            : ""}
+          . U dlouhé budovy je let zblízka běžná volba; použít to jde.
         </div>
       )}
 

@@ -1072,12 +1072,23 @@ function minStandoffForWidthFovM(widthM: number, hfovDeg: number): number {
  * above that minimum, preserving the bearing the user is actually dragging
  * along so the clamp feels like hitting a wall, not a jump to an unrelated
  * spot. Used by `TemplateDrawHandler`'s orbit center drag handle.
+ *
+ * Two distances satisfy the constraint — POI inside the circle
+ * (`radiusM - minStandoffM`) or outside it (`radiusM + minStandoffM`) — with
+ * a forbidden band between them. `previousCenter` decides which side the
+ * clamp holds: the one the centre was already on. Picking the arithmetically
+ * nearer boundary instead (what this did before) meant dragging outward past
+ * the band's midpoint teleported the centre to the far solution — on a 100 m
+ * orbit that is a 142 m jump, right out of the guide ring, from one mouse
+ * move to the next. Hitting a wall and staying there is what a drag should
+ * do; crossing to the other side is a decision, not a drag.
  */
 function clampOrbitCenterForPoiMinStandoff(
   candidateCenter: [number, number],
   poiCenter: [number, number],
   radiusM: number,
   minStandoffM: number,
+  previousCenter?: [number, number],
 ): [number, number] {
   const [poiLat, poiLng] = poiCenter;
   const [cLat, cLng] = candidateCenter;
@@ -1087,20 +1098,31 @@ function clampOrbitCenterForPoiMinStandoff(
 
   const bearingDeg = dist > 0 ? bearing(poiLat, poiLng, cLat, cLng) : 0;
 
-  // Two distances from the POI satisfy the constraint: POI outside the
-  // circle (dist = radiusM + minStandoffM) or POI inside it (dist = radiusM
-  // - minStandoffM, only possible when the radius itself exceeds the
-  // minimum standoff). Pick whichever needs the smaller change from the
-  // candidate's own distance, so the clamp reads as "stopped at the nearest
-  // boundary" instead of snapping to the far side.
   const outsideDist = radiusM + minStandoffM;
   const insideDist = radiusM - minStandoffM;
-  const targetDist =
-    insideDist > 0 && Math.abs(insideDist - dist) < Math.abs(outsideDist - dist)
-      ? insideDist
-      : outsideDist;
+  if (insideDist <= 0) {
+    // The radius alone is under the minimum: no "POI inside the circle"
+    // solution exists at all, so the only way to satisfy it is to push the
+    // POI outside — but yanking the centre 200 m away mid-drag is worse than
+    // useless. Hold it on the POI and let the panel's own guard explain why
+    // this geometry can't work.
+    return poiCenter;
+  }
 
-  return destinationPoint(poiLat, poiLng, targetDist, bearingDeg);
+  // The forbidden band straddles `dist === radiusM` (POI exactly on the
+  // flight circle), so that is the side test — not "was it already past a
+  // boundary", which flips on floating-point noise for a centre sitting
+  // exactly on one.
+  const previousDist = previousCenter
+    ? haversine(poiLat, poiLng, previousCenter[0], previousCenter[1])
+    : dist;
+  const wasOutside = previousDist >= radiusM;
+  return destinationPoint(
+    poiLat,
+    poiLng,
+    wasOutside ? outsideDist : insideDist,
+    bearingDeg,
+  );
 }
 
 /**
@@ -1290,12 +1312,14 @@ export function clampOrbitCenterForPoiClearance(
   poiCenter: [number, number],
   radiusM: number,
   minStandoffM: number,
+  previousCenter?: [number, number],
 ): [number, number] {
   return clampOrbitCenterForPoiMinStandoff(
     candidateCenter,
     poiCenter,
     radiusM,
     minStandoffM,
+    previousCenter,
   );
 }
 

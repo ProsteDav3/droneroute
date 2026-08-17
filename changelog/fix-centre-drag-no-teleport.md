@@ -1,0 +1,1 @@
+- Fixed: dragging the orbit centre with **Uzamknout POI** on no longer teleports the circle to the far side of the POI. The clamp now holds the centre against whichever boundary it is already on, so it stops like a wall instead of jumping.

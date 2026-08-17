@@ -347,6 +347,29 @@ test.describe("Orbit aim height and altitude lock", () => {
     await expect(apply).toBeEnabled();
   });
 
+  test("a tall object still blocks Apply, but only for its height — the block message says so", async ({
+    page,
+  }) => {
+    await drawOrbit(page);
+    await field(page, "Výška objektu").fill("40");
+    await field(page, "Výška objektu").blur();
+    await page.getByLabel("Uzamknout POI").check();
+
+    const apply = page.getByRole("button", { name: "Použít" }).last();
+    await field(page, "Radius").fill("10");
+    await field(page, "Radius").blur();
+    const block = page.getByText(/nevejde ani na výšku/);
+    await expect(block).toBeVisible();
+    await expect(apply).toBeDisabled();
+
+    // Backing off past the HEIGHT requirement releases it — it must not also
+    // demand the room a long building's length would need.
+    await field(page, "Radius").fill("60");
+    await field(page, "Radius").blur();
+    await expect(block).toHaveCount(0);
+    await expect(apply).toBeEnabled();
+  });
+
   test("applies the orbit and generates waypoints", async ({ page }) => {
     await drawOrbit(page);
 

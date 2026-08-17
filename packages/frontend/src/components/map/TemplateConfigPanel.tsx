@@ -20,7 +20,11 @@ import {
   type TurbineParams,
 } from "@/lib/templates";
 import { WIDE_CAMERA_FOV } from "@/lib/solarCamera";
-import { orbitStandoffViolation, DEFAULT_WIDE_VFOV_DEG } from "@/lib/templates";
+import {
+  orbitStandoffViolation,
+  buildingLengthShortfall,
+  DEFAULT_WIDE_VFOV_DEG,
+} from "@/lib/templates";
 import type { PointOfInterest } from "@droneroute/shared";
 import { OrbitFields } from "./template-config/OrbitFields";
 import { GridFields } from "./template-config/GridFields";
@@ -126,6 +130,18 @@ export function TemplateConfigPanel({
    */
   const standoffViolation = orbitParams
     ? orbitStandoffViolation(
+        orbitParams,
+        wideFov?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
+      )
+    : null;
+
+  /**
+   * Fitting a long building end-to-end is a different, softer requirement
+   * than seeing it at all — impossible up close, and a perfectly good shot
+   * anyway. Advice only; it must never block (see `buildingLengthShortfall`).
+   */
+  const lengthShortfall = orbitParams
+    ? buildingLengthShortfall(
         orbitParams,
         wideFov?.vfovDeg ?? DEFAULT_WIDE_VFOV_DEG,
       )
@@ -423,10 +439,19 @@ export function TemplateConfigPanel({
       {standoffViolation && (
         <div className="text-[10px] text-amber-400 mb-2">
           Bod trasy {standoffViolation.waypointNumber} je jen{" "}
-          {Math.round(standoffViolation.nearestM)} m od cíle kamery — objekt se
-          do záběru celý nevejde (potřeba aspoň{" "}
-          {Math.round(standoffViolation.requiredM)} m). Zvětšete radius, nebo
-          posuňte střed orbitu dál od cíle.
+          {Math.round(standoffViolation.nearestM)} m od cíle kamery — dron by
+          letěl prakticky nad objektem a ten se do záběru nevejde ani na výšku
+          (potřeba aspoň {Math.round(standoffViolation.requiredM)} m). Zvětšete
+          radius, nebo posuňte střed orbitu dál od cíle.
+        </div>
+      )}
+
+      {!standoffViolation && lengthShortfall && (
+        <div className="text-[10px] text-muted-foreground mb-2">
+          Nejbližší bod je {Math.round(lengthShortfall.nearestM)} m od budovy —
+          v záběru bude jen její část, na celou délku by bylo potřeba{" "}
+          {Math.round(lengthShortfall.requiredM)} m. U dlouhé budovy je let
+          zblízka běžná volba; použít to jde.
         </div>
       )}
 

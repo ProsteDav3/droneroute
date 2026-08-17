@@ -112,12 +112,14 @@ export interface OrbitParams {
    */
   endAngleDeg: number;
   /**
-   * Distance from the centre to the middle of the flown arc, when the orbit
-   * should be an oval rather than a circle — see `orbitRadiusAtBearing`. The
-   * arc's two ends stay on `radiusM`. `undefined` (the default) is a plain
-   * circle.
+   * Distance from the camera target that the middle of the arc holds, when
+   * the orbit should be an oval rather than a circle — see
+   * `orbitRadiusAtBearing`. The arc's two ends stay exactly where `radiusM`
+   * puts them. `undefined` (the default) is a plain circle. Only meaningful
+   * with `poiCenter` set; without a target there is nothing to hold a
+   * distance from.
    */
-  midArcRadiusM?: number;
+  evenDistanceM?: number;
   /**
    * Real height of the object being orbited, measured from ground level —
    * the input to the "does the whole thing fit in shot" framing solve. NOT
@@ -1120,8 +1122,10 @@ export function buildingLengthShortfall(
     endAngleDeg,
     numPoints,
     {
+      center,
+      poiCenter,
       clockwise: params.clockwise ?? true,
-      midArcRadiusM: params.midArcRadiusM,
+      evenDistanceM: params.evenDistanceM,
     },
   );
   return nearM >= requiredM ? null : { nearestM: nearM, requiredM };
@@ -1155,7 +1159,7 @@ export function orbitStandoffViolation(
     numPoints: number;
     poiHeight: number;
     clockwise?: boolean;
-    midArcRadiusM?: number;
+    evenDistanceM?: number;
     buildingVertices?: [number, number][];
   },
   vfovDeg: number,
@@ -1169,7 +1173,7 @@ export function orbitStandoffViolation(
     numPoints,
     poiHeight,
     clockwise,
-    midArcRadiusM,
+    evenDistanceM,
   } = params;
   if (!poiCenter || poiHeight <= 0 || numPoints < 1) return null;
   // Height only. The building's own length is a separate, softer question —
@@ -1177,27 +1181,24 @@ export function orbitStandoffViolation(
   const requiredM = orbitMinStandoffM(poiHeight, vfovDeg);
 
   const closedLoop = endAngleDeg - startAngleDeg >= 360;
-  const divisor = closedLoop ? numPoints : Math.max(1, numPoints - 1);
-  const sweep = closedLoop
-    ? 360
-    : (((endAngleDeg - startAngleDeg) % 360) + 360) % 360;
+  const geometry = {
+    center,
+    poiCenter,
+    radiusM,
+    startAngleDeg,
+    endAngleDeg,
+    clockwise: clockwise ?? true,
+    evenDistanceM,
+  };
+  const bearingsDeg = orbitWaypointBearings(geometry, numPoints, closedLoop);
   let worstIndex = -1;
   let nearestM = Infinity;
   for (let i = 0; i < numPoints; i++) {
-    const angleDeg = startAngleDeg + (sweep * i) / divisor;
+    const angleDeg = bearingsDeg[i];
     const [lat, lng] = destinationPoint(
       center[0],
       center[1],
-      orbitRadiusAtBearing(
-        {
-          radiusM,
-          startAngleDeg,
-          endAngleDeg,
-          clockwise: clockwise ?? true,
-          midArcRadiusM,
-        },
-        angleDeg,
-      ),
+      orbitRadiusAtBearing(geometry, angleDeg),
       angleDeg,
     );
     const d = haversine(lat, lng, poiCenter[0], poiCenter[1]);
@@ -1235,30 +1236,32 @@ export function poiDistanceSwing(
   /** Present when the orbit is an oval — see `orbitRadiusAtBearing`. Omitted
    * means a circle, which is what every caller measured before ovals
    * existed. */
-  shape?: { clockwise: boolean; midArcRadiusM?: number },
+  shape?: {
+    center?: [number, number];
+    poiCenter?: [number, number];
+    clockwise: boolean;
+    evenDistanceM?: number;
+  },
 ): { nearM: number; farM: number; ratio: number } {
   const closedLoop = endAngleDeg - startAngleDeg >= 360;
-  const divisor = closedLoop ? numPoints : Math.max(1, numPoints - 1);
-  const sweep = closedLoop
-    ? 360
-    : (((endAngleDeg - startAngleDeg) % 360) + 360) % 360;
+  const geometry = {
+    center,
+    poiCenter: shape?.poiCenter ?? poi,
+    radiusM,
+    startAngleDeg,
+    endAngleDeg,
+    clockwise: shape?.clockwise ?? true,
+    evenDistanceM: shape?.evenDistanceM,
+  };
+  const bearingsDeg = orbitWaypointBearings(geometry, numPoints, closedLoop);
   let nearM = Infinity;
   let farM = 0;
   for (let i = 0; i < numPoints; i++) {
-    const angleDeg = startAngleDeg + (sweep * i) / divisor;
+    const angleDeg = bearingsDeg[i];
     const [lat, lng] = destinationPoint(
       center[0],
       center[1],
-      orbitRadiusAtBearing(
-        {
-          radiusM,
-          startAngleDeg,
-          endAngleDeg,
-          clockwise: shape?.clockwise ?? true,
-          midArcRadiusM: shape?.midArcRadiusM,
-        },
-        angleDeg,
-      ),
+      orbitRadiusAtBearing(geometry, angleDeg),
       angleDeg,
     );
     const d = haversine(lat, lng, poi[0], poi[1]);
@@ -1284,53 +1287,110 @@ export function signedArcSweepDeg(
   return clockwise ? clockwiseSweep : clockwiseSweep - 360;
 }
 
+/** How much of each half of the arc is spent opening back out to the fixed
+ * end point, as a fraction of that half. The rest holds the even distance.
+ * 15% is 20° on a 270° arc — enough for the path to turn without a visible
+ * corner, short enough that the steady part covers the shot. */
+const OVAL_END_TRANSITION = 0.15;
+
+/** Smooth 0→1 ramp with zero slope at both ends (smoothstep), so the path
+ * leaves the steady section and meets the end point without a kink. */
+function smoothstep(t: number): number {
+  const x = Math.min(Math.max(t, 0), 1);
+  return x * x * (3 - 2 * x);
+}
+
 /**
  * Distance from an orbit's centre to its path at a given bearing.
  *
  * A plain orbit is a circle: the answer is always `radiusM`. With
- * `midArcRadiusM` set it becomes an oval — the middle of the flown arc sits
- * at that distance while both ends stay exactly on `radiusM`, i.e. exactly
- * where the user placed them.
+ * `evenDistanceM` set it becomes an oval that holds that distance **from the
+ * camera target** through the middle of the arc and opens back out to
+ * `radiusM` at the two ends, which stay exactly where the user placed them.
  *
- * Why this exists: with the camera target locked off to one side, the far
- * side of the arc is much farther from the subject than its ends. On the
- * Congress Centre orbit that is 67 m at the start and end against 147 m in
- * the middle — the building shrinks to less than half over the shot. Pulling
- * the middle in evens that out without giving up the start and end
- * positions, which are chosen to sit in front of the building.
+ * Why measured from the target rather than from the centre: the point of the
+ * shape is that the subject stays the same size on screen. With the target
+ * locked off to one side, holding a distance from the orbit's own centre
+ * still lets the distance to the subject swing — on the Congress Centre
+ * orbit the middle of the arc sits 147 m from the building against 74 m at
+ * the ends, and the building shrinks to half over the shot.
  *
- * The radius is blended with a raised cosine rather than fitted to a true
- * ellipse. Visually the same oval, but it is defined for every value: an
- * ellipse through fixed end points has no solution once the mid-arc
- * semi-axis drops below `radiusM · |cos(halfSweep)|` (71 m on a 270° arc at
- * radius 100), which would put a hard floor on the one number the user is
- * dragging. The blend is also flat at both the middle and the ends, so the
- * path is tangent-continuous there — no kink where the pull starts.
+ * An earlier version blended the radius with a raised cosine, flat at both
+ * the middle and the ends. Flown, that put nearly all of the pull into the
+ * middle while the waypoints beside the two ends barely moved: the shape came
+ * out pinched rather than oval. Hence the flat middle and short flares here.
  */
 export function orbitRadiusAtBearing(
   params: {
+    center: [number, number];
+    poiCenter?: [number, number];
     radiusM: number;
     startAngleDeg: number;
     endAngleDeg: number;
     clockwise: boolean;
-    midArcRadiusM?: number;
+    evenDistanceM?: number;
   },
   bearingDeg: number,
 ): number {
-  const { radiusM, startAngleDeg, endAngleDeg, clockwise, midArcRadiusM } =
-    params;
-  if (midArcRadiusM === undefined || midArcRadiusM === radiusM) return radiusM;
+  const {
+    center,
+    poiCenter,
+    radiusM,
+    startAngleDeg,
+    endAngleDeg,
+    clockwise,
+    evenDistanceM,
+  } = params;
+  if (evenDistanceM === undefined || !poiCenter) return radiusM;
 
   const signedSweep = signedArcSweepDeg(startAngleDeg, endAngleDeg, clockwise);
-  const midBearing = startAngleDeg + signedSweep / 2;
   const halfSweep = Math.abs(signedSweep) / 2;
   if (halfSweep === 0) return radiusM;
+  const midBearing = startAngleDeg + signedSweep / 2;
 
-  // Angular distance from the middle of the flown arc, -180..180.
-  const offset = Math.abs(((bearingDeg - midBearing + 540) % 360) - 180);
-  const t = Math.min(offset / halfSweep, 1);
-  const blend = (1 - Math.cos(Math.PI * t)) / 2; // 0 at the middle, 1 at the ends
-  return midArcRadiusM + (radiusM - midArcRadiusM) * blend;
+  // Where the target sits relative to the centre, in the flat local frame the
+  // rest of this module uses for footprint-scale geometry.
+  const offsetM = haversine(center[0], center[1], poiCenter[0], poiCenter[1]);
+  const offsetBearing = bearing(
+    center[0],
+    center[1],
+    poiCenter[0],
+    poiCenter[1],
+  );
+  const phi = ((bearingDeg - offsetBearing) * Math.PI) / 180;
+  const along = offsetM * Math.cos(phi);
+
+  // How far along this bearing the aircraft has to be to sit exactly
+  // `evenDistanceM` from the target. Solved by bisection on the real
+  // distance rather than from the flat-plane quadratic: the rest of this
+  // module measures with `haversine`/`destinationPoint`, and mixing a flat
+  // solve with spherical measurement left the two halves of the arc a couple
+  // of metres apart even though the shape is symmetric by construction.
+  //
+  // Distance to the target falls until the ray's closest approach and rises
+  // after it, so bracketing from that point outward gives a monotonic
+  // interval and the larger (outer) solution — the one that keeps flying
+  // around the target rather than cutting inside it.
+  const distanceAt = (r: number): number => {
+    const [lat, lng] = destinationPoint(center[0], center[1], r, bearingDeg);
+    return haversine(lat, lng, poiCenter[0], poiCenter[1]);
+  };
+  let low = Math.max(along, 0.5);
+  let high = Math.max(low, along + evenDistanceM) + 1;
+  while (distanceAt(high) < evenDistanceM && high < radiusM * 8) high *= 1.5;
+  for (let i = 0; i < 24; i++) {
+    const mid = (low + high) / 2;
+    if (distanceAt(mid) < evenDistanceM) low = mid;
+    else high = mid;
+  }
+  const holdRadiusM = Math.max((low + high) / 2, 1);
+
+  const offsetFromMid = Math.abs(((bearingDeg - midBearing + 540) % 360) - 180);
+  const t = Math.min(offsetFromMid / halfSweep, 1);
+  const flare = smoothstep(
+    (t - (1 - OVAL_END_TRANSITION)) / OVAL_END_TRANSITION,
+  );
+  return Math.max(1, holdRadiusM + (radiusM - holdRadiusM) * flare);
 }
 
 /** How finely the geometry solves below bisect. 24 halvings resolve a
@@ -2005,6 +2065,83 @@ function applyOrbitAimingActions(waypoints: TemplateResult["waypoints"]): void {
   }
 }
 
+/** How finely the oval is walked when spacing its waypoints by distance
+ * flown rather than by bearing. One sample per half degree is far below what
+ * a metre-scale path can show. */
+const ARC_WALK_SAMPLES = 720;
+
+/**
+ * Bearings for `numPoints` waypoints spaced evenly *along* an oval's path,
+ * rather than evenly in bearing. Walks the shape once, accumulating real
+ * ground distance, then reads off the bearing at each equal share of the
+ * total. A closed loop gets `numPoints` gaps (no duplicate at the seam); an
+ * open arc gets `numPoints - 1`, so the first and last waypoints land exactly
+ * on the two bearings the user asked for.
+ */
+function orbitWaypointBearings(
+  shape: Parameters<typeof orbitRadiusAtBearing>[0],
+  numPoints: number,
+  isClosedLoop: boolean,
+): number[] {
+  const { startAngleDeg: from, endAngleDeg: to, clockwise: cw } = shape;
+  if (shape.evenDistanceM === undefined || !shape.poiCenter) {
+    // A circle: equal steps in bearing are equal steps along the path, and
+    // this keeps every pre-oval orbit generating byte-identical waypoints.
+    const sweep = signedArcSweepDeg(from, to, cw);
+    const divisor = isClosedLoop ? numPoints : Math.max(1, numPoints - 1);
+    return Array.from(
+      { length: numPoints },
+      (_, i) => from + (i / divisor) * sweep,
+    );
+  }
+  const { center, startAngleDeg, endAngleDeg, clockwise } = shape;
+  const signedSweep = signedArcSweepDeg(startAngleDeg, endAngleDeg, clockwise);
+  const pointAt = (angleDeg: number): [number, number] =>
+    destinationPoint(
+      center[0],
+      center[1],
+      orbitRadiusAtBearing(shape, angleDeg),
+      angleDeg,
+    );
+
+  const sampleBearings: number[] = [];
+  const cumulative: number[] = [0];
+  let previous = pointAt(startAngleDeg);
+  sampleBearings.push(startAngleDeg);
+  for (let i = 1; i <= ARC_WALK_SAMPLES; i++) {
+    const angleDeg = startAngleDeg + (i / ARC_WALK_SAMPLES) * signedSweep;
+    const point = pointAt(angleDeg);
+    cumulative.push(
+      cumulative[i - 1] +
+        haversine(previous[0], previous[1], point[0], point[1]),
+    );
+    sampleBearings.push(angleDeg);
+    previous = point;
+  }
+
+  const total = cumulative[cumulative.length - 1];
+  const gaps = isClosedLoop ? numPoints : Math.max(1, numPoints - 1);
+  const bearings: number[] = [];
+  let sample = 0;
+  for (let i = 0; i < numPoints; i++) {
+    // Clamped: `total * i / gaps` can land a hair past `total` on the last
+    // waypoint, which walked the cursor off the end of the samples and
+    // produced a NaN coordinate.
+    const wanted = Math.min((total * i) / gaps, total);
+    while (sample < cumulative.length - 2 && cumulative[sample + 1] < wanted) {
+      sample++;
+    }
+    const spanned = cumulative[sample + 1] - cumulative[sample];
+    const withinSample =
+      spanned > 0 ? (wanted - cumulative[sample]) / spanned : 0;
+    bearings.push(
+      sampleBearings[sample] +
+        withinSample * (sampleBearings[sample + 1] - sampleBearings[sample]),
+    );
+  }
+  return bearings;
+}
+
 export function generateOrbit(params: OrbitParams): TemplateResult {
   const {
     center,
@@ -2017,7 +2154,7 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
     endAngleDeg,
     poiHeight,
     aimHeight,
-    midArcRadiusM,
+    evenDistanceM,
     gimbalPitchDeg,
     poiCenter,
     captureMode,
@@ -2067,14 +2204,26 @@ export function generateOrbit(params: OrbitParams): TemplateResult {
   const divisor = isClosedLoop ? numPoints : Math.max(1, numPoints - 1);
   const signedSweep = signedArcSweepDeg(startAngleDeg, endAngleDeg, clockwise);
 
+  const shape = {
+    center,
+    poiCenter,
+    radiusM,
+    startAngleDeg,
+    endAngleDeg,
+    clockwise,
+    evenDistanceM,
+  };
+  // On a circle, equal steps in bearing are equal steps along the path. On an
+  // oval they are not — the waypoints bunch up wherever the path runs closer
+  // to the centre, which on the map reads as a crowd of markers on one side
+  // and a gap on the other. So an oval is walked by arc length instead, and
+  // the bearings are read back off that walk.
+  const bearingsDeg = orbitWaypointBearings(shape, numPoints, isClosedLoop);
+
   for (let i = 0; i < numPoints; i++) {
-    const fraction = i / divisor;
-    const angleDeg = startAngleDeg + fraction * signedSweep;
+    const angleDeg = bearingsDeg[i];
     // Distance from the centre varies with bearing once this is an oval.
-    const bearingRadiusM = orbitRadiusAtBearing(
-      { radiusM, startAngleDeg, endAngleDeg, clockwise, midArcRadiusM },
-      angleDeg,
-    );
+    const bearingRadiusM = orbitRadiusAtBearing(shape, angleDeg);
     const [lat, lng] = destinationPoint(cLat, cLng, bearingRadiusM, angleDeg);
 
     // Calculate heading angle toward the aim point (== center unless

@@ -110,8 +110,10 @@ export function OrbitFields({
         orbitParams.endAngleDeg,
         orbitParams.numPoints,
         {
+          center: orbitParams.center,
+          poiCenter: orbitParams.poiCenter,
           clockwise: orbitParams.clockwise,
-          midArcRadiusM: orbitParams.midArcRadiusM,
+          evenDistanceM: orbitParams.evenDistanceM,
         },
       )
     : null;
@@ -291,13 +293,13 @@ export function OrbitFields({
             >
               Střed oblouku ({distanceLabel(unitSystem)})
             </Label>
-            {orbitParams.midArcRadiusM !== undefined && (
+            {orbitParams.evenDistanceM !== undefined && (
               <button
                 type="button"
                 className="text-[10px] text-muted-foreground hover:text-foreground"
                 onClick={() => {
                   const next = { ...orbitParams };
-                  delete next.midArcRadiusM;
+                  delete next.evenDistanceM;
                   onOrbitChange(next);
                 }}
                 title="Zpět na kruh"
@@ -308,13 +310,13 @@ export function OrbitFields({
           </div>
           <NumericInput
             value={toDisplayDistance(
-              orbitParams.midArcRadiusM ?? orbitParams.radiusM,
+              orbitParams.evenDistanceM ?? orbitParams.radiusM,
               unitSystem,
             )}
             onChange={(v) =>
               onOrbitChange({
                 ...orbitParams,
-                midArcRadiusM: fromDisplayDistance(v, unitSystem),
+                evenDistanceM: fromDisplayDistance(v, unitSystem),
               })
             }
             min={1}
@@ -323,14 +325,14 @@ export function OrbitFields({
             className="h-7 text-xs"
             ariaLabel="Střed oblouku"
           />
-          {orbitParams.midArcRadiusM !== undefined &&
-            orbitParams.midArcRadiusM !== orbitParams.radiusM && (
+          {orbitParams.evenDistanceM !== undefined &&
+            orbitParams.evenDistanceM !== orbitParams.radiusM && (
               <div className="text-[10px] text-muted-foreground mt-0.5">
                 Ovál:{" "}
                 {Math.round(toDisplayDistance(orbitParams.radiusM, unitSystem))}{" "}
                 {distanceLabel(unitSystem)} na krajích →{" "}
                 {Math.round(
-                  toDisplayDistance(orbitParams.midArcRadiusM, unitSystem),
+                  toDisplayDistance(orbitParams.evenDistanceM, unitSystem),
                 )}{" "}
                 {distanceLabel(unitSystem)} uprostřed
               </div>
@@ -653,10 +655,10 @@ export function OrbitFields({
           {!linked
             ? "Uzamčeno — výška a náklon gimbalu se už vzájemně automaticky neaktualizují."
             : altitudeLocked
-              ? "Výška letu zamčená — úprava radiusu přepočítá jen náklon gimbalu. Kamera pořád míří na zadanou výšku, ale vejití celého objektu do záběru už zaručit nelze (viz upozornění níže)."
+              ? "Výška zamčená — radius mění jen náklon gimbalu; celý objekt v záběru už zaručit nelze."
               : wideFov
-                ? "Propojeno — úprava radiusu, výšky letu nebo výšky objektu přepočítá zbylé hodnoty tak, aby byl celý objekt v záběru vybrané kamery."
-                : "Propojeno — úprava radiusu, výšky letu nebo výšky objektu přepočítá zbylé hodnoty tak, aby byl celý objekt v záběru. FOV konkrétní kamery není známé (vyberte dron v nastavení mise pro přesnější výpočet), použit typický širokoúhlý objektiv."}
+                ? "Propojeno — změna radiusu, výšky letu či objektu dopočítá zbytek tak, aby byl objekt celý v záběru."
+                : "Propojeno — dopočítává zbytek tak, aby byl objekt celý v záběru. FOV kamery není známé, počítá se s typickým širokoúhlým objektivem."}
         </div>
         {aimUnreachable && (
           <div className="text-[10px] text-amber-400 mt-1">

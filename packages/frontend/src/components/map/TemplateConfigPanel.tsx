@@ -57,6 +57,8 @@ interface TemplateConfigPanelProps {
   pois?: PointOfInterest[];
 }
 
+const DESCRIPTION_OPEN_KEY = "templatePanelDescriptionOpen";
+
 export function TemplateConfigPanel({
   type,
   orbitParams,
@@ -98,6 +100,9 @@ export function TemplateConfigPanel({
               : type === "turbine"
                 ? "Inspekce listů turbíny"
                 : "Volná křivka";
+  const [descriptionOpen, setDescriptionOpen] = useState(
+    () => localStorage.getItem(DESCRIPTION_OPEN_KEY) === "true",
+  );
   const description =
     type === "orbit"
       ? "Kruhová letová trasa kolem středového bodu. Upravte radius, počet bodů a zapněte POI, aby kamera zůstala zaměřená na střed. Nastavte koncový úhel pod 360° pro otevřený oblouk mezi počátečním a koncovým směrem místo celého kruhu."
@@ -392,7 +397,26 @@ export function TemplateConfigPanel({
           <X className="h-4 w-4" />
         </button>
       </div>
-      <p className="text-[10px] text-muted-foreground mb-3">{description}</p>
+      {/* Collapsed by default: the description is worth having the first
+          time you meet a template and dead weight every time after, and on a
+          panel this dense the space it took pushed the fields people
+          actually use off the bottom of shorter screens. */}
+      <button
+        type="button"
+        className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground mb-2"
+        onClick={() => {
+          setDescriptionOpen((open) => {
+            localStorage.setItem(DESCRIPTION_OPEN_KEY, String(!open));
+            return !open;
+          });
+        }}
+        title={description}
+      >
+        {descriptionOpen ? "▾" : "▸"} Co tato šablona dělá
+      </button>
+      {descriptionOpen && (
+        <p className="text-[10px] text-muted-foreground mb-2">{description}</p>
+      )}
 
       {type === "orbit" && orbitParams && onOrbitChange && (
         <OrbitFields
@@ -469,9 +493,9 @@ export function TemplateConfigPanel({
       {standoffViolation && (
         <div className="text-[10px] text-amber-400 mb-2">
           Bod trasy {standoffViolation.waypointNumber} je jen{" "}
-          {Math.round(standoffViolation.nearestM)} m od cíle kamery — dron by
-          letěl prakticky nad objektem a ten se do záběru nevejde ani na výšku
-          (potřeba aspoň {Math.round(standoffViolation.requiredM)} m).{" "}
+          {Math.round(standoffViolation.nearestM)} m od cíle — objekt se nevejde
+          do záběru ani na výšku (potřeba{" "}
+          {Math.round(standoffViolation.requiredM)} m).{" "}
           {standoffRadiusM
             ? `Zvětšete radius na ${Math.round(standoffRadiusM)} m (teď ${Math.round(
                 orbitParams!.radiusM,
@@ -483,14 +507,14 @@ export function TemplateConfigPanel({
       {!standoffViolation && lengthShortfall && (
         <div className="text-[10px] text-muted-foreground mb-2">
           Nejbližší bod je {Math.round(lengthShortfall.nearestM)} m od budovy —
-          v záběru bude jen její část, na celou délku by bylo potřeba{" "}
+          v záběru bude jen část, na celou délku je potřeba{" "}
           {Math.round(lengthShortfall.requiredM)} m
           {lengthRadiusM
             ? `, tedy radius ${Math.round(lengthRadiusM)} m (teď ${Math.round(
                 orbitParams!.radiusM,
               )} m)`
             : ""}
-          . U dlouhé budovy je let zblízka běžná volba; použít to jde.
+          . U dlouhé budovy je to běžná volba.
         </div>
       )}
 

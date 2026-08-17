@@ -325,7 +325,7 @@ test.describe("Orbit aim height and altitude lock", () => {
     await page.getByLabel("Uzamknout POI").check();
 
     const apply = page.getByRole("button", { name: "Použít" }).last();
-    const warning = page.getByText(/od cíle kamery/);
+    const warning = page.getByText(/Bod trasy \d+ je jen/);
     await expect(apply).toBeEnabled();
     await expect(warning).toHaveCount(0);
 
@@ -336,8 +336,8 @@ test.describe("Orbit aim height and altitude lock", () => {
     await field(page, "Radius").blur();
 
     await expect(warning).toBeVisible();
-    await expect(warning).toContainText(/Bod trasy \d+ je jen \d+ m/);
-    await expect(warning).toContainText(/potřeba aspoň \d+ m/);
+    await expect(warning).toContainText(/Bod trasy \d+ je jen \d+ m od cíle/);
+    await expect(warning).toContainText(/potřeba \d+ m/);
     await expect(apply).toBeDisabled();
 
     // Backing off releases it again.
@@ -358,7 +358,7 @@ test.describe("Orbit aim height and altitude lock", () => {
     const apply = page.getByRole("button", { name: "Použít" }).last();
     await field(page, "Radius").fill("10");
     await field(page, "Radius").blur();
-    const block = page.getByText(/nevejde ani na výšku/);
+    const block = page.getByText(/nevejde do záběru ani na výšku/);
     await expect(block).toBeVisible();
     await expect(apply).toBeDisabled();
 

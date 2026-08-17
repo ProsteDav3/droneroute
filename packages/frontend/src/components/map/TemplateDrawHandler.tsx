@@ -19,6 +19,8 @@ import {
   orbitMinStandoffM,
   clampOrbitCenterForPoiClearance,
   signedArcSweepDeg,
+  orbitRadiusAtBearing,
+  minStandoffForBuildingPoiClearanceM,
   recomputeBuildingOrbitForArc,
   DEFAULT_ORBIT_PARAMS,
   DEFAULT_GRID_PARAMS,
@@ -154,28 +156,28 @@ function OrbitCenterHandle({
 
 /**
  * A draggable handle sitting on the middle of the flown arc. Dragging it
- * toward or away from the orbit's centre turns the circle into an oval:
- * `midArcRadiusM` is the handle's distance from the centre, and the arc's
- * two ends stay exactly where they were placed (see `orbitRadiusAtBearing`).
- *
- * Only the distance along the mid-arc bearing is taken from the drag —
- * sideways movement would otherwise rotate the shape out from under the
- * start/end angles the user set deliberately.
+ * sets the distance the flight holds **from the camera target** through the
+ * middle of the arc (`OrbitParams.evenDistanceM`) — distance from the target
+ * rather than from the orbit's own centre, because that is what keeps the
+ * subject the same size on screen. The arc's two ends stay exactly where
+ * they were placed; only the run between them moves.
  */
 function OrbitMidArcHandle({
-  center,
+  poiCenter,
   midPoint,
   onDistance,
 }: {
-  center: [number, number];
+  poiCenter: [number, number];
   midPoint: [number, number];
-  onDistance: (distanceM: number) => void;
+  onDistance: (distanceFromTargetM: number) => void;
 }) {
   const handleDrag = useCallback(
     (e: { lngLat: { lng: number; lat: number } }) => {
-      onDistance(haversine(center[0], center[1], e.lngLat.lat, e.lngLat.lng));
+      onDistance(
+        haversine(poiCenter[0], poiCenter[1], e.lngLat.lat, e.lngLat.lng),
+      );
     },
-    [center, onDistance],
+    [poiCenter, onDistance],
   );
 
   return (
@@ -853,6 +855,47 @@ export function TemplateDrawHandler() {
                   />
                 </Source>
               )}
+              {/* Red ring: how far out the aircraft has to be for the WHOLE
+                  building to fit in frame, width included — the blue ring
+                  above is only what its height needs. Advice, not a limit:
+                  flying inside it is a legitimate close-up of part of a long
+                  building, and the panel says so in words. */}
+              {orbitParams.buildingVertices &&
+                orbitParams.poiHeight > 0 &&
+                (() => {
+                  const wholeBuildingM = minStandoffForBuildingPoiClearanceM(
+                    orbitParams.buildingVertices,
+                    orbitParams.poiHeight,
+                    vfovDeg,
+                  );
+                  if (
+                    wholeBuildingM <=
+                    poiClearanceStandoffM(orbitParams.poiHeight)
+                  ) {
+                    return null;
+                  }
+                  return (
+                    <Source
+                      id="orbit-whole-building-guide"
+                      type="geojson"
+                      data={buildGuideRingGeojson(
+                        orbitParams.poiCenter!,
+                        wholeBuildingM,
+                      )}
+                    >
+                      <Layer
+                        id="orbit-whole-building-guide-layer"
+                        type="line"
+                        paint={{
+                          "line-color": "#ef4444",
+                          "line-width": 2,
+                          "line-opacity": 0.85,
+                          "line-dasharray": [4, 3],
+                        }}
+                      />
+                    </Source>
+                  );
+                })()}
             </>
           )}
           {orbitParams.poiCenter &&
@@ -866,22 +909,23 @@ export function TemplateDrawHandler() {
                 orbitParams.clockwise,
               );
               const midBearing = orbitParams.startAngleDeg + sweep / 2;
-              const midRadius =
-                orbitParams.midArcRadiusM ?? orbitParams.radiusM;
               const midPoint = destinationPoint(
                 orbitParams.center[0],
                 orbitParams.center[1],
-                midRadius,
+                orbitRadiusAtBearing(orbitParams, midBearing),
                 midBearing,
               );
               return (
                 <OrbitMidArcHandle
-                  center={orbitParams.center}
+                  poiCenter={orbitParams.poiCenter!}
                   midPoint={midPoint}
-                  onDistance={(distanceM) =>
+                  onDistance={(distanceFromTargetM) =>
                     setOrbitParams({
                       ...orbitParams,
-                      midArcRadiusM: Math.max(1, Math.round(distanceM)),
+                      evenDistanceM: Math.max(
+                        1,
+                        Math.round(distanceFromTargetM),
+                      ),
                     })
                   }
                 />

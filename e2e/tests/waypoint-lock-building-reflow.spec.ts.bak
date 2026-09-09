@@ -1,0 +1,141 @@
+import { test, expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
+import { blockMapboxNetwork, dismissWelcomeDialogOnLoad } from "../helpers.js";
+import { STORAGE_STATE_PATH } from "../global-setup.js";
+
+test.use({ storageState: STORAGE_STATE_PATH });
+
+/**
+ * Draws a rectangular building in the middle of the map and turns it into an
+ * orbit, which is the shortest route to a mission that has both a building and
+ * a ring of waypoints tied to it — the situation the lock and the reflow exist
+ * for.
+ */
+async function drawBuildingAndOrbit(page: Page) {
+  const map = page.locator(".mapboxgl-canvas").first();
+  await map.waitFor({ state: "visible", timeout: 20_000 });
+  const box = await map.boundingBox();
+  if (!box) throw new Error("Map canvas not visible");
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+
+  await page.keyboard.press("h");
+  const createMissionButton = page.getByRole("button", {
+    name: "Vytvořit misi",
+  });
+  if (
+    await createMissionButton.isVisible({ timeout: 5_000 }).catch(() => false)
+  ) {
+    await createMissionButton.click();
+  }
+
+  await page.mouse.move(cx - 110, cy - 70);
+  await page.mouse.down();
+  await page.mouse.move(cx + 110, cy + 70, { steps: 10 });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "Použít" }).last().click();
+  await expect(page.getByText(/^BUDOVY \(1\)$/i)).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Same retry-until-painted dance as the building-menu spec: the fill layer
+  // has to be rasterized before a click can find the building.
+  const orbitFromMenu = page.getByRole("button", { name: "Vytvořit orbit" });
+  await expect(async () => {
+    await page.mouse.click(cx, cy);
+    await expect(orbitFromMenu).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+  await orbitFromMenu.click();
+  await page.getByRole("button", { name: "Použít" }).last().click();
+
+  await expect(page.getByText(/^BODY TRASY \(\d+\)$/i)).toBeVisible({
+    timeout: 10_000,
+  });
+  return { cx, cy };
+}
+
+test.describe("Waypoint locks and building reflow", () => {
+  test("locking waypoints keeps them out of the reflow a building edit proposes", async ({
+    page,
+  }) => {
+    await blockMapboxNetwork(page);
+    await dismissWelcomeDialogOnLoad(page);
+    await page.goto("/");
+    await expect(page.getByPlaceholder("Název mise")).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const { cx, cy } = await drawBuildingAndOrbit(page);
+
+    // Lock the first stretch of the route the way an operator would: click the
+    // first row, shift-click a later one, then press the toolbar's lock.
+    const firstRow = page.getByText("Bod trasy 1", { exact: true });
+    const fourthRow = page.getByText("Bod trasy 4", { exact: true });
+    await expect(firstRow).toBeVisible({ timeout: 10_000 });
+    await firstRow.click();
+    await fourthRow.click({ modifiers: ["Shift"] });
+
+    // `exact` matters: every waypoint row carries its own padlock whose
+    // tooltip also starts with "Zamknout".
+    const lockButton = page.getByRole("button", { name: "Zamknout", exact: true });
+    await expect(lockButton).toBeVisible();
+    await lockButton.click();
+    await expect(
+      page.getByRole("button", { name: "Odemknout", exact: true }),
+    ).toBeVisible();
+
+    // Clear the selection so the bulk toolbar doesn't cover the reflow bar.
+    await page.keyboard.press("Escape");
+
+    // Select the building so its vertex handles appear. Clicked off-centre on
+    // purpose: the orbit put its POI marker at the building's centroid, and a
+    // click there lands on the marker, not the building.
+    const buildingMenuHeight = page.getByLabel("Výška budovy");
+    await expect(async () => {
+      await page.mouse.click(cx - 60, cy + 45);
+      await expect(buildingMenuHeight).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+    // The popup sits over one of the corners; close it before reaching for a
+    // handle. The building stays selected, so the handles stay up.
+    await page.locator(".mapboxgl-popup-close-button").first().click();
+    await expect(buildingMenuHeight).toBeHidden();
+
+    // Grow the footprint by dragging one corner outward — located through the
+    // handle's own box rather than by guessing where it was drawn, since a
+    // 12px target is not worth missing over rounding.
+    const vertexHandle = page
+      .locator('.mapboxgl-marker div[style*="border-radius: 50%"]')
+      .first();
+    await expect(vertexHandle).toBeVisible({ timeout: 10_000 });
+    const handleBox = await vertexHandle.boundingBox();
+    if (!handleBox) throw new Error("Building vertex handle not visible");
+    await page.mouse.move(
+      handleBox.x + handleBox.width / 2,
+      handleBox.y + handleBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      handleBox.x + handleBox.width / 2 - 90,
+      handleBox.y + handleBox.height / 2 - 70,
+      { steps: 15 },
+    );
+    await page.mouse.up();
+
+    const reflowBar = page.getByText("Budova změněna");
+    await expect(reflowBar).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Zamčeno: 4/)).toBeVisible();
+    await expect(page.getByText(/Posune se: \d+/)).toBeVisible();
+
+    // Let the "locked N waypoints" toast clear first, so the screenshot shows
+    // the bar rather than the toast sitting on top of it.
+    await expect(page.getByText(/Zamčeno 4 bodů/)).toBeHidden({
+      timeout: 15_000,
+    });
+    await page.screenshot({
+      path: "docs/screenshots/building-reflow-bar.png",
+    });
+
+    await page.getByRole("button", { name: "Použít" }).last().click();
+    await expect(reflowBar).toBeHidden({ timeout: 10_000 });
+  });
+});

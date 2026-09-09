@@ -67,11 +67,7 @@ export function WaypointMarker({ waypoint, is3D }: WaypointMarkerProps) {
   const bg = isSelected ? "#00c2ff" : "#1e293b";
   // Amber ring on a locked waypoint: the same colour the list row and the
   // reflow bar use for "this one is pinned", so the map and the panel agree.
-  const border = isSelected
-    ? "#33cfff"
-    : waypoint.locked
-      ? "#fbbf24"
-      : "#64748b";
+  const border = isSelected ? "#33cfff" : waypoint.locked ? "#fbbf24" : "#64748b";
   const actionIcons = useMemo(
     () => getActionIconsHtml(waypoint),
     [

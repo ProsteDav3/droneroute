@@ -21,8 +21,49 @@ import { orbitParamsForBuilding } from "@/lib/templates";
 import { WIDE_CAMERA_FOV } from "@/lib/solarCamera";
 import { pointInPolygon, offsetLatLng, rotateLatLng } from "@/lib/geo";
 import { cloneActionsForPaste } from "@/store/actionClipboardStore";
+import type { WaypointReflowMove } from "@/lib/buildingReflow";
 
 export type SelectionMode = "replace" | "toggle" | "range";
+
+/**
+ * A building's geometry as it stood before the edit in progress, kept so the
+ * reflow proposal can be measured against the operator's starting point
+ * rather than against the previous mouse-move of the same drag.
+ */
+export interface PendingBuildingEdit {
+  buildingId: string;
+  vertices: [number, number][];
+  height: number;
+}
+
+/**
+ * The `pendingBuildingEdit` a building mutation should leave behind: the
+ * building's pre-edit geometry, captured once and then held for the rest of
+ * the edit.
+ *
+ * Called from inside every building geometry mutator with the state as it was
+ * *before* that mutation, which is what makes "once" work — a vertex drag
+ * fires dozens of moves, and only the first finds no baseline for this
+ * building to keep. Missions with no waypoints arm nothing: there would be
+ * nothing to reflow, and an unexplained bar over an empty map is worse than
+ * silence.
+ */
+function armBuildingReflow(
+  state: MissionState,
+  buildingId: string,
+): PendingBuildingEdit | null {
+  if (state.pendingBuildingEdit?.buildingId === buildingId) {
+    return state.pendingBuildingEdit;
+  }
+  if (state.waypoints.length === 0) return null;
+  const building = state.buildings.find((b) => b.id === buildingId);
+  if (!building) return state.pendingBuildingEdit;
+  return {
+    buildingId,
+    vertices: building.vertices.map(([lat, lng]) => [lat, lng]),
+    height: building.height,
+  };
+}
 
 /** Name given to every new mission until it's renamed or auto-named from an address. */
 export const DEFAULT_MISSION_NAME = "Nová mise";
@@ -66,6 +107,17 @@ interface MissionState {
   isDrawingBuilding: boolean;
   buildingDrawMode: "rectangle" | "polygon";
   drawingBuildingVertices: [number, number][];
+  /**
+   * The footprint a building had before the edit currently in progress —
+   * armed by the first geometry change and held unchanged for the whole
+   * drag, so the reflow proposal is measured against where the building
+   * stood when the operator started, not against the previous mouse-move.
+   *
+   * Its presence is what makes the reflow bar appear; `null` means nothing
+   * is proposed. Never applied on its own — the operator confirms via
+   * `applyBuildingReflow` or walks away with `dismissBuildingReflow`.
+   */
+  pendingBuildingEdit: PendingBuildingEdit | null;
 
   // UI state
   isAddingWaypoint: boolean;
@@ -119,6 +171,10 @@ interface MissionState {
   updateWaypoint: (index: number, updates: Partial<Waypoint>) => void;
   removeWaypoint: (index: number) => void;
   moveWaypoint: (index: number, lat: number, lng: number) => void;
+  /** Flips one waypoint's `locked` flag — see `Waypoint.locked`. */
+  toggleWaypointLock: (index: number) => void;
+  /** Locks or unlocks a batch at once, for "select 1-40, lock" off the bulk toolbar. */
+  setWaypointsLocked: (indices: number[], locked: boolean) => void;
   selectWaypoint: (index: number | null, mode?: SelectionMode) => void;
   selectAllWaypoints: () => void;
   clearWaypointSelection: () => void;
@@ -222,6 +278,10 @@ interface MissionState {
     lng: number,
   ) => void;
   removeBuildingVertex: (id: string, vertexIndex: number) => void;
+  /** Commits a reflow proposal (see `pendingBuildingEdit`). Locked waypoints are ignored even if the caller lists them. */
+  applyBuildingReflow: (moves: WaypointReflowMove[]) => void;
+  /** Walks away from a reflow proposal: the edited building stays, the waypoints stay where they are. */
+  dismissBuildingReflow: () => void;
   selectBuilding: (id: string | null) => void;
   setIsDrawingBuilding: (drawing: boolean) => void;
   setBuildingDrawMode: (mode: "rectangle" | "polygon") => void;
@@ -285,6 +345,7 @@ export const useMissionStore = create<MissionState>()(
       isDrawingBuilding: false,
       buildingDrawMode: "rectangle",
       drawingBuildingVertices: [],
+      pendingBuildingEdit: null,
       isAddingWaypoint: true,
       isAddingPoi: false,
       templateMode: null,
@@ -357,6 +418,25 @@ export const useMissionStore = create<MissionState>()(
           ),
           dirty: true,
         })),
+
+      toggleWaypointLock: (index) =>
+        set((state) => ({
+          waypoints: state.waypoints.map((wp) =>
+            wp.index === index ? { ...wp, locked: !wp.locked } : wp,
+          ),
+          dirty: true,
+        })),
+
+      setWaypointsLocked: (indices, locked) =>
+        set((state) => {
+          const targets = new Set(indices);
+          return {
+            waypoints: state.waypoints.map((wp) =>
+              targets.has(wp.index) ? { ...wp, locked } : wp,
+            ),
+            dirty: true,
+          };
+        }),
 
       removeWaypoint: (index) =>
         set((state) => {
@@ -594,7 +674,10 @@ export const useMissionStore = create<MissionState>()(
           const move = (lat: number, lng: number) =>
             offsetLatLng(lat, lng, northM, eastM);
           return {
+            // A locked waypoint is anchored to footage already shot, so it
+            // stays put even when the whole mission moves. See `Waypoint.locked`.
             waypoints: state.waypoints.map((wp) => {
+              if (wp.locked) return wp;
               const [latitude, longitude] = move(wp.latitude, wp.longitude);
               return { ...wp, latitude, longitude };
             }),
@@ -626,7 +709,10 @@ export const useMissionStore = create<MissionState>()(
           const rotate = (lat: number, lng: number) =>
             rotateLatLng(lat, lng, centerLat, centerLng, angleDeg);
           return {
+            // Locked waypoints sit out the rotation too — same reason as in
+            // offsetMission.
             waypoints: state.waypoints.map((wp) => {
+              if (wp.locked) return wp;
               const [latitude, longitude] = rotate(wp.latitude, wp.longitude);
               return { ...wp, latitude, longitude };
             }),
@@ -880,6 +966,9 @@ export const useMissionStore = create<MissionState>()(
           buildings: state.buildings.map((b) =>
             b.id === id ? { ...b, ...updates } : b,
           ),
+          ...(updates.vertices !== undefined || updates.height !== undefined
+            ? { pendingBuildingEdit: armBuildingReflow(state, id) }
+            : {}),
           dirty: true,
         })),
 
@@ -888,6 +977,11 @@ export const useMissionStore = create<MissionState>()(
           buildings: state.buildings.filter((b) => b.id !== id),
           selectedBuildingId:
             state.selectedBuildingId === id ? null : state.selectedBuildingId,
+          // A proposal about a building that no longer exists can't be judged.
+          pendingBuildingEdit:
+            state.pendingBuildingEdit?.buildingId === id
+              ? null
+              : state.pendingBuildingEdit,
           dirty: true,
         })),
 
@@ -899,6 +993,7 @@ export const useMissionStore = create<MissionState>()(
             vertices[vertexIndex] = [lat, lng];
             return { ...b, vertices };
           }),
+          pendingBuildingEdit: armBuildingReflow(state, id),
           dirty: true,
         })),
 
@@ -910,6 +1005,7 @@ export const useMissionStore = create<MissionState>()(
             vertices.splice(afterIndex + 1, 0, [lat, lng]);
             return { ...b, vertices };
           }),
+          pendingBuildingEdit: armBuildingReflow(state, id),
           dirty: true,
         })),
 
@@ -922,8 +1018,32 @@ export const useMissionStore = create<MissionState>()(
             );
             return { ...b, vertices };
           }),
+          pendingBuildingEdit: armBuildingReflow(state, id),
           dirty: true,
         })),
+
+      applyBuildingReflow: (moves) =>
+        set((state) => {
+          const byIndex = new Map(moves.map((m) => [m.index, m]));
+          return {
+            waypoints: state.waypoints.map((wp) => {
+              const move = byIndex.get(wp.index);
+              // The lock is checked again here, not just when the proposal was
+              // computed: the operator can lock a waypoint while the
+              // confirmation bar is still open.
+              if (!move || wp.locked) return wp;
+              return {
+                ...wp,
+                latitude: move.latitude,
+                longitude: move.longitude,
+              };
+            }),
+            pendingBuildingEdit: null,
+            dirty: true,
+          };
+        }),
+
+      dismissBuildingReflow: () => set({ pendingBuildingEdit: null }),
 
       selectBuilding: (id) => set({ selectedBuildingId: id }),
 
@@ -1105,7 +1225,33 @@ export const useMissionStore = create<MissionState>()(
           );
           const startIndex = remainingWaypoints.length;
 
-          const fullWaypoints: Waypoint[] = newWps.map((wp, i) => ({
+          // Locked members of the group survive the regeneration verbatim,
+          // matched to the new set by their position in the group rather than
+          // by their old mission index (which the regeneration renumbers).
+          //
+          // Substituting slot-for-slot — rather than keeping them *alongside*
+          // the freshly generated set — is what keeps the flight continuous:
+          // regenerating an orbit lays a point down at roughly every angle the
+          // old one had, so appending the locked ones as extras would fly the
+          // same bearings twice. Anything the new set has beyond the old
+          // group's length is genuinely new and generated as such; any locked
+          // waypoint past the end of a now-shorter set is still kept, because
+          // dropping it would delete footage the operator explicitly pinned.
+          const oldGroupWaypoints = state.waypoints.filter(
+            (wp) => wp.templateGroupId === groupId,
+          );
+          const generated: Waypoint[] = newWps.map((wp, i) => {
+            const previous = oldGroupWaypoints[i];
+            return previous?.locked ? previous : ({ ...wp } as Waypoint);
+          });
+          const strandedLocked = oldGroupWaypoints
+            .slice(newWps.length)
+            .filter((wp) => wp.locked);
+
+          const fullWaypoints: Waypoint[] = [
+            ...generated,
+            ...strandedLocked,
+          ].map((wp, i) => ({
             ...wp,
             index: startIndex + i,
             name: `Bod trasy ${startIndex + i + 1}`,
@@ -1122,6 +1268,10 @@ export const useMissionStore = create<MissionState>()(
           if (fullPois.length === 1) {
             const poiId = fullPois[0].id;
             for (const wp of fullWaypoints) {
+              // A locked waypoint keeps the aim it was filmed with; re-pointing
+              // it at the regenerated POI would change the very shot it exists
+              // to preserve.
+              if (wp.locked) continue;
               if (wp.headingMode === "smoothTransition") {
                 wp.headingMode = "towardPOI";
                 wp.poiId = poiId;
@@ -1173,6 +1323,7 @@ export const useMissionStore = create<MissionState>()(
           editingTemplateGroupId: null,
           pendingOrbitParams: null,
           pendingPresetLoad: null,
+          pendingBuildingEdit: null,
           dirty: false,
         }));
         // Loading a different mission shouldn't let the user undo "back into"
@@ -1206,6 +1357,7 @@ export const useMissionStore = create<MissionState>()(
           editingTemplateGroupId: null,
           pendingOrbitParams: null,
           pendingPresetLoad: null,
+          pendingBuildingEdit: null,
           dirty: false,
         }));
         useMissionStore.temporal.getState().clear();

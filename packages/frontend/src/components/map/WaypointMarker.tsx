@@ -65,7 +65,13 @@ export function WaypointMarker({ waypoint, is3D }: WaypointMarkerProps) {
   const isSelected = selectedWaypointIndices.has(waypoint.index);
 
   const bg = isSelected ? "#00c2ff" : "#1e293b";
-  const border = isSelected ? "#33cfff" : "#64748b";
+  // Amber ring on a locked waypoint: the same colour the list row and the
+  // reflow bar use for "this one is pinned", so the map and the panel agree.
+  const border = isSelected
+    ? "#33cfff"
+    : waypoint.locked
+      ? "#fbbf24"
+      : "#64748b";
   const actionIcons = useMemo(
     () => getActionIconsHtml(waypoint),
     [
@@ -109,12 +115,14 @@ export function WaypointMarker({ waypoint, is3D }: WaypointMarkerProps) {
       latitude={waypoint.latitude}
       altitude={is3D ? waypoint.height : 0}
       anchor="center"
-      draggable
+      // A locked waypoint isn't draggable at all — a stray drag is exactly
+      // the accident the lock exists to prevent. See `Waypoint.locked`.
+      draggable={!waypoint.locked}
       onDragEnd={handleDragEnd}
     >
       <div
         onClick={handleClick}
-        title={`${waypoint.name}\nVýška: ${formatHeight(waypoint.height, unitSystem)} | Rychlost: ${formatSpeed(waypoint.speed, unitSystem)}\nGimbal: ${waypoint.gimbalPitchAngle}°\n${waypoint.latitude.toFixed(6)}, ${waypoint.longitude.toFixed(6)}`}
+        title={`${waypoint.name}${waypoint.locked ? " (zamčeno)" : ""}\nVýška: ${formatHeight(waypoint.height, unitSystem)} | Rychlost: ${formatSpeed(waypoint.speed, unitSystem)}\nGimbal: ${waypoint.gimbalPitchAngle}°\n${waypoint.latitude.toFixed(6)}, ${waypoint.longitude.toFixed(6)}`}
         style={{
           position: "relative",
           background: bg,
@@ -129,11 +137,33 @@ export function WaypointMarker({ waypoint, is3D }: WaypointMarkerProps) {
           fontSize: 12,
           fontWeight: 700,
           boxShadow: "0 2px 8px rgba(0,0,0,0.4)",
-          cursor: "grab",
+          cursor: waypoint.locked ? "not-allowed" : "grab",
           overflow: "visible",
         }}
       >
         {waypoint.index + 1}
+        {waypoint.locked && (
+          <div
+            aria-hidden
+            style={{
+              position: "absolute",
+              top: -5,
+              right: -5,
+              width: 12,
+              height: 12,
+              borderRadius: "50%",
+              background: "#fbbf24",
+              color: "#1e293b",
+              fontSize: 8,
+              lineHeight: "12px",
+              textAlign: "center",
+              fontWeight: 900,
+              pointerEvents: "none",
+            }}
+          >
+            &#128274;
+          </div>
+        )}
         {actionIcons && (
           <div dangerouslySetInnerHTML={{ __html: actionIcons }} />
         )}

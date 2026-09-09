@@ -34,6 +34,7 @@ import { ObstacleDrawHandler } from "./ObstacleDrawHandler";
 import { ObstaclePolygon } from "./ObstaclePolygon";
 import { BuildingDrawHandler } from "./BuildingDrawHandler";
 import { BuildingPolygon } from "./BuildingPolygon";
+import { BuildingReflowPreview } from "./BuildingReflowPreview";
 import {
   buildingFillLayerIds,
   buildingIdFromFillLayerId,
@@ -1372,6 +1373,7 @@ export function MapView({ onMapLoad }: MapViewProps = {}) {
         {buildings.map((building) => (
           <BuildingPolygon key={building.id} building={building} is3D={is3D} />
         ))}
+        <BuildingReflowPreview />
         {/* Waypoint/POI markers, the camera frustum, and the "you are
          * here" drone dot are all planning UI for looking AT the route
          * from outside it — during a first-person flythrough the camera

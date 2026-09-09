@@ -329,6 +329,22 @@ export interface Waypoint {
   actions: WaypointAction[];
   /** Set when this waypoint was created by a template application, so a batch of waypoints from the same template can be selected and re-edited together. */
   templateGroupId?: string;
+  /**
+   * Frozen against every automatic or bulk change of position: dragging on
+   * the map, the whole-mission offset/rotate, re-applying the template that
+   * created it, and the reflow that follows a building edit all skip it.
+   *
+   * Exists for long-running timelapse contracts, where the same mission is
+   * reflown over months: once a waypoint's footage is in the cut, moving it
+   * even slightly makes the next visit's frame not line up with the ones
+   * already shot. The building itself, meanwhile, keeps growing — so the
+   * waypoints not yet filmed still have to follow it. Absent means unlocked
+   * (every mission planned before this existed).
+   *
+   * Deliberately NOT part of the KMZ: it's planning metadata, invisible to
+   * the aircraft.
+   */
+  locked?: boolean;
 }
 
 // ── Mission Config ───────────────────────────────────────

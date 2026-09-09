@@ -8,6 +8,8 @@ import {
   Pencil,
   ClipboardPaste,
   Spline,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -64,6 +66,7 @@ export function BulkActionToolbar() {
     updateSelectedWaypoints,
     pasteActionsToSelected,
     setWaypointHeights,
+    setWaypointsLocked,
     templateGroups,
     setEditingTemplateGroupId,
     interpolateBetween,
@@ -167,6 +170,22 @@ export function BulkActionToolbar() {
     if (confirm(`Smazat ${count} bodů trasy?`)) {
       removeSelectedWaypoints();
     }
+  };
+
+  // One button, not two: a mixed selection locks (the safe direction), and a
+  // fully locked one unlocks. Matches how the operator actually works — select
+  // everything already filmed, press once.
+  const selectedAreAllLocked = waypoints
+    .filter((wp) => selectedWaypointIndices.has(wp.index))
+    .every((wp) => wp.locked);
+
+  const handleToggleLock = () => {
+    setWaypointsLocked([...selectedWaypointIndices], !selectedAreAllLocked);
+    toast.success(
+      selectedAreAllLocked
+        ? `Odemčeno ${count} bodů`
+        : `Zamčeno ${count} bodů — nepohnou se při změně budovy`,
+    );
   };
 
   const handleAssignPoi = (poiId: string) => {
@@ -299,6 +318,28 @@ export function BulkActionToolbar() {
               Vložit akce
             </Button>
           )}
+
+          {/* Lock/unlock the whole selection */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleToggleLock}
+            className={`h-7 text-xs gap-1.5 px-2 ${
+              selectedAreAllLocked ? "text-amber-400 hover:text-amber-300" : ""
+            }`}
+            title={
+              selectedAreAllLocked
+                ? "Odemknout vybrané body, aby se zase posouvaly s budovou a hromadnými úpravami"
+                : "Zamknout vybrané body na místě — nepohnou se při změně budovy, posunu ani přepisu šablony"
+            }
+          >
+            {selectedAreAllLocked ? (
+              <Lock className="h-3 w-3" />
+            ) : (
+              <LockOpen className="h-3 w-3" />
+            )}
+            {selectedAreAllLocked ? "Odemknout" : "Zamknout"}
+          </Button>
 
           {/* Toggle bulk editor */}
           <Button

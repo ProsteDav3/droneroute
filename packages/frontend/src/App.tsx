@@ -4,6 +4,7 @@ import { Loader2, PanelLeftOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MapView } from "@/components/map/MapView";
 import { BulkActionToolbar } from "@/components/waypoint/BulkActionToolbar";
+import { BuildingReflowBar } from "@/components/waypoint/BuildingReflowBar";
 import { useTemplatePresetsStore } from "@/store/templatePresetsStore";
 // Lazy-loaded: each of these is its own route-like view, rendered exclusively
 // of the main editor (see the `currentPage` branches below) and of each
@@ -416,6 +417,7 @@ export default function App() {
         <OfflineBanner />
         <MissionProgressPanel />
         <BulkActionToolbar />
+        <BuildingReflowBar />
         <WarningsPanel warnings={warnings} mapRef={mapRef} />
         <FlightSimulationPanel />
       </div>

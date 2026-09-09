@@ -1,0 +1,145 @@
+import type { Waypoint } from "@droneroute/shared";
+import { haversineDistance } from "@/lib/geo";
+import {
+  bearing,
+  computeOrbitSeedForBuilding,
+  destinationPoint,
+} from "@/lib/templates";
+
+/**
+ * Reflowing waypoints after a building edit.
+ *
+ * A timelapse contract runs for months and the building it watches keeps
+ * changing shape — a wing gets poured, the footprint grows past the fence.
+ * The mission has to grow with it, but the waypoints whose footage is
+ * already in the cut must not move a centimetre, or the next visit's frame
+ * won't line up with the ones already shot. So the operator locks the
+ * waypoints already filmed (`Waypoint.locked`), redraws the footprint, and
+ * only the rest follow.
+ *
+ * The rule for "follow" is deliberately the conservative one: each unlocked
+ * waypoint keeps its own bearing from the footprint's centroid and its own
+ * standoff *relative to the recommended orbit radius* — it is re-hung from
+ * the new centroid at the new radius plus whatever margin it already had.
+ * Full regeneration from the orbit template would be tidier geometrically
+ * but renumbers and respaces the arc, which breaks continuity with the
+ * locked half of the very same flight; a pure centroid translation, at the
+ * other extreme, would keep the drone at its old distance from a building
+ * that just got wider, and crop it out of frame.
+ *
+ * Height, speed and gimbal pitch are left alone on purpose: the unlocked
+ * waypoints have to keep matching the locked ones' look, and a shifted
+ * radius of a few metres does not justify silently re-aiming a shot the
+ * operator framed by hand.
+ */
+
+/** One waypoint's new horizontal position. Nothing else about it changes. */
+export interface WaypointReflowMove {
+  index: number;
+  latitude: number;
+  longitude: number;
+}
+
+export interface BuildingReflowResult {
+  moves: WaypointReflowMove[];
+  /** Recommended orbit radius for the footprint as it was, in meters. */
+  oldRadiusM: number;
+  /** Recommended orbit radius for the edited footprint, in meters. */
+  newRadiusM: number;
+  /** Waypoints held in place by their lock. */
+  lockedCount: number;
+  /** Waypoints that would move — always `moves.length`. */
+  movedCount: number;
+}
+
+export interface BuildingReflowParams {
+  oldVertices: [number, number][];
+  newVertices: [number, number][];
+  oldHeight: number;
+  newHeight: number;
+  waypoints: Waypoint[];
+  /** Camera vertical FOV, forwarded to the orbit seed's framing math. */
+  vfovDeg?: number;
+}
+
+/**
+ * Closest a reflowed waypoint may end up to the new centroid. Only ever
+ * reached by shrinking a building so hard that a waypoint's old margin goes
+ * negative; without the floor the point would be dragged through the
+ * centroid and come out on the opposite side of the building, 180° from
+ * where the operator put it.
+ */
+const MIN_STANDOFF_M = 1;
+
+/** A polygon needs three corners before it has a centroid worth trusting. */
+function isUsableFootprint(vertices: [number, number][]): boolean {
+  return vertices.length >= 3;
+}
+
+/**
+ * New positions for the unlocked waypoints after a building's footprint or
+ * height changed. `null` when there is nothing to propose — no unlocked
+ * waypoints, an unusable footprint, or an edit that moved neither the
+ * centroid nor the recommended radius.
+ */
+export function computeBuildingReflow({
+  oldVertices,
+  newVertices,
+  oldHeight,
+  newHeight,
+  waypoints,
+  vfovDeg,
+}: BuildingReflowParams): BuildingReflowResult | null {
+  if (!isUsableFootprint(oldVertices) || !isUsableFootprint(newVertices)) {
+    return null;
+  }
+
+  const unlocked = waypoints.filter((wp) => !wp.locked);
+  if (unlocked.length === 0) return null;
+
+  const oldSeed = computeOrbitSeedForBuilding(oldVertices, oldHeight, vfovDeg);
+  const newSeed = computeOrbitSeedForBuilding(newVertices, newHeight, vfovDeg);
+
+  const centroidShiftM = haversineDistance(
+    oldSeed.center[0],
+    oldSeed.center[1],
+    newSeed.center[0],
+    newSeed.center[1],
+  );
+  const deltaRadiusM = newSeed.radiusM - oldSeed.radiusM;
+  // Sub-decimeter edits are noise from redrawing a vertex by hand, not an
+  // intent to move the flight — proposing them would train the operator to
+  // dismiss the confirmation bar without reading it.
+  if (centroidShiftM < 0.1 && Math.abs(deltaRadiusM) < 0.1) return null;
+
+  const moves = unlocked.map((wp) => {
+    const bearingDeg = bearing(
+      oldSeed.center[0],
+      oldSeed.center[1],
+      wp.latitude,
+      wp.longitude,
+    );
+    const oldStandoffM = haversineDistance(
+      oldSeed.center[0],
+      oldSeed.center[1],
+      wp.latitude,
+      wp.longitude,
+    );
+    const newStandoffM = Math.max(MIN_STANDOFF_M, oldStandoffM + deltaRadiusM);
+    const [latitude, longitude] = destinationPoint(
+      newSeed.center[0],
+      newSeed.center[1],
+      newStandoffM,
+      bearingDeg,
+    );
+    return { index: wp.index, latitude, longitude };
+  });
+
+  return {
+    moves,
+    oldRadiusM: oldSeed.radiusM,
+    newRadiusM: newSeed.radiusM,
+    lockedCount: waypoints.length - unlocked.length,
+    movedCount: moves.length,
+  };
+}

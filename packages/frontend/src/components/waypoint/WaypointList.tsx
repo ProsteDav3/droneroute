@@ -8,6 +8,8 @@ import {
   Gauge,
   Clock,
   CheckCircle2,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +34,7 @@ export function WaypointList() {
     removeWaypoint,
     reorderWaypoints,
     updateWaypoint,
+    toggleWaypointLock,
     config,
   } = useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
@@ -181,7 +184,7 @@ export function WaypointList() {
                       : isFlown
                         ? "opacity-60 hover:bg-secondary border border-transparent"
                         : "hover:bg-secondary border border-transparent"
-              }`}
+              } ${wp.locked ? "border-l-2 border-l-amber-400/70" : ""}`}
               onClick={(e) => handleClick(e, wp.index)}
               draggable
               onDragStart={(e) => handleDragStart(e, i)}
@@ -253,6 +256,31 @@ export function WaypointList() {
                   {wp.actions.length}
                 </Badge>
               )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className={`h-5 w-5 shrink-0 ${
+                  wp.locked
+                    ? "text-amber-400 hover:text-amber-300"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleWaypointLock(wp.index);
+                }}
+                title={
+                  wp.locked
+                    ? "Zamčeno — bod se nehýbe při změně budovy ani hromadných úpravách. Kliknutím odemknete."
+                    : "Zamknout bod na místě (např. už natočený záběr)"
+                }
+                aria-pressed={Boolean(wp.locked)}
+              >
+                {wp.locked ? (
+                  <Lock className="h-3 w-3" />
+                ) : (
+                  <LockOpen className="h-3 w-3" />
+                )}
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"

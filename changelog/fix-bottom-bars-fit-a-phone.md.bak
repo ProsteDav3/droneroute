@@ -1,1 +1,0 @@
-- Fixed: on a phone, the selection bar's right-hand buttons (Smazat, and the × that clears the selection) were laid out past the edge of the screen with no way to scroll to them — the bar had quietly outgrown a 375px viewport. It and the building-reflow bar are now capped to the screen width and scroll sideways instead, so every button stays reachable.

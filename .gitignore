@@ -16,3 +16,7 @@ e2e/test-results/
 e2e/playwright-report/
 blob-report/
 .env.dji-cloud-local
+
+# Scratch that local editor/agent tooling drops into the tree
+.claude/
+*.bak

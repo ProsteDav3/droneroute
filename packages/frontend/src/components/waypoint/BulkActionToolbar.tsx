@@ -253,10 +253,13 @@ export function BulkActionToolbar() {
         : "mixed";
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 fade-in duration-200 tabular-nums">
-      <div className="bg-card border border-border rounded-xl shadow-2xl shadow-black/30 overflow-hidden">
+    // Capped to the viewport with the row scrolling inside it: this bar has
+    // grown past a phone's width, and without the cap its right-hand buttons
+    // (delete, clear selection) simply sat off-screen with nothing to scroll.
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-1rem)] animate-in slide-in-from-bottom-4 fade-in duration-200 tabular-nums">
+      <div className="bg-card border border-border rounded-xl shadow-2xl shadow-black/30 overflow-hidden max-w-full">
         {/* Action bar */}
-        <div className="flex items-center gap-3 px-4 py-2.5">
+        <div className="flex items-center gap-3 px-4 py-2.5 overflow-x-auto">
           <Badge variant="default" className="text-xs px-2 py-0.5">
             Vybráno: {count}
           </Badge>
@@ -399,7 +402,7 @@ export function BulkActionToolbar() {
 
         {/* Bulk editor panel */}
         {showEditor && (
-          <div className="border-t border-border px-4 py-3 space-y-3 max-w-lg">
+          <div className="border-t border-border px-4 py-3 space-y-3 max-w-lg overflow-x-auto">
             <div className="grid grid-cols-3 gap-3">
               {/* Height */}
               <div>

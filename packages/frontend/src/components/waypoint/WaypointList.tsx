@@ -169,22 +169,30 @@ export function WaypointList() {
   // both ends in a scrolling list; typing the range is the same instruction in
   // two keystrokes. Numbers are the 1-based ones shown on the map and in the
   // rows, not the 0-based indices underneath.
-  const applyRangeLock = (locked: boolean) => {
+  /**
+   * The waypoints the typed range names, or `null` when it names none.
+   *
+   * Derived on every render rather than read at click time so the buttons can
+   * be disabled while the range is unusable. A button that looks live but
+   * silently acts on whatever was typed before is worse than no button: the
+   * operator walks away believing they locked something they didn't.
+   */
+  const rangeSelection = (() => {
     const from = parseInt(rangeFrom, 10);
     const to = parseInt(rangeTo, 10);
-    if (!(from >= 1) || !(to >= 1)) {
-      toast.warning("Zadejte rozsah bodů, například 1 a 40");
-      return;
-    }
+    if (!Number.isFinite(from) || !Number.isFinite(to)) return null;
+    if (from < 1 || to < 1) return null;
     const lo = Math.min(from, to);
     const hi = Math.max(from, to);
     const indices = waypoints
       .map((wp) => wp.index)
       .filter((index) => index + 1 >= lo && index + 1 <= hi);
-    if (indices.length === 0) {
-      toast.warning(`Mise má body 1 až ${waypoints.length}`);
-      return;
-    }
+    return indices.length > 0 ? { lo, hi, indices } : null;
+  })();
+
+  const applyRangeLock = (locked: boolean) => {
+    if (!rangeSelection) return;
+    const { lo, hi, indices } = rangeSelection;
     setWaypointsLocked(indices, locked);
     toast.success(
       locked
@@ -193,9 +201,20 @@ export function WaypointList() {
     );
   };
 
+  const rangeHint =
+    !rangeFrom.trim() || !rangeTo.trim()
+      ? "Zadejte rozsah bodů, například 1 a 40"
+      : !rangeSelection
+        ? `Mise má body 1 až ${waypoints.length}`
+        : null;
+
   return (
     <div className="flex flex-col gap-1 p-2">
-      <div className="flex items-center gap-1.5 px-2 py-1.5 mb-1 rounded-md bg-secondary/40 border border-border/60">
+      {/* Wraps rather than overflows: on a phone the sidebar is a ~318px
+       * drawer, and a single row of two inputs plus two buttons runs off its
+       * right edge — where the drawer's own backdrop sits, so the half of the
+       * button that escaped closed the panel instead of locking anything. */}
+      <div className="flex flex-wrap items-center gap-1.5 px-2 py-1.5 mb-1 rounded-md bg-secondary/40 border border-border/60">
         <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
         <span className="text-[10px] text-muted-foreground shrink-0">Body</span>
         <Input
@@ -220,25 +239,32 @@ export function WaypointList() {
         <Button
           variant="ghost"
           size="sm"
+          disabled={!rangeSelection}
           className="h-6 text-[11px] px-2 text-amber-400 hover:text-amber-300"
           onClick={() => applyRangeLock(true)}
           // Named apart from the bulk toolbar's own "Zamknout", which acts on
           // the map selection rather than on this typed range.
           aria-label="Zamknout rozsah"
-          title="Zamknout tento rozsah bodů na místě"
+          title={rangeHint ?? "Zamknout tento rozsah bodů na místě"}
         >
           Zamknout
         </Button>
         <Button
           variant="ghost"
           size="sm"
+          disabled={!rangeSelection}
           className="h-6 text-[11px] px-2 text-muted-foreground"
           onClick={() => applyRangeLock(false)}
           aria-label="Odemknout rozsah"
-          title="Odemknout tento rozsah bodů"
+          title={rangeHint ?? "Odemknout tento rozsah bodů"}
         >
           Odemknout
         </Button>
+        {rangeHint && (
+          <span className="text-[10px] text-muted-foreground w-full">
+            {rangeHint}
+          </span>
+        )}
       </div>
       {waypoints.map((wp, i) => {
         const isSelected = selectedWaypointIndices.has(wp.index);

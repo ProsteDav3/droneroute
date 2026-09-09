@@ -158,10 +158,37 @@ test.describe("Waypoint locks and building reflow", () => {
 
     // Lock waypoints 1-4 by typing the range, the way an operator locks
     // "everything already filmed" on a 72-point orbit.
+    const rangeLock = page.getByRole("button", { name: "Zamknout rozsah" });
+
+    // An unusable range must not be clickable at all: a live-looking button
+    // that quietly acts on the previous input leaves the operator believing
+    // they locked something they didn't.
+    await expect(page.getByLabel("Do bodu")).toHaveValue("");
+    await expect(rangeLock).toBeDisabled();
+
     await page.getByLabel("Od bodu").fill("1");
     await page.getByLabel("Do bodu").fill("4");
-    await page.getByRole("button", { name: "Zamknout rozsah" }).click();
+    await expect(rangeLock).toBeEnabled();
+    await rangeLock.click();
     await expect(page.getByText(/Zamčeno 4 bodů \(1–4\)/)).toBeVisible();
+
+    // Clearing a field disables it again rather than re-running the old range.
+    // Cleared by keyboard, the way an operator does it — a number input that
+    // is emptied programmatically does not always tell React about it.
+    await page.getByLabel("Do bodu").click();
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.press("Delete");
+    await expect(page.getByLabel("Do bodu")).toHaveValue("");
+    await expect(rangeLock).toBeDisabled();
+    // A range entirely past the end of the mission names no waypoints. (A
+    // range that merely overshoots — 1 to 900 on a 12-point route — is a
+    // legitimate "to the end" and stays enabled.)
+    await page.getByLabel("Od bodu").fill("900");
+    await page.getByLabel("Do bodu").fill("999");
+    await expect(rangeLock).toBeDisabled();
+    await page.getByLabel("Od bodu").fill("1");
+    await page.getByLabel("Do bodu").fill("4");
+    await expect(rangeLock).toBeEnabled();
 
     // Select the building, off-centre so the orbit's POI marker doesn't take
     // the click.
@@ -237,6 +264,20 @@ test.describe("Waypoint locks and building reflow", () => {
     expect(barBox).not.toBeNull();
     expect(barBox!.x).toBeGreaterThanOrEqual(-1);
     expect(barBox!.x + barBox!.width).toBeLessThanOrEqual(376);
+
+    // The range row lives inside that ~318px drawer. Its buttons have to stay
+    // inside it: anything sticking out lands on the drawer's own backdrop,
+    // where a click closes the panel instead of locking waypoints.
+    const drawer = page.locator('div[class*="w-[85vw]"]').first();
+    const drawerBox = await drawer.boundingBox();
+    for (const name of ["Zamknout rozsah", "Odemknout rozsah"]) {
+      const box = await page.getByRole("button", { name }).boundingBox();
+      expect(box, `${name} has no box`).not.toBeNull();
+      expect(
+        box!.x + box!.width,
+        `${name} escapes the drawer`,
+      ).toBeLessThanOrEqual(drawerBox!.x + drawerBox!.width + 1);
+    }
 
     // On a phone the sidebar is a drawer covering most of the screen, so close
     // it before reaching for the bar underneath — that's the order an operator

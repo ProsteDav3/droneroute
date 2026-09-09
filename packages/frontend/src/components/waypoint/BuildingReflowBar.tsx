@@ -48,12 +48,15 @@ export function BuildingReflowBar() {
 
   return (
     <div
+      // Capped to the viewport and scrolled inside, same as BulkActionToolbar:
+      // the radius readout plus two badges plus two buttons is wider than a
+      // phone, and Použít/Zrušit must stay reachable.
       className={`fixed ${
         bulkToolbarVisible ? "bottom-24" : "bottom-6"
-      } left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 fade-in duration-200 tabular-nums`}
+      } left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-1rem)] animate-in slide-in-from-bottom-4 fade-in duration-200 tabular-nums`}
     >
-      <div className="bg-card border border-amber-400/40 rounded-xl shadow-2xl shadow-black/30">
-        <div className="flex items-center gap-3 px-4 py-2.5">
+      <div className="bg-card border border-amber-400/40 rounded-xl shadow-2xl shadow-black/30 overflow-hidden max-w-full">
+        <div className="flex items-center gap-3 px-4 py-2.5 overflow-x-auto">
           <Building2 className="h-4 w-4 text-amber-400 shrink-0" />
           <div className="text-xs whitespace-nowrap">
             <div className="font-medium">Budova změněna</div>

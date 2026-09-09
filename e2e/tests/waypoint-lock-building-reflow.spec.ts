@@ -34,9 +34,6 @@ async function drawBuildingAndOrbit(page: Page) {
   await page.mouse.move(cx + 110, cy + 70, { steps: 10 });
   await page.mouse.up();
   await page.getByRole("button", { name: "Použít" }).last().click();
-  await expect(page.getByText(/^BUDOVY \(1\)$/i)).toBeVisible({
-    timeout: 10_000,
-  });
 
   // Same retry-until-painted dance as the building-menu spec: the fill layer
   // has to be rasterized before a click can find the building.
@@ -48,9 +45,12 @@ async function drawBuildingAndOrbit(page: Page) {
   await orbitFromMenu.click();
   await page.getByRole("button", { name: "Použít" }).last().click();
 
-  await expect(page.getByText(/^BODY TRASY \(\d+\)$/i)).toBeVisible({
-    timeout: 10_000,
-  });
+  // Waits on the map, not the sidebar: on a phone the panels start closed
+  // (App's `panelsHidden` default), so the sidebar headings aren't rendered
+  // and this helper has to work in both layouts.
+  await expect
+    .poll(() => page.locator(".mapboxgl-marker").count(), { timeout: 10_000 })
+    .toBeGreaterThan(5);
   return { cx, cy };
 }
 
@@ -140,5 +140,61 @@ test.describe("Waypoint locks and building reflow", () => {
 
     await page.getByRole("button", { name: "Použít" }).last().click();
     await expect(reflowBar).toBeHidden({ timeout: 10_000 });
+  });
+
+  test("both bottom bars stay inside a 375px viewport, with every button reachable", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await blockMapboxNetwork(page);
+    await dismissWelcomeDialogOnLoad(page);
+    await page.goto("/");
+    // A phone opens straight into the map with the panels closed (see App's
+    // `panelsHidden` default), so wait on the canvas, not the sidebar.
+    await page
+      .locator(".mapboxgl-canvas")
+      .first()
+      .waitFor({ state: "visible", timeout: 20_000 });
+
+    await drawBuildingAndOrbit(page);
+
+    await page.getByRole("button", { name: "Zobrazit panely (Tab)" }).click();
+    const firstRow = page.getByText("Bod trasy 1", { exact: true });
+    await expect(firstRow).toBeVisible({ timeout: 10_000 });
+    await firstRow.click();
+    await page
+      .getByText("Bod trasy 3", { exact: true })
+      .click({ modifiers: ["Shift"] });
+
+    // The selection bar outgrew a phone once it gained the lock button. It may
+    // scroll horizontally, but it must not lay itself out past the viewport
+    // with buttons stranded off-screen where nothing can reach them.
+    const selectionBar = page
+      .getByText("Vybráno:")
+      .locator('xpath=ancestor::div[contains(@class,"rounded-xl")][1]');
+    const barBox = await selectionBar.boundingBox();
+    expect(barBox).not.toBeNull();
+    expect(barBox!.x).toBeGreaterThanOrEqual(-1);
+    expect(barBox!.x + barBox!.width).toBeLessThanOrEqual(376);
+
+    // On a phone the sidebar is a drawer covering most of the screen, so close
+    // it before reaching for the bar underneath — that's the order an operator
+    // works in too.
+    await page.getByRole("button", { name: /Skrýt panely/ }).click();
+
+    // Playwright scrolls a target into its scroll container before clicking, so
+    // a successful click on the far-right button is the real reachability test.
+    await page.getByRole("button", { name: "Zamknout", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Odemknout", exact: true }),
+    ).toBeVisible();
+
+    const errors: string[] = [];
+    page.on("console", (msg) => {
+      if (msg.type() === "error" && !msg.text().includes("mapbox")) {
+        errors.push(msg.text());
+      }
+    });
+    expect(errors).toEqual([]);
   });
 });

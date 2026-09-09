@@ -11,8 +11,10 @@ import {
   Lock,
   LockOpen,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { useMissionStore } from "@/store/missionStore";
 import type { SelectionMode } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
@@ -35,6 +37,7 @@ export function WaypointList() {
     reorderWaypoints,
     updateWaypoint,
     toggleWaypointLock,
+    setWaypointsLocked,
     config,
   } = useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
@@ -72,6 +75,8 @@ export function WaypointList() {
 
   const [expandedEditor, setExpandedEditor] = useState<number | null>(null);
   const [editingName, setEditingName] = useState<number | null>(null);
+  const [rangeFrom, setRangeFrom] = useState("1");
+  const [rangeTo, setRangeTo] = useState("");
 
   // When exactly one waypoint is selected (e.g. by clicking on the map), expand its editor
   useEffect(() => {
@@ -160,8 +165,81 @@ export function WaypointList() {
     selectWaypoint(wpIndex, mode);
   };
 
+  // Locking "1 to 40" of a 72-waypoint orbit by shift-clicking means finding
+  // both ends in a scrolling list; typing the range is the same instruction in
+  // two keystrokes. Numbers are the 1-based ones shown on the map and in the
+  // rows, not the 0-based indices underneath.
+  const applyRangeLock = (locked: boolean) => {
+    const from = parseInt(rangeFrom, 10);
+    const to = parseInt(rangeTo, 10);
+    if (!(from >= 1) || !(to >= 1)) {
+      toast.warning("Zadejte rozsah bodů, například 1 a 40");
+      return;
+    }
+    const lo = Math.min(from, to);
+    const hi = Math.max(from, to);
+    const indices = waypoints
+      .map((wp) => wp.index)
+      .filter((index) => index + 1 >= lo && index + 1 <= hi);
+    if (indices.length === 0) {
+      toast.warning(`Mise má body 1 až ${waypoints.length}`);
+      return;
+    }
+    setWaypointsLocked(indices, locked);
+    toast.success(
+      locked
+        ? `Zamčeno ${indices.length} bodů (${lo}–${hi})`
+        : `Odemčeno ${indices.length} bodů (${lo}–${hi})`,
+    );
+  };
+
   return (
     <div className="flex flex-col gap-1 p-2">
+      <div className="flex items-center gap-1.5 px-2 py-1.5 mb-1 rounded-md bg-secondary/40 border border-border/60">
+        <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
+        <span className="text-[10px] text-muted-foreground shrink-0">Body</span>
+        <Input
+          type="number"
+          min={1}
+          max={waypoints.length}
+          value={rangeFrom}
+          onChange={(e) => setRangeFrom(e.target.value)}
+          className="h-6 w-14 text-[11px] px-1.5"
+          aria-label="Od bodu"
+        />
+        <span className="text-[10px] text-muted-foreground">–</span>
+        <Input
+          type="number"
+          min={1}
+          max={waypoints.length}
+          value={rangeTo}
+          onChange={(e) => setRangeTo(e.target.value)}
+          className="h-6 w-14 text-[11px] px-1.5"
+          aria-label="Do bodu"
+        />
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 text-[11px] px-2 text-amber-400 hover:text-amber-300"
+          onClick={() => applyRangeLock(true)}
+          // Named apart from the bulk toolbar's own "Zamknout", which acts on
+          // the map selection rather than on this typed range.
+          aria-label="Zamknout rozsah"
+          title="Zamknout tento rozsah bodů na místě"
+        >
+          Zamknout
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 text-[11px] px-2 text-muted-foreground"
+          onClick={() => applyRangeLock(false)}
+          aria-label="Odemknout rozsah"
+          title="Odemknout tento rozsah bodů"
+        >
+          Odemknout
+        </Button>
+      </div>
       {waypoints.map((wp, i) => {
         const isSelected = selectedWaypointIndices.has(wp.index);
         const isDragging = dragIndex === i;

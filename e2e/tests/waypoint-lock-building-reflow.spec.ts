@@ -106,8 +106,10 @@ test.describe("Waypoint locks and building reflow", () => {
     // Grow the footprint by dragging one corner outward — located through the
     // handle's own box rather than by guessing where it was drawn, since a
     // 12px target is not worth missing over rounding.
+    // White fill picks the corner handles out from the pale-blue midpoint
+    // ones, which sit on the same edges and are draggable too.
     const vertexHandle = page
-      .locator('.mapboxgl-marker div[style*="border-radius: 50%"]')
+      .locator('.mapboxgl-marker div[style*="background: rgb(255, 255, 255)"]')
       .first();
     await expect(vertexHandle).toBeVisible({ timeout: 10_000 });
     const handleBox = await vertexHandle.boundingBox();
@@ -140,6 +142,65 @@ test.describe("Waypoint locks and building reflow", () => {
 
     await page.getByRole("button", { name: "Použít" }).last().click();
     await expect(reflowBar).toBeHidden({ timeout: 10_000 });
+  });
+
+  test("a typed range locks without hunting through the list, and a whole wall can be dragged", async ({
+    page,
+  }) => {
+    await blockMapboxNetwork(page);
+    await dismissWelcomeDialogOnLoad(page);
+    await page.goto("/");
+    await expect(page.getByPlaceholder("Název mise")).toBeVisible({
+      timeout: 20_000,
+    });
+
+    const { cx, cy } = await drawBuildingAndOrbit(page);
+
+    // Lock waypoints 1-4 by typing the range, the way an operator locks
+    // "everything already filmed" on a 72-point orbit.
+    await page.getByLabel("Od bodu").fill("1");
+    await page.getByLabel("Do bodu").fill("4");
+    await page.getByRole("button", { name: "Zamknout rozsah" }).click();
+    await expect(page.getByText(/Zamčeno 4 bodů \(1–4\)/)).toBeVisible();
+
+    // Select the building, off-centre so the orbit's POI marker doesn't take
+    // the click.
+    const buildingMenuHeight = page.getByLabel("Výška budovy");
+    await expect(async () => {
+      await page.mouse.click(cx - 60, cy + 45);
+      await expect(buildingMenuHeight).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+    await page.locator(".mapboxgl-popup-close-button").first().click();
+
+    // Drag a whole wall by its midpoint handle — pale blue, as against the
+    // white corner handles.
+    const edgeHandle = page
+      .locator('.mapboxgl-marker div[style*="background: rgb(191, 219, 254)"]')
+      .first();
+    await expect(edgeHandle).toBeVisible({ timeout: 10_000 });
+    const edgeBox = await edgeHandle.boundingBox();
+    if (!edgeBox) throw new Error("Building edge handle not visible");
+    const ex = edgeBox.x + edgeBox.width / 2;
+    const ey = edgeBox.y + edgeBox.height / 2;
+    await page.mouse.move(ex, ey);
+    await page.mouse.down();
+    await page.mouse.move(ex - 70, ey - 55, { steps: 15 });
+    await page.mouse.up();
+
+    await expect(page.getByText("Budova změněna")).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByText(/Zamčeno: 4/)).toBeVisible();
+
+    // The ramp control only makes sense when something is locked, and it is.
+    const blend = page.getByLabel("Přechod");
+    await expect(blend).toBeVisible();
+    await expect(blend).toHaveValue("8");
+
+    await page.getByRole("button", { name: "Použít" }).last().click();
+    await expect(page.getByText("Budova změněna")).toBeHidden({
+      timeout: 10_000,
+    });
   });
 
   test("both bottom bars stay inside a 375px viewport, with every button reachable", async ({

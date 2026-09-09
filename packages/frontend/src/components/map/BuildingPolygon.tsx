@@ -3,7 +3,7 @@ import type { Building } from "@droneroute/shared";
 import { useMissionStore } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { heightLabel, toDisplayHeight } from "@/lib/units";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { EdgeLengthLabels } from "./EdgeLengthLabels";
 import {
   buildingFillLayerIds,
@@ -25,10 +25,47 @@ export function BuildingPolygon({ building, is3D }: BuildingPolygonProps) {
   const selectedBuildingId = useMissionStore((s) => s.selectedBuildingId);
   const moveBuildingVertex = useMissionStore((s) => s.moveBuildingVertex);
   const addBuildingVertex = useMissionStore((s) => s.addBuildingVertex);
+  const moveBuildingVertices = useMissionStore((s) => s.moveBuildingVertices);
   const removeBuildingVertex = useMissionStore((s) => s.removeBuildingVertex);
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
 
   const isSelected = selectedBuildingId === building.id;
+
+  /**
+   * The wall being dragged, captured once when the drag starts.
+   *
+   * Every move has to be measured against where the wall stood before the
+   * gesture, not against where it stands now: the store updates on each
+   * frame, so measuring against the live footprint would apply each frame's
+   * offset on top of the last and send the wall off at several times the
+   * speed of the cursor.
+   */
+  const edgeDragRef = useRef<{
+    edgeIndex: number;
+    from: [number, number];
+    a: [number, number];
+    b: [number, number];
+    moved: boolean;
+  } | null>(null);
+
+  const handleEdgeDrag = (lat: number, lng: number) => {
+    const drag = edgeDragRef.current;
+    if (!drag) return;
+    const dLat = lat - drag.from[0];
+    const dLng = lng - drag.from[1];
+    if (dLat === 0 && dLng === 0) return;
+    drag.moved = true;
+
+    const next = (drag.edgeIndex + 1) % building.vertices.length;
+    moveBuildingVertices(building.id, [
+      {
+        vertexIndex: drag.edgeIndex,
+        lat: drag.a[0] + dLat,
+        lng: drag.a[1] + dLng,
+      },
+      { vertexIndex: next, lat: drag.b[0] + dLat, lng: drag.b[1] + dLng },
+    ]);
+  };
 
   const geojson = useMemo(() => {
     const ring = [
@@ -169,20 +206,42 @@ export function BuildingPolygon({ building, is3D }: BuildingPolygonProps) {
             longitude={pos[1]}
             latitude={pos[0]}
             anchor="center"
+            draggable
+            onDragStart={() => {
+              const next = (i + 1) % building.vertices.length;
+              edgeDragRef.current = {
+                edgeIndex: i,
+                from: pos,
+                a: building.vertices[i],
+                b: building.vertices[next],
+                moved: false,
+              };
+            }}
+            onDrag={(e) => handleEdgeDrag(e.lngLat.lat, e.lngLat.lng)}
+            onDragEnd={(e) => handleEdgeDrag(e.lngLat.lat, e.lngLat.lng)}
           >
             <div
               onClick={(e) => {
                 e.stopPropagation();
+                // A drag ends with a click too. Adding a vertex there would
+                // undo the wall the operator just moved, by putting a corner
+                // in the middle of it.
+                if (edgeDragRef.current?.moved) {
+                  edgeDragRef.current = null;
+                  return;
+                }
+                edgeDragRef.current = null;
                 addBuildingVertex(building.id, i, pos[0], pos[1]);
               }}
+              title="Tažením posunete celou stranu, kliknutím přidáte roh"
               style={{
-                width: 8,
-                height: 8,
+                width: 10,
+                height: 10,
                 borderRadius: "50%",
                 background: "#bfdbfe",
                 border: "1px solid #3b82f6",
-                cursor: "pointer",
-                opacity: 0.7,
+                cursor: "move",
+                opacity: 0.85,
               }}
             />
           </Marker>

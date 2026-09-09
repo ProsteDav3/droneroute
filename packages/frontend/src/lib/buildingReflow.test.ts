@@ -274,3 +274,114 @@ describe("computeBuildingReflow", () => {
     }
   });
 });
+
+describe("computeBuildingReflow — blending into the locked stretch", () => {
+  const oldVertices = square(CENTER[0], CENTER[1], 40);
+  const biggerVertices = square(CENTER[0], CENTER[1], 80);
+  const LOCKED = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+
+  /** How far each moved waypoint travelled from where it started. */
+  function moveDistances(
+    waypoints: Waypoint[],
+    blendPoints: number,
+  ): Map<number, number> {
+    const result = computeBuildingReflow({
+      oldVertices,
+      newVertices: biggerVertices,
+      oldHeight: HEIGHT,
+      newHeight: HEIGHT,
+      waypoints,
+      blendPoints,
+    });
+    const byIndex = new Map(waypoints.map((wp) => [wp.index, wp]));
+    return new Map(
+      result!.moves.map((move) => {
+        const wp = byIndex.get(move.index)!;
+        return [
+          move.index,
+          haversineDistance(
+            wp.latitude,
+            wp.longitude,
+            move.latitude,
+            move.longitude,
+          ),
+        ];
+      }),
+    );
+  }
+
+  it("barely moves the waypoint right next to a locked one", () => {
+    const waypoints = ringWaypoints(oldVertices, 30, LOCKED);
+    const blended = moveDistances(waypoints, 8);
+    const hard = moveDistances(waypoints, 0);
+
+    // Index 10 is the first unlocked waypoint after the locked run.
+    expect(blended.get(10)!).toBeLessThan(hard.get(10)! * 0.2);
+    expect(blended.get(10)!).toBeGreaterThan(0);
+  });
+
+  it("ramps the move up with distance from the locked stretch", () => {
+    const waypoints = ringWaypoints(oldVertices, 30, LOCKED);
+    const blended = moveDistances(waypoints, 8);
+
+    for (let i = 10; i < 18; i++) {
+      expect(blended.get(i + 1)!).toBeGreaterThan(blended.get(i)!);
+    }
+  });
+
+  it("gives the full move once past the blend width", () => {
+    const waypoints = ringWaypoints(oldVertices, 30, LOCKED);
+    const blended = moveDistances(waypoints, 8);
+    const hard = moveDistances(waypoints, 0);
+
+    // Nine waypoints past the last locked one (index 9) the ramp is done.
+    for (let i = 18; i < 30; i++) {
+      expect(blended.get(i)!).toBeCloseTo(hard.get(i)!, 1);
+    }
+  });
+
+  it("blends from a locked stretch on either side", () => {
+    // Locked at both ends, unlocked in the middle: the ramp has to come in
+    // from both directions, so the middle moves most.
+    const waypoints = ringWaypoints(oldVertices, 21, [0, 1, 19, 20]);
+    const blended = moveDistances(waypoints, 6);
+
+    expect(blended.get(2)!).toBeLessThan(blended.get(10)!);
+    expect(blended.get(18)!).toBeLessThan(blended.get(10)!);
+    expect(blended.get(2)!).toBeCloseTo(blended.get(18)!, 1);
+  });
+
+  it("moves everything fully when nothing is locked, whatever the blend", () => {
+    const waypoints = ringWaypoints(oldVertices, 12);
+    const blended = moveDistances(waypoints, 8);
+    const hard = moveDistances(waypoints, 0);
+
+    for (const [index, dist] of blended) {
+      expect(dist).toBeCloseTo(hard.get(index)!, 6);
+    }
+  });
+
+  it("defaults to no blend, so an unset value keeps the old hard step", () => {
+    const waypoints = ringWaypoints(oldVertices, 30, LOCKED);
+    const withoutParam = computeBuildingReflow({
+      oldVertices,
+      newVertices: biggerVertices,
+      oldHeight: HEIGHT,
+      newHeight: HEIGHT,
+      waypoints,
+    });
+    const hard = moveDistances(waypoints, 0);
+
+    const byIndex = new Map(waypoints.map((wp) => [wp.index, wp]));
+    for (const move of withoutParam!.moves) {
+      const wp = byIndex.get(move.index)!;
+      const dist = haversineDistance(
+        wp.latitude,
+        wp.longitude,
+        move.latitude,
+        move.longitude,
+      );
+      expect(dist).toBeCloseTo(hard.get(move.index)!, 6);
+    }
+  });
+});

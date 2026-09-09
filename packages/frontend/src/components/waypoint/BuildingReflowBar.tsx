@@ -2,6 +2,7 @@ import { Building2, Check, X, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { useMissionStore } from "@/store/missionStore";
 import { usePreferencesStore } from "@/store/preferencesStore";
 import { heightLabel, toDisplayHeight } from "@/lib/units";
@@ -22,6 +23,8 @@ export function BuildingReflowBar() {
   const applyBuildingReflow = useMissionStore((s) => s.applyBuildingReflow);
   const dismissBuildingReflow = useMissionStore((s) => s.dismissBuildingReflow);
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
+  const blendPoints = useMissionStore((s) => s.reflowBlendPoints);
+  const setReflowBlendPoints = useMissionStore((s) => s.setReflowBlendPoints);
   // BulkActionToolbar owns the bottom-centre slot whenever a multi-selection
   // is live, and both bars can legitimately be open at once — locking a batch
   // leaves it selected. Stack rather than overlap.
@@ -78,6 +81,33 @@ export function BuildingReflowBar() {
               <Lock className="h-2.5 w-2.5" />
               Zamčeno: {proposal.lockedCount}
             </Badge>
+          )}
+
+          {proposal.lockedCount > 0 && (
+            <>
+              <div className="h-4 w-px bg-border" />
+              <div className="flex items-center gap-1.5">
+                <label
+                  htmlFor="reflow-blend"
+                  className="text-[10px] text-muted-foreground whitespace-nowrap"
+                  title="Přes kolik bodů se posun postupně rozjede, aby mezi zamčenými a posunutými body nebyl skok. 0 = bez přechodu."
+                >
+                  Přechod
+                </label>
+                <Input
+                  id="reflow-blend"
+                  type="number"
+                  min={0}
+                  max={50}
+                  value={String(blendPoints)}
+                  onChange={(e) =>
+                    setReflowBlendPoints(parseInt(e.target.value, 10) || 0)
+                  }
+                  className="h-7 w-14 text-xs px-1.5"
+                />
+                <span className="text-[10px] text-muted-foreground">bodů</span>
+              </div>
+            </>
           )}
 
           <div className="h-4 w-px bg-border" />

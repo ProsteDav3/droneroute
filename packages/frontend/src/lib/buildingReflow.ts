@@ -60,6 +60,13 @@ export interface BuildingReflowParams {
   waypoints: Waypoint[];
   /** Camera vertical FOV, forwarded to the orbit seed's framing math. */
   vfovDeg?: number;
+  /**
+   * Over how many waypoints the move ramps up to its full size as the route
+   * leaves a locked stretch. `0` (the default) gives every unlocked waypoint
+   * the full move, which puts a visible step in the flight path right where
+   * the locked half ends. See `blendFactor`.
+   */
+  blendPoints?: number;
 }
 
 /**
@@ -77,6 +84,56 @@ function isUsableFootprint(vertices: [number, number][]): boolean {
 }
 
 /**
+ * How much of the full move a waypoint gets, given how many waypoints along
+ * the route it sits from the nearest locked one.
+ *
+ * A locked waypoint stays put and its neighbour, one frame later in the same
+ * shot, would otherwise jump the whole new standoff — a visible kink in the
+ * flight path, and a jump in the footage exactly where the old and new visits
+ * are cut together. Ramping the move in over a handful of waypoints spreads
+ * that difference across a stretch of the arc instead of putting it all in
+ * one leg.
+ *
+ * Smoothstep rather than a straight line so the ramp also *starts* and *ends*
+ * gently: a linear ramp removes the step in position but leaves a corner in
+ * the path at both ends of the blend, which is the same artefact one scale
+ * smaller.
+ */
+function blendFactor(distanceFromLocked: number, blendPoints: number): number {
+  if (blendPoints <= 0) return 1;
+  const t = Math.min(1, distanceFromLocked / (blendPoints + 1));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Distance, in waypoints along the route, from each waypoint to the nearest
+ * locked one. `Infinity` everywhere when nothing is locked.
+ *
+ * Measured along the list, not through space: the point of the ramp is to
+ * spread the change over consecutive frames of the shot, and consecutive
+ * frames are what the list order describes. Deliberately does not wrap from
+ * the last waypoint back to the first — a route is flown start to finish, and
+ * even on an orbit that closes visually the aircraft does not fly that gap.
+ */
+function distancesFromLocked(waypoints: Waypoint[]): number[] {
+  const distances = waypoints.map(() => Infinity);
+
+  let seen = Infinity;
+  for (let i = 0; i < waypoints.length; i++) {
+    seen = waypoints[i].locked ? 0 : seen + 1;
+    distances[i] = seen;
+  }
+
+  seen = Infinity;
+  for (let i = waypoints.length - 1; i >= 0; i--) {
+    seen = waypoints[i].locked ? 0 : seen + 1;
+    distances[i] = Math.min(distances[i], seen);
+  }
+
+  return distances;
+}
+
+/**
  * New positions for the unlocked waypoints after a building's footprint or
  * height changed. `null` when there is nothing to propose — no unlocked
  * waypoints, an unusable footprint, or an edit that moved neither the
@@ -89,6 +146,7 @@ export function computeBuildingReflow({
   newHeight,
   waypoints,
   vfovDeg,
+  blendPoints = 0,
 }: BuildingReflowParams): BuildingReflowResult | null {
   if (!isUsableFootprint(oldVertices) || !isUsableFootprint(newVertices)) {
     return null;
@@ -112,6 +170,9 @@ export function computeBuildingReflow({
   // dismiss the confirmation bar without reading it.
   if (centroidShiftM < 0.1 && Math.abs(deltaRadiusM) < 0.1) return null;
 
+  const lockedDistances = distancesFromLocked(waypoints);
+  const positionInList = new Map(waypoints.map((wp, i) => [wp.index, i]));
+
   const moves = unlocked.map((wp) => {
     const bearingDeg = bearing(
       oldSeed.center[0],
@@ -125,10 +186,27 @@ export function computeBuildingReflow({
       wp.latitude,
       wp.longitude,
     );
-    const newStandoffM = Math.max(MIN_STANDOFF_M, oldStandoffM + deltaRadiusM);
+
+    // A partial move is the same move, taken part of the way: the centre it
+    // is measured from and the standoff it is given both slide from old to
+    // new together, so the waypoint stays on a real orbit the whole way
+    // through the ramp rather than drifting off one.
+    const share = blendFactor(
+      lockedDistances[positionInList.get(wp.index)!],
+      blendPoints,
+    );
+    const centerLat =
+      oldSeed.center[0] + (newSeed.center[0] - oldSeed.center[0]) * share;
+    const centerLng =
+      oldSeed.center[1] + (newSeed.center[1] - oldSeed.center[1]) * share;
+    const newStandoffM = Math.max(
+      MIN_STANDOFF_M,
+      oldStandoffM + deltaRadiusM * share,
+    );
+
     const [latitude, longitude] = destinationPoint(
-      newSeed.center[0],
-      newSeed.center[1],
+      centerLat,
+      centerLng,
       newStandoffM,
       bearingDeg,
     );

@@ -41,6 +41,7 @@ export function useBuildingReflowProposal(): BuildingReflowProposal | null {
   // radius against the same camera the template did.
   const payloadEnumValue = useMissionStore((s) => s.config.payloadEnumValue);
   const cameraFovDeg = WIDE_CAMERA_FOV[payloadEnumValue]?.vfovDeg;
+  const blendPoints = useMissionStore((s) => s.reflowBlendPoints);
 
   return useMemo(() => {
     if (!pendingBuildingEdit) return null;
@@ -56,6 +57,7 @@ export function useBuildingReflowProposal(): BuildingReflowProposal | null {
       newHeight: building.height,
       waypoints,
       vfovDeg: cameraFovDeg,
+      blendPoints,
     });
     if (!result) return null;
 
@@ -74,5 +76,5 @@ export function useBuildingReflowProposal(): BuildingReflowProposal | null {
         ];
       }),
     };
-  }, [pendingBuildingEdit, buildings, waypoints, cameraFovDeg]);
+  }, [pendingBuildingEdit, buildings, waypoints, cameraFovDeg, blendPoints]);
 }

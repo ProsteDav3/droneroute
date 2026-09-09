@@ -292,6 +292,61 @@ describe("missionStore — building reflow", () => {
     expect(pending?.height).toBe(20);
   });
 
+  it("moveBuildingVertices moves every listed corner in one edit", () => {
+    const id = seedBuildingMission();
+    const before = useMissionStore.getState().buildings[0].vertices;
+
+    useMissionStore.getState().moveBuildingVertices(id, [
+      { vertexIndex: 0, lat: 50.0612, lng: 14.4292 },
+      { vertexIndex: 1, lat: 50.0613, lng: 14.4312 },
+    ]);
+
+    const after = useMissionStore.getState().buildings[0].vertices;
+    expect(after[0]).toEqual([50.0612, 14.4292]);
+    expect(after[1]).toEqual([50.0613, 14.4312]);
+    expect(after[2]).toEqual(before[2]);
+    expect(after[3]).toEqual(before[3]);
+  });
+
+  it("moveBuildingVertices arms the reflow against the pre-drag footprint", () => {
+    const id = seedBuildingMission();
+    const original = square(50.06, 14.43, 40);
+
+    useMissionStore
+      .getState()
+      .moveBuildingVertices(id, [
+        { vertexIndex: 0, lat: 50.0612, lng: 14.4292 },
+      ]);
+    useMissionStore
+      .getState()
+      .moveBuildingVertices(id, [
+        { vertexIndex: 0, lat: 50.0615, lng: 14.4289 },
+      ]);
+
+    expect(useMissionStore.getState().pendingBuildingEdit?.vertices).toEqual(
+      original,
+    );
+  });
+
+  it("ignores vertex indices that do not exist", () => {
+    const id = seedBuildingMission();
+    const before = useMissionStore.getState().buildings[0].vertices;
+
+    useMissionStore
+      .getState()
+      .moveBuildingVertices(id, [{ vertexIndex: 9, lat: 1, lng: 2 }]);
+
+    expect(useMissionStore.getState().buildings[0].vertices).toEqual(before);
+  });
+
+  it("keeps a blend width that the reflow bar can change", () => {
+    expect(useMissionStore.getState().reflowBlendPoints).toBeGreaterThan(0);
+    useMissionStore.getState().setReflowBlendPoints(0);
+    expect(useMissionStore.getState().reflowBlendPoints).toBe(0);
+    useMissionStore.getState().setReflowBlendPoints(12);
+    expect(useMissionStore.getState().reflowBlendPoints).toBe(12);
+  });
+
   it("removing the building drops its pending reflow", () => {
     const id = seedBuildingMission();
     useMissionStore.getState().moveBuildingVertex(id, 0, 50.0612, 14.4292);

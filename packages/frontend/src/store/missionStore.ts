@@ -65,6 +65,14 @@ function armBuildingReflow(
   };
 }
 
+/**
+ * Default ramp width for a building reflow, in waypoints. Eight is roughly a
+ * tenth of a full orbit at the spacing these missions actually use, which is
+ * long enough to hide the step in the flight path and short enough that the
+ * far side of the arc still reaches the standoff the new footprint asks for.
+ */
+export const DEFAULT_REFLOW_BLEND_POINTS = 8;
+
 /** Name given to every new mission until it's renamed or auto-named from an address. */
 export const DEFAULT_MISSION_NAME = "Nová mise";
 
@@ -118,6 +126,14 @@ interface MissionState {
    * `applyBuildingReflow` or walks away with `dismissBuildingReflow`.
    */
   pendingBuildingEdit: PendingBuildingEdit | null;
+  /**
+   * Over how many waypoints a reflow's move ramps up to full size as the
+   * route leaves a locked stretch (see `computeBuildingReflow`). Lives here
+   * rather than in the bar that edits it because the map preview has to draw
+   * the same proposal the bar is describing.
+   */
+  reflowBlendPoints: number;
+  setReflowBlendPoints: (points: number) => void;
 
   // UI state
   isAddingWaypoint: boolean;
@@ -278,6 +294,16 @@ interface MissionState {
     lng: number,
   ) => void;
   removeBuildingVertex: (id: string, vertexIndex: number) => void;
+  /**
+   * Moves several of a building's corners in one edit — one undo entry, one
+   * reflow proposal. Dragging a whole wall moves two corners that have to
+   * travel together; doing it as two separate `moveBuildingVertex` calls
+   * would put a half-moved footprint into the history between them.
+   */
+  moveBuildingVertices: (
+    id: string,
+    moves: { vertexIndex: number; lat: number; lng: number }[],
+  ) => void;
   /** Commits a reflow proposal (see `pendingBuildingEdit`). Locked waypoints are ignored even if the caller lists them. */
   applyBuildingReflow: (moves: WaypointReflowMove[]) => void;
   /** Walks away from a reflow proposal: the edited building stays, the waypoints stay where they are. */
@@ -346,6 +372,9 @@ export const useMissionStore = create<MissionState>()(
       buildingDrawMode: "rectangle",
       drawingBuildingVertices: [],
       pendingBuildingEdit: null,
+      reflowBlendPoints: DEFAULT_REFLOW_BLEND_POINTS,
+      setReflowBlendPoints: (points) =>
+        set({ reflowBlendPoints: Math.max(0, Math.round(points)) }),
       isAddingWaypoint: true,
       isAddingPoi: false,
       templateMode: null,
@@ -1016,6 +1045,21 @@ export const useMissionStore = create<MissionState>()(
             const vertices = b.vertices.filter(
               (_: [number, number], i: number) => i !== vertexIndex,
             );
+            return { ...b, vertices };
+          }),
+          pendingBuildingEdit: armBuildingReflow(state, id),
+          dirty: true,
+        })),
+
+      moveBuildingVertices: (id, moves) =>
+        set((state) => ({
+          buildings: state.buildings.map((b) => {
+            if (b.id !== id) return b;
+            const vertices = [...b.vertices] as [number, number][];
+            for (const { vertexIndex, lat, lng } of moves) {
+              if (vertexIndex < 0 || vertexIndex >= vertices.length) continue;
+              vertices[vertexIndex] = [lat, lng];
+            }
             return { ...b, vertices };
           }),
           pendingBuildingEdit: armBuildingReflow(state, id),

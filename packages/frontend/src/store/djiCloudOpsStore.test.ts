@@ -7,7 +7,7 @@ import {
 import { api } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
-  api: { get: vi.fn(), post: vi.fn(), delete: vi.fn() },
+  api: { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() },
 }));
 const mockedApi = vi.mocked(api);
 
@@ -140,5 +140,92 @@ describe("deleteWaylinesInBulk", () => {
     mockedApi.post.mockResolvedValue({ deleted: [], failed: [] } as never);
     await useDjiCloudOpsStore.getState().deleteWaylinesInBulk("segments");
     expect(useDjiCloudOpsStore.getState().bulkWaylineDelete).toBeNull();
+  });
+});
+
+describe("renameWaylineInLibrary", () => {
+  const wayline = (id: string, name: string) => ({ id, name }) as never;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useDjiCloudOpsStore.setState({
+      waylines: [wayline("m1", "KCP-auto.kmz"), wayline("m2", "Other.kmz")],
+      renamingWaylineId: null,
+      waylinesError: null,
+    });
+  });
+
+  it("renames and replaces the local name with what the server actually stored", async () => {
+    mockedApi.put.mockResolvedValue({
+      success: true,
+      name: "Renamed",
+    } as never);
+
+    await useDjiCloudOpsStore
+      .getState()
+      .renameWaylineInLibrary("m1", "Renamed");
+
+    expect(mockedApi.put).toHaveBeenCalledWith("/dji-cloud/waylines/m1", {
+      name: "Renamed",
+    });
+    expect(useDjiCloudOpsStore.getState().waylines).toEqual([
+      wayline("m1", "Renamed"),
+      wayline("m2", "Other.kmz"),
+    ]);
+    expect(useDjiCloudOpsStore.getState().renamingWaylineId).toBeNull();
+    expect(useDjiCloudOpsStore.getState().waylinesError).toBeNull();
+  });
+
+  it("rejects a blank name locally without calling the server", async () => {
+    await useDjiCloudOpsStore.getState().renameWaylineInLibrary("m1", "   ");
+
+    expect(mockedApi.put).not.toHaveBeenCalled();
+    expect(useDjiCloudOpsStore.getState().waylines).toEqual([
+      wayline("m1", "KCP-auto.kmz"),
+      wayline("m2", "Other.kmz"),
+    ]);
+    expect(useDjiCloudOpsStore.getState().waylinesError).toContain("prázdný");
+  });
+
+  it("surfaces a generic error message on a cloud-side failure", async () => {
+    mockedApi.put.mockRejectedValue(
+      new Error("Přejmenování v DJI Cloud selhalo"),
+    );
+
+    await useDjiCloudOpsStore
+      .getState()
+      .renameWaylineInLibrary("m1", "Renamed");
+
+    expect(useDjiCloudOpsStore.getState().waylines).toEqual([
+      wayline("m1", "KCP-auto.kmz"),
+      wayline("m2", "Other.kmz"),
+    ]);
+    expect(useDjiCloudOpsStore.getState().renamingWaylineId).toBeNull();
+    expect(useDjiCloudOpsStore.getState().waylinesError).toBe(
+      "Přejmenování v DJI Cloud selhalo",
+    );
+  });
+
+  it("surfaces a specific message when the server flags the endpoint as unsupported", async () => {
+    const err = new Error("Přejmenování v DJI Cloud selhalo") as Error & {
+      body?: unknown;
+    };
+    err.body = {
+      error: "Tenhle DJI Cloud přejmenování neumí",
+      unsupported: true,
+    };
+    mockedApi.put.mockRejectedValue(err);
+
+    await useDjiCloudOpsStore
+      .getState()
+      .renameWaylineInLibrary("m1", "Renamed");
+
+    expect(useDjiCloudOpsStore.getState().waylinesError).toBe(
+      "Tenhle DJI Cloud přejmenování neumí",
+    );
+    expect(useDjiCloudOpsStore.getState().waylines).toEqual([
+      wayline("m1", "KCP-auto.kmz"),
+      wayline("m2", "Other.kmz"),
+    ]);
   });
 });

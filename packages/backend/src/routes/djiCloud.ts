@@ -13,6 +13,8 @@ import {
   listWaylineJobs,
   listWaylines,
   deleteWayline,
+  renameWayline,
+  WaylineRenameUnsupportedError,
   listMediaFiles,
   getMediaFileDownloadUrl,
   listLiveCapacity,
@@ -415,6 +417,60 @@ djiCloudRoutes.delete(
     } catch (err) {
       logger.error({ err }, "DJI Cloud wayline delete error");
       res.status(502).json({ error: "Smazání z DJI Cloud selhalo" });
+    }
+  },
+);
+
+// Caps the raw (pre-sanitize) input so a pathological payload doesn't get
+// far before rejection — the real 64-char limit is enforced downstream by
+// `sanitizeWaylineName`/`fitWaylineNameLength`, which shortens rather than
+// rejects an over-long name (same behavior as upload).
+const MAX_WAYLINE_RENAME_INPUT_LENGTH = 300;
+
+// Renames a wayline in place in the workspace's library (e.g. giving an
+// auto-generated name something clearer). Same auth/rate-limit contract as
+// delete just above — an authenticated, workspace-mutating call.
+djiCloudRoutes.put(
+  "/waylines/:id",
+  strictLimiter,
+  authMiddleware,
+  async (req: AuthRequest, res) => {
+    try {
+      if (!requireConfigured(res)) return;
+      const waylineId = req.params.id;
+      if (typeof waylineId !== "string" || !waylineId) {
+        res.status(400).json({ error: "Chybí ID wayline" });
+        return;
+      }
+      const { name } = req.body;
+      if (
+        typeof name !== "string" ||
+        name.trim().length === 0 ||
+        name.length > MAX_WAYLINE_RENAME_INPUT_LENGTH
+      ) {
+        res.status(400).json({ error: "Neplatný název wayline" });
+        return;
+      }
+      const { name: storedName } = await renameWayline(
+        waylineId,
+        name,
+        req.userId,
+      );
+      res.json({ success: true, name: storedName });
+    } catch (err) {
+      if (err instanceof WaylineRenameUnsupportedError) {
+        // Distinct from the generic 502 below: this isn't an upstream
+        // failure, it's an older DJI Cloud instance that predates the
+        // rename endpoint — the client shows a specific message instead of
+        // a generic "operation failed" one.
+        res.status(501).json({
+          error: "Tenhle DJI Cloud přejmenování neumí",
+          unsupported: true,
+        });
+        return;
+      }
+      logger.error({ err }, "DJI Cloud wayline rename error");
+      res.status(502).json({ error: "Přejmenování v DJI Cloud selhalo" });
     }
   },
 );

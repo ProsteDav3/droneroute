@@ -104,6 +104,7 @@ interface DjiCloudOpsState {
   waylinesLoading: boolean;
   waylinesError: string | null;
   deletingWaylineId: string | null;
+  renamingWaylineId: string | null;
   /** Progress of a "delete every mission / every segment" sweep, so the
    * panel can show how far along it is and keep both buttons disabled. */
   bulkWaylineDelete: {
@@ -137,6 +138,7 @@ interface DjiCloudOpsState {
   fetchDevicesAndHms: () => Promise<void>;
   fetchWaylines: () => Promise<void>;
   deleteWaylineFromLibrary: (id: string) => Promise<void>;
+  renameWaylineInLibrary: (id: string, name: string) => Promise<void>;
   deleteWaylinesInBulk: (
     kind: "missions" | "segments",
   ) => Promise<{ deleted: number; failed: number }>;
@@ -155,6 +157,7 @@ export const useDjiCloudOpsStore = create<DjiCloudOpsState>((set, get) => ({
   waylinesLoading: false,
   waylinesError: null,
   deletingWaylineId: null,
+  renamingWaylineId: null,
   bulkWaylineDelete: null,
   loading: false,
   error: null,
@@ -287,6 +290,42 @@ export const useDjiCloudOpsStore = create<DjiCloudOpsState>((set, get) => ({
       }));
     } catch (err: any) {
       set({ waylinesError: err.message, deletingWaylineId: null });
+    }
+  },
+
+  /** Renames the wayline in place and, on success, updates the local copy
+   * with the name the server actually stored it under (sanitized/length-
+   * fit, same as an upload) rather than the raw value the user typed. An
+   * older DJI Cloud instance without the rename endpoint surfaces a
+   * specific "can't do that" message instead of the generic failure one,
+   * via the `unsupported` flag the route attaches to that error body. */
+  renameWaylineInLibrary: async (id: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      set({ waylinesError: "Název wayline nesmí být prázdný" });
+      return;
+    }
+    set({ renamingWaylineId: id });
+    try {
+      const res = await api.put<{ success: boolean; name: string }>(
+        `/dji-cloud/waylines/${encodeURIComponent(id)}`,
+        { name: trimmed },
+      );
+      set((state) => ({
+        waylines: state.waylines.map((w) =>
+          w.id === id ? { ...w, name: res.name } : w,
+        ),
+        renamingWaylineId: null,
+        waylinesError: null,
+      }));
+    } catch (err: any) {
+      const unsupported = Boolean(err?.body?.unsupported);
+      set({
+        renamingWaylineId: null,
+        waylinesError: unsupported
+          ? "Tenhle DJI Cloud přejmenování neumí"
+          : (err.message ?? "Přejmenování v DJI Cloud selhalo"),
+      });
     }
   },
 

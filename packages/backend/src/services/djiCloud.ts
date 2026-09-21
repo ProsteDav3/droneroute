@@ -376,6 +376,76 @@ export async function deleteWayline(
   await deleteWaylineAuthed(cfg, token, workspaceId, waylineId);
 }
 
+/**
+ * Thrown when the configured DJI Cloud platform doesn't have the rename
+ * endpoint yet (an older self-hosted deployment predating it) — lets the
+ * route surface a clear "this DJI Cloud can't rename" message instead of
+ * the generic upstream-failure one.
+ */
+export class WaylineRenameUnsupportedError extends Error {
+  constructor() {
+    super("DJI Cloud tato instance nepodporuje přejmenování waylines");
+    this.name = "WaylineRenameUnsupportedError";
+  }
+}
+
+async function renameWaylineAuthed(
+  cfg: DjiCloudConfig,
+  token: string,
+  workspaceId: string,
+  waylineId: string,
+  name: string,
+): Promise<void> {
+  const res = await fetch(
+    `${cfg.url}/wayline/api/v1/workspaces/${workspaceId}/waylines/${encodeURIComponent(waylineId)}/rename`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", "x-auth-token": token },
+      body: JSON.stringify({ name }),
+    },
+  );
+  if (res.status === 404 || res.status === 405) {
+    throw new WaylineRenameUnsupportedError();
+  }
+  if (!res.ok) {
+    throw new Error(`DJI Cloud přejmenování selhalo (HTTP ${res.status})`);
+  }
+  const body = (await res.json()) as DjiApiResponse<unknown>;
+  // Some deployments answer an unrouted PUT with a 200-wrapped "not found"
+  // envelope instead of a plain HTTP 404/405 — treat those codes the same
+  // way as the HTTP-level check above.
+  if (body.code === 404 || body.code === 405) {
+    throw new WaylineRenameUnsupportedError();
+  }
+  if (body.code !== 0) {
+    throw new Error(`DJI Cloud přejmenování selhalo: ${body.message}`);
+  }
+}
+
+/**
+ * Renames a wayline file in the workspace's library in place —
+ * `PUT /wayline/api/v1/workspaces/{workspace_id}/waylines/{id}/rename`.
+ * The new name goes through the same sanitizing/length-fitting as an
+ * upload (`sanitizeWaylineName`, `MAX_WAYLINE_NAME_LENGTH`) and is sent
+ * WITHOUT the `.kmz` extension: the platform stores the bare name and
+ * validates it against `^[^<>:"/|?*._\]+$` when listing, so a name with
+ * a dot makes every later list call fail for the whole workspace, not just
+ * that file. Throws `WaylineRenameUnsupportedError` when the platform
+ * doesn't have this endpoint yet.
+ */
+export async function renameWayline(
+  waylineId: string,
+  newName: string,
+  userId?: string,
+): Promise<{ name: string }> {
+  const cfg = resolveConfig(userId);
+  if (!cfg) throw new Error("DJI Cloud není nakonfigurován");
+  const baseName = sanitizeWaylineName(newName);
+  const { token, workspaceId } = await login(cfg);
+  await renameWaylineAuthed(cfg, token, workspaceId, waylineId, baseName);
+  return { name: baseName };
+}
+
 async function uploadFile(
   cfg: DjiCloudConfig,
   token: string,

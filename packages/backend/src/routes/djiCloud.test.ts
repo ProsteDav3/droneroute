@@ -690,6 +690,137 @@ describe("DELETE /api/dji-cloud/waylines/:id", () => {
   });
 });
 
+describe("PUT /api/dji-cloud/waylines/:id", () => {
+  it("requires authentication", async () => {
+    const res = await request(app)
+      .put("/api/dji-cloud/waylines/abc")
+      .send({ name: "New name" });
+    expect(res.status).toBe(401);
+  });
+
+  it("rejects an empty name", async () => {
+    const res = await request(app)
+      .put("/api/dji-cloud/waylines/wayline-123")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "   " });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a missing name", async () => {
+    const res = await request(app)
+      .put("/api/dji-cloud/waylines/wayline-123")
+      .set("Authorization", `Bearer ${token}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("renames the wayline and returns the stored, sanitized name without an extension", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: null }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .put("/api/dji-cloud/waylines/wayline-123")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Renamed mission" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.name).toBe("Renamed mission");
+
+    const [renameUrl, renameInit] = fetchMock.mock.calls[1];
+    expect(renameUrl).toBe(
+      "https://dji-cloud.test.example/wayline/api/v1/workspaces/ws-1/waylines/wayline-123/rename",
+    );
+    expect(renameInit.method).toBe("PUT");
+    expect(renameInit.headers["x-auth-token"]).toBe("dji-token");
+    expect(JSON.parse(renameInit.body)).toEqual({
+      name: "Renamed mission",
+    });
+  });
+
+  it("sanitizes and shortens an over-long name the same way an upload would", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({ code: 0, message: "success", data: null }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .put("/api/dji-cloud/waylines/wayline-123")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: LONG_NAME });
+
+    expect(res.status).toBe(200);
+    expect(res.body.name.length).toBeLessThanOrEqual(64);
+    // The platform rejects a dot in the name when listing, so a rename must
+    // never send one back — see renameWayline's doc comment.
+    expect(res.body.name).not.toContain(".");
+  });
+
+  it("returns a generic 502 on a cloud-side rename failure", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        jsonResponse({
+          code: -1,
+          message: "internal rename error",
+          data: null,
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .put("/api/dji-cloud/waylines/wayline-123")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Renamed mission" });
+
+    expect(res.status).toBe(502);
+    expect(JSON.stringify(res.body)).not.toContain("internal rename error");
+  });
+
+  it("returns a specific 'not supported' response when the platform has no rename endpoint (HTTP 404)", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(new Response("Not Found", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .put("/api/dji-cloud/waylines/wayline-123")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Renamed mission" });
+
+    expect(res.status).toBe(501);
+    expect(res.body.unsupported).toBe(true);
+  });
+
+  it("returns a specific 'not supported' response when the platform routes an unknown PUT to a 405", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(loginOk())
+      .mockResolvedValueOnce(
+        new Response("Method Not Allowed", { status: 405 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await request(app)
+      .put("/api/dji-cloud/waylines/wayline-123")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ name: "Renamed mission" });
+
+    expect(res.status).toBe(501);
+    expect(res.body.unsupported).toBe(true);
+  });
+});
+
 describe("GET /api/dji-cloud/telemetry", () => {
   it("requires authentication", async () => {
     const res = await request(app).get("/api/dji-cloud/telemetry");

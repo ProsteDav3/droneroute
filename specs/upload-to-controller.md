@@ -42,7 +42,9 @@ The DJI Cloud platform only accepts wayline names up to 64 characters, so a long
 
 ### Managing the wayline library
 
-The web app's **DJI Cloud — wayline knihovna** panel (in the sidebar, below the fleet status panel, when your server has DJI Cloud configured) lists every file currently in the workspace's wayline library and lets you delete ones you no longer need — handy for cleaning up old missions or duplicates created before the overwrite behavior above existed.
+The web app's **DJI Cloud — wayline knihovna** panel (in the sidebar, below the fleet status panel, when your server has DJI Cloud configured) lists every file currently in the workspace's wayline library and lets you rename or delete ones you no longer need as-is — handy for cleaning up old missions or duplicates created before the overwrite behavior above existed, or for giving an auto-generated name something clearer.
+
+Double-click a name (or use the pencil button next to it) to rename it in place; press Enter to confirm or Escape to cancel. The new name goes through the same cleanup as an uploaded mission name — disallowed characters are replaced and anything over 64 characters is shortened from the middle — so it stays valid on the DJI Cloud platform. Renaming requires the platform to support it; an older self-hosted DJI Cloud instance without the rename endpoint shows a clear message instead of failing silently.
 
 When a whole batch has to go — a 71-segment upload superseded by a re-plan, say — two buttons clear the library wholesale: **Smazat všechny mise** and **Smazat všechny segmenty**, counted and handled separately so segments can be swept without touching the missions they came from (and the other way round). Neither deletes on the first click: it arms, and a second button spelling out the count („Opravdu smazat 71 segmentů“) performs it. Progress is shown as it runs; if one delete fails the rest still go, and the list only drops the rows that were really deleted.
 

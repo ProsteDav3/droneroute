@@ -1,6 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ChevronDown, ChevronRight, FileText, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  FileText,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { useConfigStore } from "@/store/configStore";
 import { useDjiCloudOpsStore } from "@/store/djiCloudOpsStore";
 import { isSegmentWayline } from "@/lib/waylineNames";
@@ -14,6 +20,14 @@ function formatDate(unixMs: number | undefined): string | null {
     month: "numeric",
     year: "numeric",
   });
+}
+
+/** The library lists names with the `.kmz` extension (see djiCloudOpsStore's
+ * `DjiWaylineSummary`), but that's not part of what someone means to type
+ * when renaming — strip it for editing and let the backend re-append it
+ * (`renameWayline`'s doc comment). */
+function baseWaylineName(name: string): string {
+  return name.replace(/\.kmz$/i, "");
 }
 
 /**
@@ -31,9 +45,11 @@ export function DjiWaylineLibraryPanel() {
     waylinesLoading,
     waylinesError,
     deletingWaylineId,
+    renamingWaylineId,
     bulkWaylineDelete,
     fetchWaylines,
     deleteWaylineFromLibrary,
+    renameWaylineInLibrary,
     deleteWaylinesInBulk,
   } = useDjiCloudOpsStore();
   const [expanded, setExpanded] = useState(
@@ -43,6 +59,14 @@ export function DjiWaylineLibraryPanel() {
    * something to do on one stray click, so the button only states the intent
    * and the count; a second, separate button actually does it. */
   const [armed, setArmed] = useState<"missions" | "segments" | null>(null);
+  /** Which wayline's name is currently being edited inline (dvojklik or the
+   * pencil button), same pattern as TemplatePresetList's `editingName`. */
+  const [editingWaylineId, setEditingWaylineId] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  /** Escape unmounts the input while it still has focus, and the browser
+   * then fires a blur that would commit the edit the user just cancelled.
+   * This flag makes the cancel win. */
+  const cancelledRef = useRef(false);
 
   useEffect(() => {
     if (djiCloudEnabled && expanded) void fetchWaylines();
@@ -61,6 +85,33 @@ export function DjiWaylineLibraryPanel() {
   const handleDelete = (id: string, name: string) => {
     if (!window.confirm(`Smazat "${name}" z DJI Cloud knihovny?`)) return;
     void deleteWaylineFromLibrary(id);
+  };
+
+  const startRename = (id: string) => {
+    cancelledRef.current = false;
+    setEditingWaylineId(id);
+    setTimeout(() => nameInputRef.current?.select(), 0);
+  };
+
+  const commitRename = (id: string, value: string) => {
+    if (cancelledRef.current) {
+      cancelledRef.current = false;
+      return;
+    }
+    const trimmed = value.trim();
+    setEditingWaylineId(null);
+    if (!trimmed) {
+      // Silently dropping the edit looks like the rename failed for no
+      // reason, so say what happened — the original name is still there.
+      toast.error("Název nesmí být prázdný");
+      return;
+    }
+    void renameWaylineInLibrary(id, trimmed);
+  };
+
+  const cancelRename = () => {
+    cancelledRef.current = true;
+    setEditingWaylineId(null);
   };
 
   const segmentCount = waylines.filter((w) => isSegmentWayline(w.name)).length;
@@ -147,27 +198,63 @@ export function DjiWaylineLibraryPanel() {
                 </button>
               ),
             )}
-          {waylines.map((wl) => (
-            <div key={wl.id} className="flex items-center gap-2 text-[11px]">
-              <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
-              <div className="flex-1 min-w-0">
-                <span className="truncate block">{wl.name}</span>
-                {formatDate(wl.update_time ?? wl.create_time) && (
-                  <span className="text-[10px] text-muted-foreground">
-                    {formatDate(wl.update_time ?? wl.create_time)}
-                  </span>
+          {waylines.map((wl) => {
+            const isRenaming = editingWaylineId === wl.id;
+            const busy =
+              deletingWaylineId === wl.id || renamingWaylineId === wl.id;
+            return (
+              <div key={wl.id} className="flex items-center gap-2 text-[11px]">
+                <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  {isRenaming ? (
+                    <input
+                      ref={nameInputRef}
+                      className="text-[11px] font-medium bg-transparent border-b border-indigo-400 outline-none w-full py-0"
+                      defaultValue={baseWaylineName(wl.name)}
+                      autoFocus
+                      onBlur={(e) => commitRename(wl.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter")
+                          commitRename(wl.id, e.currentTarget.value);
+                        if (e.key === "Escape") cancelRename();
+                      }}
+                    />
+                  ) : (
+                    <span
+                      className="truncate block cursor-text hover:text-indigo-300 transition-colors"
+                      onDoubleClick={() => startRename(wl.id)}
+                      title="Přejmenujte dvojklikem"
+                    >
+                      {wl.name}
+                    </span>
+                  )}
+                  {formatDate(wl.update_time ?? wl.create_time) && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {formatDate(wl.update_time ?? wl.create_time)}
+                    </span>
+                  )}
+                </div>
+                {!isRenaming && (
+                  <button
+                    className="shrink-0 text-muted-foreground hover:text-indigo-400 transition-colors disabled:opacity-40"
+                    onClick={() => startRename(wl.id)}
+                    disabled={busy}
+                    title="Přejmenovat"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </button>
                 )}
+                <button
+                  className="shrink-0 text-muted-foreground hover:text-red-400 transition-colors disabled:opacity-40"
+                  onClick={() => handleDelete(wl.id, wl.name)}
+                  disabled={busy || isRenaming}
+                  title="Smazat z DJI Cloud"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
               </div>
-              <button
-                className="shrink-0 text-muted-foreground hover:text-red-400 transition-colors disabled:opacity-40"
-                onClick={() => handleDelete(wl.id, wl.name)}
-                disabled={deletingWaylineId === wl.id}
-                title="Smazat z DJI Cloud"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

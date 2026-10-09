@@ -21,13 +21,16 @@ export interface CaptureSelection {
  * Reports mode and cinema together in ONE callback so a panel can apply
  * both in a single state update — two back-to-back updates built from the
  * same closed-over params would overwrite each other.
+ *
+ * `value` may be undefined — the bulk editor passes that for a selection
+ * whose waypoints disagree (or capture nothing yet), and no button lights up.
  */
 export function CaptureModeToggle({
   value,
   onChange,
   cinema,
 }: {
-  value: CaptureMode;
+  value: CaptureMode | undefined;
   onChange: (selection: CaptureSelection) => void;
   cinema?: { enabled: boolean };
 }) {
@@ -54,6 +57,7 @@ export function CaptureModeToggle({
       <div className="flex gap-1 mt-0.5">
         <button
           type="button"
+          aria-pressed={value === "photo"}
           onClick={() => onChange({ mode: "photo", cinema: false })}
           className={optionClass(value === "photo")}
         >
@@ -61,6 +65,7 @@ export function CaptureModeToggle({
         </button>
         <button
           type="button"
+          aria-pressed={isPlainVideo}
           onClick={() => onChange({ mode: "video", cinema: false })}
           className={optionClass(isPlainVideo)}
         >
@@ -69,6 +74,7 @@ export function CaptureModeToggle({
         {cinema && (
           <button
             type="button"
+            aria-pressed={isCinema}
             onClick={() => onChange({ mode: "video", cinema: true })}
             className={optionClass(isCinema)}
             title={`Video s rychlostí nejvýš ${CINEMA_SPEED_MPS} m/s.`}

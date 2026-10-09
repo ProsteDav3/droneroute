@@ -38,6 +38,8 @@ import {
   headingModeLabel,
 } from "@/lib/units";
 import { computeSpeedForDuration } from "@/lib/flightStats";
+import { detectCaptureMode } from "@/lib/captureActions";
+import { CaptureModeToggle } from "@/components/map/template-config/CaptureModeToggle";
 import type { HeadingMode, TurnMode, Waypoint } from "@droneroute/shared";
 
 /**
@@ -70,6 +72,7 @@ export function BulkActionToolbar() {
     templateGroups,
     setEditingTemplateGroupId,
     interpolateBetween,
+    setCaptureModeForSelected,
   } = useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
   const clipboardActions = useActionClipboardStore((s) => s.actions);
@@ -237,6 +240,8 @@ export function BulkActionToolbar() {
     selectedWaypointIndices,
     "poiId",
   );
+
+  const currentCapture = detectCaptureMode(waypoints, selectedWaypointIndices);
 
   const headingSelectValue =
     commonUseGlobalHeading === true
@@ -576,6 +581,30 @@ export function BulkActionToolbar() {
                   Dopočítat rychlost
                 </Button>
               </div>
+            </div>
+
+            {/* Photo vs. video for the selection — same choice a template
+                offers, so an imported KMZ can be switched without rebuilding
+                each waypoint's actions by hand. */}
+            <div>
+              <CaptureModeToggle
+                value={currentCapture.mode}
+                cinema={{ enabled: currentCapture.cinema }}
+                onChange={({ mode, cinema }) => {
+                  setCaptureModeForSelected(mode, cinema);
+                  toast.success(
+                    mode === "photo"
+                      ? `Foto na každém z ${count} vybraných bodů`
+                      : `Video od prvního do posledního z ${count} vybraných bodů${cinema ? " (cinema tempo)" : ""}`,
+                  );
+                }}
+              />
+              {currentCapture.mode === undefined && (
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  Vybrané body nemají jednotný záznam — volbou ho nastavíte
+                  všem.
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

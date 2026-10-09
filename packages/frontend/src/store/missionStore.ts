@@ -17,7 +17,8 @@ import type {
   TemplateParams,
   OrbitParams,
 } from "@/lib/templates";
-import { orbitParamsForBuilding } from "@/lib/templates";
+import { orbitParamsForBuilding, type CaptureMode } from "@/lib/templates";
+import { applyCaptureMode } from "@/lib/captureActions";
 import { WIDE_CAMERA_FOV } from "@/lib/solarCamera";
 import { pointInPolygon, offsetLatLng, rotateLatLng } from "@/lib/geo";
 import { cloneActionsForPaste } from "@/store/actionClipboardStore";
@@ -207,6 +208,10 @@ interface MissionState {
    * `actionId`s per waypoint) in a single update — used to paste a
    * copied waypoint's actions onto a bulk selection at once. */
   pasteActionsToSelected: (actions: WaypointAction[]) => void;
+  /** Rewrites the selection's capture actions for photo (a shot at every
+   * selected waypoint) or video (record from the first selected to the
+   * last), keeping any camera setup actions — see `applyCaptureMode`. */
+  setCaptureModeForSelected: (mode: CaptureMode, cinema: boolean) => void;
   reorderWaypoints: (fromIndex: number, toIndex: number) => void;
   /** Flips the whole route's flying order (last waypoint becomes first) —
    * useful for time-lapse missions that should fly the same physical path
@@ -612,6 +617,17 @@ export const useMissionStore = create<MissionState>()(
             state.selectedWaypointIndices.has(wp.index)
               ? { ...wp, actions: cloneActionsForPaste(actions) }
               : wp,
+          ),
+          dirty: true,
+        })),
+
+      setCaptureModeForSelected: (mode, cinema) =>
+        set((state) => ({
+          waypoints: applyCaptureMode(
+            state.waypoints,
+            state.selectedWaypointIndices,
+            mode,
+            cinema,
           ),
           dirty: true,
         })),

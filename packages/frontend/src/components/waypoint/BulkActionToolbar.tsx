@@ -38,6 +38,8 @@ import {
   headingModeLabel,
 } from "@/lib/units";
 import { computeSpeedForDuration } from "@/lib/flightStats";
+import { detectCaptureMode, findRecordingProblem } from "@/lib/captureActions";
+import { CaptureModeToggle } from "@/components/map/template-config/CaptureModeToggle";
 import type { HeadingMode, TurnMode, Waypoint } from "@droneroute/shared";
 
 /**
@@ -70,6 +72,7 @@ export function BulkActionToolbar() {
     templateGroups,
     setEditingTemplateGroupId,
     interpolateBetween,
+    setCaptureModeForSelected,
   } = useMissionStore();
   const unitSystem = usePreferencesStore((s) => s.preferences.unitSystem);
   const clipboardActions = useActionClipboardStore((s) => s.actions);
@@ -238,6 +241,8 @@ export function BulkActionToolbar() {
     "poiId",
   );
 
+  const currentCapture = detectCaptureMode(waypoints, selectedWaypointIndices);
+
   const headingSelectValue =
     commonUseGlobalHeading === true
       ? "global"
@@ -256,15 +261,24 @@ export function BulkActionToolbar() {
     // Capped to the viewport with the row scrolling inside it: this bar has
     // grown past a phone's width, and without the cap its right-hand buttons
     // (delete, clear selection) simply sat off-screen with nothing to scroll.
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[calc(100vw-1rem)] animate-in slide-in-from-bottom-4 fade-in duration-200 tabular-nums">
-      <div className="bg-card border border-border rounded-xl shadow-2xl shadow-black/30 overflow-hidden max-w-full">
-        {/* Action bar */}
-        <div className="flex items-center gap-3 px-4 py-2.5 overflow-x-auto">
+    // Stacked above the phone sidebar drawer (z-[1501]) and its backdrop:
+    // on a phone the waypoints are selected *in* that drawer, so a bar
+    // underneath it hid every action the selection was made for.
+    //
+    // Below md the bar spans the screen edge to edge and centres its card with
+    // flex: a `left-1/2` anchor only offers a shrink-to-fit box the right half
+    // of the viewport, so a wrapping row folded into one button per line.
+    <div className="fixed bottom-6 inset-x-2 flex justify-center pointer-events-none md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:max-w-[calc(100vw-1rem)] z-[1502] animate-in slide-in-from-bottom-4 fade-in duration-200 tabular-nums">
+      <div className="pointer-events-auto bg-card border border-border rounded-xl shadow-2xl shadow-black/30 overflow-hidden max-w-full">
+        {/* Action bar — wraps below md: scrolled sideways on a phone, its
+            later buttons ("Upravit" among them) sat past the right edge where
+            nobody thought to look for them. */}
+        <div className="flex flex-wrap md:flex-nowrap items-center gap-x-3 gap-y-2 px-4 py-2.5 overflow-x-auto">
           <Badge variant="default" className="text-xs px-2 py-0.5">
             Vybráno: {count}
           </Badge>
 
-          <div className="h-4 w-px bg-border" />
+          <div className="hidden md:block h-4 w-px bg-border" />
 
           {/* Point to POI (hidden when editor is open — use heading mode there instead) */}
           {pois.length > 0 && !showEditor && (
@@ -373,7 +387,7 @@ export function BulkActionToolbar() {
             </Button>
           )}
 
-          <div className="h-4 w-px bg-border" />
+          <div className="hidden md:block h-4 w-px bg-border" />
 
           {/* Delete */}
           <Button
@@ -386,7 +400,7 @@ export function BulkActionToolbar() {
             Smazat
           </Button>
 
-          <div className="h-4 w-px bg-border" />
+          <div className="hidden md:block h-4 w-px bg-border" />
 
           {/* Clear selection */}
           <Button
@@ -576,6 +590,34 @@ export function BulkActionToolbar() {
                   Dopočítat rychlost
                 </Button>
               </div>
+            </div>
+
+            {/* Photo vs. video for the selection — same choice a template
+                offers, so an imported KMZ can be switched without rebuilding
+                each waypoint's actions by hand. */}
+            <div>
+              <CaptureModeToggle
+                value={currentCapture.mode}
+                cinema={{ enabled: currentCapture.cinema }}
+                onChange={({ mode, cinema }) => {
+                  setCaptureModeForSelected(mode, cinema);
+                  const problem = findRecordingProblem(
+                    useMissionStore.getState().waypoints,
+                  );
+                  if (problem) toast.warning(problem);
+                  toast.success(
+                    mode === "photo"
+                      ? `Foto na každém z ${count} vybraných bodů`
+                      : `Video od prvního do posledního z ${count} vybraných bodů${cinema ? " (cinema tempo)" : ""}`,
+                  );
+                }}
+              />
+              {currentCapture.mode === undefined && (
+                <div className="text-[10px] text-muted-foreground mt-0.5">
+                  Vybrané body nemají jednotný záznam — volbou ho nastavíte
+                  všem.
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-3">

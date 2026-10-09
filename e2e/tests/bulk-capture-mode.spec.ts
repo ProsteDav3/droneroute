@@ -1,19 +1,81 @@
+import fs from "fs";
 import { test, expect } from "@playwright/test";
-import path from "path";
-import { fileURLToPath } from "url";
+import type { APIRequestContext } from "@playwright/test";
+import {
+  DEFAULT_MISSION_CONFIG,
+  DEFAULT_WAYPOINT,
+  type Waypoint,
+} from "@droneroute/shared";
 import { blockMapboxNetwork, dismissWelcomeDialogOnLoad } from "../helpers.js";
 import { STORAGE_STATE_PATH } from "../global-setup.js";
 
 test.use({ storageState: STORAGE_STATE_PATH });
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// A real 72-point orbit exported from DJI Pilot as a video mission: recording
-// starts on the first waypoint and stops on the last.
-const VIDEO_KMZ = path.resolve(__dirname, "../../Test.kmz");
+const ORBIT_POINTS = 72;
+
+/**
+ * Writes a 72-point video orbit as a real DJI KMZ, produced by the app's own
+ * export endpoint — recording starts on the first waypoint and stops on the
+ * last, the shape a video mission has once it comes back from DJI Pilot.
+ * Generated rather than checked in: `*.kmz` is gitignored and real missions
+ * are client data, which has no place in a public repo. Placed at the
+ * AGENTS.md standard screenshot coordinates.
+ */
+async function writeVideoOrbitKmz(
+  request: APIRequestContext,
+  filePath: string,
+): Promise<string> {
+  const center = { lat: 41.25797725781744, lng: 0.9322907667035154 };
+  const radiusM = 100;
+  const waypoints: Waypoint[] = Array.from({ length: ORBIT_POINTS }, (_, i) => {
+    const bearing = (2 * Math.PI * i) / ORBIT_POINTS;
+    const record =
+      i === 0 ? "startRecord" : i === ORBIT_POINTS - 1 ? "stopRecord" : null;
+    return {
+      ...DEFAULT_WAYPOINT,
+      index: i,
+      name: `Bod trasy ${i + 1}`,
+      latitude:
+        center.lat +
+        ((radiusM * Math.cos(bearing)) / 6_371_000) * (180 / Math.PI),
+      longitude:
+        center.lng +
+        ((radiusM * Math.sin(bearing)) /
+          (6_371_000 * Math.cos((center.lat * Math.PI) / 180))) *
+          (180 / Math.PI),
+      height: 50,
+      gimbalPitchAngle: -17,
+      actions: record
+        ? [
+            {
+              actionId: 0,
+              actionType: record,
+              params: { payloadPositionIndex: 0 },
+            },
+          ]
+        : [],
+    };
+  });
+  const res = await request.post("/api/kmz/generate", {
+    data: {
+      name: "video-orbit",
+      config: DEFAULT_MISSION_CONFIG,
+      waypoints,
+      pois: [],
+    },
+  });
+  expect(res.ok(), `KMZ export failed: ${res.status()}`).toBe(true);
+  fs.writeFileSync(filePath, await res.body());
+  return filePath;
+}
 
 test("an imported KMZ can be switched between video and photo from the bulk editor", async ({
   page,
 }) => {
+  const kmz = await writeVideoOrbitKmz(
+    page.request,
+    test.info().outputPath("video-orbit.kmz"),
+  );
   await blockMapboxNetwork(page);
   await dismissWelcomeDialogOnLoad(page);
   await page.goto("/");
@@ -21,11 +83,9 @@ test("an imported KMZ can be switched between video and photo from the bulk edit
     timeout: 20_000,
   });
 
-  await page
-    .locator('input[type="file"][accept=".kmz"]')
-    .setInputFiles(VIDEO_KMZ);
+  await page.locator('input[type="file"][accept=".kmz"]').setInputFiles(kmz);
   await expect(page.getByText(/^Body trasy \(\d+\)$/)).toHaveText(
-    "Body trasy (72)",
+    `Body trasy (${ORBIT_POINTS})`,
     { timeout: 10_000 },
   );
 
@@ -33,7 +93,7 @@ test("an imported KMZ can be switched between video and photo from the bulk edit
   // map click: the editor opens in add-waypoint mode, so that would add a 73rd.
   await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
   await page.keyboard.press("ControlOrMeta+a");
-  await expect(page.getByText("Vybráno: 72")).toBeVisible();
+  await expect(page.getByText(`Vybráno: ${ORBIT_POINTS}`)).toBeVisible();
   await page.getByRole("button", { name: "Upravit", exact: true }).click();
 
   const foto = page.getByRole("button", { name: "Foto", exact: true });
@@ -55,6 +115,10 @@ test("an imported KMZ can be switched between video and photo from the bulk edit
 test("on a 375px phone the capture choice is reachable right after selecting in the sidebar drawer", async ({
   page,
 }) => {
+  const kmz = await writeVideoOrbitKmz(
+    page.request,
+    test.info().outputPath("video-orbit.kmz"),
+  );
   await page.setViewportSize({ width: 375, height: 812 });
   await blockMapboxNetwork(page);
   await dismissWelcomeDialogOnLoad(page);
@@ -67,11 +131,9 @@ test("on a 375px phone the capture choice is reachable right after selecting in 
   // A phone opens with the panels closed; the drawer holds both the import
   // button and the waypoint list the selection is made in.
   await page.getByRole("button", { name: "Zobrazit panely (Tab)" }).click();
-  await page
-    .locator('input[type="file"][accept=".kmz"]')
-    .setInputFiles(VIDEO_KMZ);
+  await page.locator('input[type="file"][accept=".kmz"]').setInputFiles(kmz);
   await expect(page.getByText(/^Body trasy \(\d+\)$/)).toHaveText(
-    "Body trasy (72)",
+    `Body trasy (${ORBIT_POINTS})`,
     { timeout: 10_000 },
   );
 
@@ -106,7 +168,7 @@ test("on a 375px phone the capture choice is reachable right after selecting in 
   const foto = page.getByRole("button", { name: "Foto", exact: true });
   await foto.click();
   await expect(foto).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("Body trasy (72)")).toBeVisible();
+  await expect(page.getByText(`Body trasy (${ORBIT_POINTS})`)).toBeVisible();
 
   // Photos on WP1-3 drop the import's startRecord on WP1 while its stop on
   // WP72 remains — the editor says so instead of exporting a stray stop.

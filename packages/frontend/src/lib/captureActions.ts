@@ -134,3 +134,35 @@ export function detectCaptureMode(
   );
   return { mode: "video", cinema };
 }
+
+/**
+ * Walks the whole mission in flight order and returns a short Czech warning
+ * if its recording actions don't pair up, or null when they do.
+ *
+ * `applyCaptureMode` deliberately touches only the selection, so applying
+ * video to WP10–WP20 of an imported clip that already records WP1–WP72
+ * leaves a second start while the camera is rolling — the aircraft won't
+ * reject that file, it just silently records something other than what the
+ * pilot meant. The bulk editor shows this as a warning rather than fixing it,
+ * because two separate clips in one flight are a legitimate plan.
+ */
+export function findRecordingProblem(waypoints: Waypoint[]): string | null {
+  let recording = false;
+  for (const wp of [...waypoints].sort((a, b) => a.index - b.index)) {
+    const label = `WP${wp.index + 1}`;
+    for (const action of wp.actions) {
+      if (action.actionType === "startRecord") {
+        if (recording)
+          return `Na ${label} se spouští nahrávání, které už běží — zkontrolujte start a stop videa mimo výběr.`;
+        recording = true;
+      } else if (action.actionType === "stopRecord") {
+        if (!recording)
+          return `Na ${label} se zastavuje nahrávání, které neběží — zkontrolujte start a stop videa mimo výběr.`;
+        recording = false;
+      }
+    }
+  }
+  return recording
+    ? "Nahrávání se do konce trasy nezastaví — chybí stop videa za výběrem."
+    : null;
+}

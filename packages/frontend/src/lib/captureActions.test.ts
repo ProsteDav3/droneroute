@@ -1,7 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type { Waypoint, WaypointAction } from "@droneroute/shared";
 import { CINEMA_SPEED_MPS } from "./templates";
-import { applyCaptureMode, detectCaptureMode } from "./captureActions";
+import {
+  applyCaptureMode,
+  detectCaptureMode,
+  findRecordingProblem,
+} from "./captureActions";
 
 function wp(index: number, overrides: Partial<Waypoint> = {}): Waypoint {
   return {
@@ -179,5 +183,58 @@ describe("detectCaptureMode", () => {
     const none = [wp(0), wp(1)];
     expect(detectCaptureMode(none, all(none)).mode).toBeUndefined();
     expect(detectCaptureMode(none, new Set()).mode).toBeUndefined();
+  });
+});
+
+describe("findRecordingProblem", () => {
+  it("accepts a mission with no recording, or one clean start/stop pair", () => {
+    expect(findRecordingProblem([wp(0), wp(1)])).toBeNull();
+    expect(
+      findRecordingProblem([
+        wp(0, { actions: [startRecord] }),
+        wp(1),
+        wp(2, { actions: [stopRecord] }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("accepts a start and stop on the same waypoint, and two separate clips", () => {
+    expect(
+      findRecordingProblem([wp(0, { actions: [startRecord, stopRecord] })]),
+    ).toBeNull();
+    expect(
+      findRecordingProblem([
+        wp(0, { actions: [startRecord] }),
+        wp(1, { actions: [stopRecord] }),
+        wp(2, { actions: [startRecord] }),
+        wp(3, { actions: [stopRecord] }),
+      ]),
+    ).toBeNull();
+  });
+
+  it("flags a second start while already recording, naming the waypoint", () => {
+    // Video applied to WP3-WP4 of an imported clip that runs WP1-WP5.
+    const ws = [
+      wp(0, { actions: [startRecord] }),
+      wp(1),
+      wp(2, { actions: [startRecord] }),
+      wp(3, { actions: [stopRecord] }),
+      wp(4, { actions: [stopRecord] }),
+    ];
+    expect(findRecordingProblem(ws)).toMatch(/WP3/);
+  });
+
+  it("flags a stop without a running recording", () => {
+    const ws = [wp(0), wp(1, { actions: [stopRecord] })];
+    expect(findRecordingProblem(ws)).toMatch(/WP2/);
+  });
+
+  it("flags a recording that is never stopped", () => {
+    // Foto applied to the tail of a video mission removes its stopRecord.
+    const ws = [
+      wp(0, { actions: [startRecord] }),
+      wp(1, { actions: [takePhoto] }),
+    ];
+    expect(findRecordingProblem(ws)).toMatch(/nezastaví/);
   });
 });

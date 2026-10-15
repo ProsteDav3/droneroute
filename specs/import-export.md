@@ -110,6 +110,7 @@ Bring in existing missions or export your planned flight as a file ready for DJI
   stops at its own second waypoint — not just the first and last segment of
   the whole route.
 - Imported missions may not look exactly the same if the original file used features not supported by SkyRoute.
+- Waypoint actions keep their settings through an import — gimbal angle, hover time, focus and the rest come back exactly as the file had them, so exporting an imported mission (for example after switching it from video to photo) writes the same camera setup it arrived with.
 - The maximum import file size is 50 MB.
 - Imported and saved missions are validated: files with malformed contents or
   out-of-range coordinates are rejected with an error rather than being loaded.

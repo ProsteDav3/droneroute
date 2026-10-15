@@ -8,6 +8,7 @@ import type {
 } from "@droneroute/shared";
 import { DEFAULT_MISSION_CONFIG, DEFAULT_WAYPOINT } from "@droneroute/shared";
 import { v4 as uuidv4 } from "uuid";
+import { normalizeActionParams } from "../lib/actionParams.js";
 
 const parser = new XMLParser({
   ignoreAttributes: false,
@@ -40,7 +41,7 @@ function parseActions(placemark: any): WaypointAction[] {
       actions.push({
         actionId: parseInt(action["wpml:actionId"] || "0"),
         actionType: action["wpml:actionActuatorFunc"],
-        params: action["wpml:actionActuatorFuncParam"] || {},
+        params: normalizeActionParams(action["wpml:actionActuatorFuncParam"]),
       });
     }
   }
@@ -197,10 +198,8 @@ export async function parseKmz(buffer: Buffer): Promise<{
       // Look for a gimbalRotate action with pitch angle
       const gimbalAction = actions.find((a) => a.actionType === "gimbalRotate");
       const gimbalParams = gimbalAction?.params as any;
-      if (gimbalParams?.["wpml:gimbalPitchRotateAngle"] != null) {
-        gimbalPitchAngle = parseFloat(
-          gimbalParams["wpml:gimbalPitchRotateAngle"],
-        );
+      if (gimbalParams?.gimbalPitchRotateAngle != null) {
+        gimbalPitchAngle = parseFloat(gimbalParams.gimbalPitchRotateAngle);
       }
     }
 

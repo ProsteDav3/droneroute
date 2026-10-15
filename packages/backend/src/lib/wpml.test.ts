@@ -536,3 +536,74 @@ describe("gimbal yaw is opt-in (a yaw command fights target tracking)", () => {
     );
   });
 });
+
+describe("actions saved by the old KMZ importer", () => {
+  // Missions imported before the fix are stored with the parsed XML keys
+  // ("wpml:gimbalPitchRotateAngle"). Exporting them must still write the
+  // values they came in with, not the export's defaults.
+  it("exports prefixed parameters with their real values", () => {
+    const m = mission([
+      waypoint({
+        actions: [
+          {
+            actionId: 0,
+            actionType: "gimbalRotate",
+            params: {
+              "wpml:gimbalHeadingYawBase": "north",
+              "wpml:gimbalRotateMode": "absoluteAngle",
+              "wpml:gimbalPitchRotateAngle": -17,
+              "wpml:gimbalYawRotateEnable": 0,
+              "wpml:gimbalYawRotateAngle": 0,
+              "wpml:payloadPositionIndex": 0,
+            } as any,
+          },
+          {
+            actionId: 1,
+            actionType: "hover",
+            params: { "wpml:hoverTime": 3 } as any,
+          },
+          {
+            actionId: 2,
+            actionType: "focus",
+            params: {
+              "wpml:isPointFocus": 1,
+              "wpml:focusX": 0.5,
+              "wpml:focusY": 0.5,
+              "wpml:isInfiniteFocus": 0,
+            } as any,
+          },
+        ],
+      }),
+      waypoint({ index: 1, name: "WP2", latitude: 41.259 }),
+    ]);
+
+    for (const xml of [buildWaylinesWpml(m), buildTemplateKml(m)]) {
+      expect(xml).toContain(
+        "<wpml:gimbalPitchRotateAngle>-17</wpml:gimbalPitchRotateAngle>",
+      );
+      expect(xml).toContain(
+        "<wpml:gimbalYawRotateEnable>0</wpml:gimbalYawRotateEnable>",
+      );
+      expect(xml).toContain("<wpml:hoverTime>3</wpml:hoverTime>");
+      expect(xml).toContain("<wpml:isPointFocus>1</wpml:isPointFocus>");
+    }
+  });
+
+  it("prefers the plain key when an edited action carries both spellings", () => {
+    const m = mission([
+      waypoint({
+        actions: [
+          {
+            actionId: 0,
+            actionType: "hover",
+            params: { "wpml:hoverTime": 5, hoverTime: 2 } as any,
+          },
+        ],
+      }),
+    ]);
+
+    expect(buildWaylinesWpml(m)).toContain(
+      "<wpml:hoverTime>2</wpml:hoverTime>",
+    );
+  });
+});

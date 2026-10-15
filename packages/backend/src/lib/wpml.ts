@@ -5,6 +5,7 @@ import type {
   WaypointAction,
   PointOfInterest,
 } from "@droneroute/shared";
+import { normalizeActionParams } from "./actionParams.js";
 
 // This module emits DJI WPML 1.0.6 in the exact structure DJI Pilot 2
 // (Matrice 4 era) generates natively. That matters because Pilot 2's
@@ -91,7 +92,8 @@ function imageFormatFor(payloadEnumValue: number): string {
 
 // ── Action XML ───────────────────────────────────────────
 
-function buildActionXml(action: WaypointAction): string {
+function buildActionXml(saved: WaypointAction): string {
+  const action = { ...saved, params: normalizeActionParams(saved.params) };
   let paramsXml = "";
 
   switch (action.actionType) {
